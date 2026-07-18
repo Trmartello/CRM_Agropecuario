@@ -6,7 +6,8 @@
 <meta name="theme-color" content="#1b5e20">
 <title>Entrar — CRM AGRO · Copérdia</title>
 <link rel="manifest" href="manifest.json">
-<link rel="icon" href="assets/icons/icone-192.png">
+<link rel="icon" type="image/svg+xml" href="assets/img/logo-marca.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
 <link rel="stylesheet" href="assets/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="assets/vendor/bootstrap-icons.min.css">
 <link rel="stylesheet" href="assets/css/app.css">
