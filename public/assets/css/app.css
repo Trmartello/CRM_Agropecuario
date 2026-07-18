@@ -1,0 +1,106 @@
+/* CRM Agropecuário Copérdia — estilos da aplicação */
+
+:root {
+  --verde-coperdia: #1b5e20;
+  --verde-claro: #2e7d32;
+}
+
+body { background: #f4f6f4; }
+
+/* ---------- Sidebar ---------- */
+.sidebar {
+  width: 240px;
+  min-height: 100vh;
+  background: linear-gradient(180deg, var(--verde-coperdia), #123d15);
+  color: #fff;
+  padding: 1rem .75rem;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  z-index: 1040;
+}
+.sidebar-marca { color: #fff; }
+.sidebar .nav-link { color: rgba(255,255,255,.85); border-radius: .5rem; padding: .65rem .75rem; font-size: 1.02rem; }
+.sidebar .nav-link:hover { background: rgba(255,255,255,.08); color: #fff; }
+.sidebar .nav-link.active { background: rgba(255,255,255,.18); color: #fff; font-weight: 600; }
+
+.topo {
+  height: 56px;
+  background: #fff;
+  border-bottom: 1px solid #e3e6e3;
+  position: sticky;
+  top: 0;
+  z-index: 1030;
+}
+.conteudo { min-width: 0; }
+
+/* Sidebar vira gaveta no celular */
+@media (max-width: 991.98px) {
+  .sidebar {
+    position: fixed;
+    left: -260px;
+    transition: left .25s ease;
+    box-shadow: 2px 0 12px rgba(0,0,0,.3);
+  }
+  .sidebar.aberta { left: 0; }
+}
+
+/* ---------- Cartões e indicadores ---------- */
+.card { border: 1px solid #e3e6e3; border-radius: .75rem; }
+.card-header { background: #fff; border-radius: .75rem .75rem 0 0 !important; }
+.indicador { position: relative; overflow: hidden; }
+.indicador .icone-fundo {
+  position: absolute; right: .5rem; bottom: -.5rem;
+  font-size: 3.5rem; opacity: .08;
+}
+.btn-atalho { padding: .6rem 1rem; font-size: 1.02rem; }
+
+/* ---------- Login ---------- */
+.tela-login { background: linear-gradient(135deg, #1b5e20, #2e7d32 60%, #43a047); padding: 1rem; }
+
+/* ---------- Ficha / offcanvas ---------- */
+.offcanvas-ficha { width: min(680px, 100vw); }
+.foto-miniatura {
+  width: 84px; height: 84px; object-fit: cover;
+  border-radius: .5rem; border: 1px solid #dee2e6;
+}
+
+/* ---------- Linha do tempo ---------- */
+.linha-tempo { position: relative; padding-left: 1.25rem; }
+.linha-tempo::before {
+  content: ''; position: absolute; left: 5px; top: 6px; bottom: 6px;
+  width: 2px; background: #c8e6c9;
+}
+.linha-tempo-item { position: relative; }
+.linha-tempo-ponto {
+  position: absolute; left: -1.25rem; top: .9rem;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--verde-claro); border: 2px solid #fff; box-shadow: 0 0 0 2px #c8e6c9;
+}
+
+/* ---------- Kanban ---------- */
+.kanban-coluna { width: 270px; }
+.kanban-titulo { padding: .5rem .25rem; }
+.kanban-corpo { min-height: 120px; }
+.kanban-cartao { border-left: 4px solid var(--verde-claro); }
+
+/* ---------- Campo com microfone ---------- */
+.campo-voz { position: relative; }
+.campo-voz .form-control { padding-right: 3rem; }
+.campo-voz .btn-voz {
+  position: absolute; right: .35rem; top: .35rem;
+  border-radius: 50%; width: 2.2rem; height: 2.2rem; padding: 0;
+  display: none; /* exibido via JS se o navegador suportar */
+}
+.campo-voz .btn-voz.gravando { background: #dc3545; border-color: #dc3545; color: #fff; animation: pulso 1s infinite; }
+@keyframes pulso { 50% { box-shadow: 0 0 0 6px rgba(220,53,69,.25); } }
+
+/* ---------- Wizard de visita ---------- */
+.etapas .nav-link { font-size: .9rem; }
+.etapas .nav-link.concluida { background: #c8e6c9; color: #1b5e20; }
+
+/* Botões maiores no celular (uso em campo) */
+@media (max-width: 767.98px) {
+  .btn { padding-top: .55rem; padding-bottom: .55rem; }
+  .table { font-size: .92rem; }
+}
