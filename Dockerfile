@@ -1,25 +1,23 @@
-# CRM Agropecuário Copérdia — imagem para deploy (Railway ou qualquer host Docker)
-FROM php:8.3-apache
+# CRM Agropecuário Copérdia — imagem para deploy de testes (Railway)
+# Usa o servidor embutido do PHP (simples e sem configuração de Apache),
+# adequado para homologação. Em produção definitiva, migrar para FPM+Nginx.
+FROM php:8.3-cli
 
-# Extensões necessárias: PDO MySQL e GD (ícones/imagens)
+# Extensões: PDO MySQL e GD (imagens/ícones)
 RUN apt-get update \
  && apt-get install -y --no-install-recommends libpng-dev libjpeg-dev libwebp-dev \
  && docker-php-ext-configure gd --with-jpeg --with-webp \
  && docker-php-ext-install pdo_mysql gd \
- && a2dismod -f mpm_event mpm_worker 2>/dev/null || true \
- && a2enmod mpm_prefork rewrite \
  && rm -rf /var/lib/apt/lists/*
 
-# DocumentRoot aponta para /public
-ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
-RUN sed -ri 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf \
- && sed -ri 's!/var/www/!${APACHE_DOCUMENT_ROOT}/!g' /etc/apache2/apache2.conf
-
-COPY . /var/www/html/
+WORKDIR /var/www/html
+COPY . .
 
 # Uploads persistentes: monte um volume em /var/www/html/public/uploads
-RUN mkdir -p /var/www/html/public/uploads \
- && chown -R www-data:www-data /var/www/html/public/uploads
+RUN mkdir -p public/uploads
 
-# Railway injeta a porta em $PORT — troca apenas as diretivas de porta do Apache
-CMD ["sh", "-c", "sed -ri \"s/^Listen 80$/Listen ${PORT:-80}/\" /etc/apache2/ports.conf; sed -ri \"s/<VirtualHost \\*:80>/<VirtualHost *:${PORT:-80}>/\" /etc/apache2/sites-available/000-default.conf; exec apache2-foreground"]
+# Vários workers para atender requisições em paralelo
+ENV PHP_CLI_SERVER_WORKERS=8
+
+# Railway injeta a porta em $PORT (padrão 8080)
+CMD ["sh", "-c", "php -d upload_max_filesize=20M -d post_max_size=25M -d memory_limit=256M -S 0.0.0.0:${PORT:-8080} -t public"]
