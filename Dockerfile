@@ -6,7 +6,8 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends libpng-dev libjpeg-dev libwebp-dev \
  && docker-php-ext-configure gd --with-jpeg --with-webp \
  && docker-php-ext-install pdo_mysql gd \
- && a2enmod rewrite \
+ && a2dismod -f mpm_event mpm_worker 2>/dev/null || true \
+ && a2enmod mpm_prefork rewrite \
  && rm -rf /var/lib/apt/lists/*
 
 # DocumentRoot aponta para /public
