@@ -1,5 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 70" role="img" aria-label="Copérdia">
-  <!-- Marca Copérdia estilizada: faixas verde e laranja -->
-  <path d="M4 62 C 28 10, 72 2, 104 30 L 90 42 C 66 20, 36 26, 20 64 Z" fill="#2e7d32"/>
-  <path d="M30 64 C 52 26, 88 22, 116 48 L 104 58 C 84 40, 60 44, 46 66 Z" fill="#f9a825"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="20 -10 260 140" role="img" aria-label="Copérdia">
+  <defs>
+    <linearGradient id="gVerdeM" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#009739"/>
+      <stop offset=".6" stop-color="#008a34"/>
+      <stop offset="1" stop-color="#00602b"/>
+    </linearGradient>
+    <linearGradient id="gLaranjaM" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffd100"/>
+      <stop offset="1" stop-color="#f68b1f"/>
+    </linearGradient>
+  </defs>
+  <path d="M 40 108 C 62 26, 154 -2, 242 84 L 212 94 C 158 32, 94 44, 68 110 Z" fill="url(#gVerdeM)"/>
+  <path d="M 118 70 C 160 40, 218 52, 260 108 L 228 112 C 200 74, 158 64, 130 84 Z" fill="url(#gLaranjaM)"/>
 </svg>

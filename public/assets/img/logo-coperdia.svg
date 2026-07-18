@@ -1,38 +1,33 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 168" role="img" aria-label="Copérdia">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 180" role="img" aria-label="Copérdia">
   <defs>
-    <linearGradient id="gVerde" x1="0" y1="1" x2="1" y2="0">
-      <stop offset="0" stop-color="#7cb928"/>
-      <stop offset=".45" stop-color="#33a02c"/>
-      <stop offset="1" stop-color="#00702e"/>
+    <linearGradient id="gVerde" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#009739"/>
+      <stop offset=".6" stop-color="#008a34"/>
+      <stop offset="1" stop-color="#00602b"/>
     </linearGradient>
-    <linearGradient id="gLaranja" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ffd200"/>
-      <stop offset=".5" stop-color="#fdb913"/>
-      <stop offset="1" stop-color="#f7941d"/>
+    <linearGradient id="gLaranja" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffd100"/>
+      <stop offset="1" stop-color="#f68b1f"/>
     </linearGradient>
   </defs>
 
-  <!-- Fita verde: sobe da esquerda e mergulha à direita -->
-  <path d="M38 96
-           C 66 34, 152 18, 208 52
-           L 236 74
-           L 208 76
-           C 168 44, 96 52, 70 96
+  <!-- Fita verde (atrás): arco alto da base esquerda à ponta direita -->
+  <path d="M 40 108
+           C 62 26, 154 -2, 242 84
+           L 212 94
+           C 158 32, 94 44, 68 110
            Z" fill="url(#gVerde)"/>
 
-  <!-- Fita laranja: cruza por baixo da verde, da esquerda para a direita -->
-  <path d="M84 100
-           C 118 56, 196 52, 240 88
-           L 222 102
-           C 186 72, 130 76, 112 100
+  <!-- Fita laranja (à frente): nasce sob o arco verde e cruza para a base direita -->
+  <path d="M 118 70
+           C 160 40, 218 52, 260 108
+           L 228 112
+           C 200 74, 158 64, 130 84
            Z" fill="url(#gLaranja)"/>
 
-  <!-- Ponta verde-escura da fita laranja (sobreposição) -->
-  <path d="M208 52 L 236 74 L 208 76 C 202 68, 196 60, 208 52 Z" fill="#00702e"/>
-
   <!-- Letreiro -->
-  <text x="150" y="152" text-anchor="middle"
+  <text x="150" y="164" text-anchor="middle"
         font-family="'Arial Black', Arial, Helvetica, sans-serif"
-        font-size="44" font-weight="900" letter-spacing="2"
+        font-size="45" font-weight="900" letter-spacing="1"
         fill="#111111">COPÉRDIA</text>
 </svg>
