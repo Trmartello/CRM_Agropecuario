@@ -109,4 +109,9 @@ $router->registrar('cap', CapController::class, 'index');
 $router->registrar('usuarios', UsuariosController::class, 'index');
 $router->registrar('usuarios/salvar', UsuariosController::class, 'salvar');
 
+// Configurações (Administrador)
+$router->registrar('configuracoes', \App\Controllers\ConfiguracoesController::class, 'index');
+$router->registrar('configuracoes/salvar-imagem', \App\Controllers\ConfiguracoesController::class, 'salvarImagem');
+$router->registrar('configuracoes/restaurar-padrao', \App\Controllers\ConfiguracoesController::class, 'restaurarPadrao');
+
 $router->despachar($_GET['r'] ?? 'dashboard');

@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#1b5e20">
 <title>Entrar — CRM AGRO · Copérdia</title>
+<?php use App\Services\ConfigService; ?>
 <link rel="manifest" href="manifest.json">
-<link rel="icon" type="image/svg+xml" href="assets/img/logo-marca.svg">
-<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+<link rel="icon" href="<?= e(ConfigService::faviconAplicacao()) ?>">
 <link rel="stylesheet" href="assets/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="assets/vendor/bootstrap-icons.min.css">
 <link rel="stylesheet" href="assets/css/app.css">
@@ -16,7 +16,7 @@
 <div class="card shadow-lg border-0" style="max-width:420px;width:100%">
   <div class="card-body p-4 p-md-5">
     <div class="text-center mb-4">
-      <img src="assets/img/logo-coperdia.svg" alt="Copérdia" style="width:170px;max-width:70%">
+      <img src="<?= e(ConfigService::logoAplicacao()) ?>" alt="Copérdia" style="width:170px;max-width:70%">
       <h1 class="h4 mt-3 mb-0">CRM AGRO</h1>
       <p class="text-muted">Copérdia</p>
     </div>

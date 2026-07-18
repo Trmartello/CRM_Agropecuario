@@ -1,4 +1,11 @@
-<?php use App\Core\Auth; use App\Core\Permissoes; ?>
+<?php
+use App\Core\Auth;
+use App\Core\Permissoes;
+use App\Services\ConfigService;
+
+$logoApp = ConfigService::logoAplicacao();
+$faviconApp = ConfigService::faviconAplicacao();
+?>
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -7,8 +14,7 @@
 <meta name="theme-color" content="#1b5e20">
 <title><?= e($titulo ?? 'CRM') ?> — CRM AGRO · Copérdia</title>
 <link rel="manifest" href="manifest.json">
-<link rel="icon" type="image/svg+xml" href="assets/img/logo-marca.svg">
-<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+<link rel="icon" href="<?= e($faviconApp) ?>">
 <link rel="apple-touch-icon" href="assets/icons/icone-192.png">
 <link rel="stylesheet" href="assets/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="assets/vendor/bootstrap-icons.min.css">
@@ -19,8 +25,8 @@
   <!-- Sidebar -->
   <nav class="sidebar d-flex flex-column flex-shrink-0" id="sidebar">
     <a href="<?= url('dashboard') ?>" class="sidebar-marca text-decoration-none text-center d-block">
-      <span class="logo-cartao d-block mx-auto mb-1"><img src="assets/img/logo-coperdia.svg" alt="Copérdia" class="w-100"></span>
-      <strong>CRM AGRO</strong>
+      <span class="logo-cartao d-block mx-auto mb-1"><img src="<?= e($logoApp) ?>" alt="Copérdia" class="w-100"></span>
+      <strong class="rotulo-marca">CRM AGRO</strong>
     </a>
     <hr class="text-white-50 my-2">
     <ul class="nav nav-pills flex-column mb-auto">
@@ -40,6 +46,7 @@
         }
         if (Auth::perfil() === 'Administrador') {
             $menu[] = ['usuarios', 'bi-person-gear', 'Usuários'];
+            $menu[] = ['configuracoes', 'bi-gear', 'Configurações'];
         }
       ?>
       <?php foreach ($menu as [$rota, $icone, $rotulo]): ?>
@@ -51,10 +58,13 @@
       <?php endforeach; ?>
     </ul>
     <hr class="text-white-50">
+    <button class="btn btn-outline-light btn-sm w-100 mb-2 d-none d-lg-block" id="btnRecolherMenu" title="Recolher/expandir o menu">
+      <i class="bi bi-chevron-double-left"></i><span class="rotulo ms-1">Recolher menu</span>
+    </button>
     <div class="sidebar-usuario small">
-      <div class="fw-semibold text-truncate"><?= e(Auth::usuario()['nome'] ?? '') ?></div>
-      <div class="opacity-75 mb-2"><?= e(Auth::perfil()) ?></div>
-      <a class="btn btn-outline-light btn-sm w-100" href="<?= url('login/sair') ?>"><i class="bi bi-box-arrow-right me-1"></i>Sair</a>
+      <div class="fw-semibold text-truncate rotulo"><?= e(Auth::usuario()['nome'] ?? '') ?></div>
+      <div class="opacity-75 mb-2 rotulo"><?= e(Auth::perfil()) ?></div>
+      <a class="btn btn-outline-light btn-sm w-100" href="<?= url('login/sair') ?>" title="Sair"><i class="bi bi-box-arrow-right"></i><span class="rotulo ms-1">Sair</span></a>
     </div>
   </nav>
 

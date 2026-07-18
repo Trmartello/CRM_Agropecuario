@@ -126,13 +126,25 @@ class OportunidadeService
         ?int $produtoId,
         int $pendente
     ): int {
-        $stmt = Database::executar(
+        // Verificação explícita com comparação NULL-safe (<=>): a UNIQUE KEY não
+        // barra duplicatas quando produto_id/família é NULL.
+        $existe = Database::valor(
+            'SELECT 1 FROM oportunidades
+              WHERE cliente_id = ? AND origem = ? AND safra_id <=> ?
+                AND familia_id <=> ? AND produto_id <=> ?
+              LIMIT 1',
+            [$clienteId, $origem, $safraId, $familiaId, $produtoId]
+        );
+        if ($existe) {
+            return 0;
+        }
+        Database::executar(
             'INSERT IGNORE INTO oportunidades
                 (cliente_id, usuario_id, safra_id, familia_id, produto_id, origem, titulo, valor_estimado, estagio, pendente_aprovacao, data_prevista)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, "Identificada", ?, DATE_ADD(CURDATE(), INTERVAL 30 DAY))',
             [$clienteId, Auth::id() ?: null, $safraId, $familiaId, $produtoId, $origem, $titulo, $valor, $pendente]
         );
-        return $stmt->rowCount() > 0 ? 1 : 0;
+        return 1;
     }
 
     /** Oportunidades agrupadas por estágio (Kanban). */

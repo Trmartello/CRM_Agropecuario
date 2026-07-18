@@ -628,6 +628,18 @@ const Usuarios = {
 document.addEventListener('DOMContentLoaded', () => {
   Voz.iniciar();
 
+  // Recolher/expandir menu lateral (desktop) com preferência lembrada
+  if (localStorage.getItem('menuRecolhido') === '1') {
+    document.body.classList.add('menu-recolhido');
+  }
+  const btnRecolher = document.getElementById('btnRecolherMenu');
+  if (btnRecolher) {
+    btnRecolher.addEventListener('click', () => {
+      const recolhido = document.body.classList.toggle('menu-recolhido');
+      localStorage.setItem('menuRecolhido', recolhido ? '1' : '0');
+    });
+  }
+
   // Menu lateral no celular
   const btnMenu = document.getElementById('btnMenu');
   if (btnMenu) {

@@ -15,6 +15,7 @@ class Instalador
     {
         try {
             Database::valor('SELECT 1 FROM usuarios LIMIT 1');
+            self::migracoesLeves();
             return; // banco pronto
         } catch (\PDOException $e) {
             // 42S02 = tabela não existe → primeira execução
@@ -57,5 +58,17 @@ class Instalador
             // nada — apenas consome
         }
         $stmt->closeCursor();
+    }
+
+    /** Migrações leves para bancos já instalados (tabelas novas de versões posteriores). */
+    private static function migracoesLeves(): void
+    {
+        Database::executar(
+            'CREATE TABLE IF NOT EXISTS configuracoes (
+               chave VARCHAR(60) PRIMARY KEY,
+               valor TEXT NOT NULL,
+               atualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+             ) ENGINE=InnoDB'
+        );
     }
 }

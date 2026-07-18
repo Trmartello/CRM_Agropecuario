@@ -10,7 +10,7 @@ CREATE DATABASE IF NOT EXISTS crm_agropecuario CHARACTER SET utf8mb4 COLLATE utf
 USE crm_agropecuario;
 
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS auditoria, refeicoes, quilometragem, reclamacoes,
+DROP TABLE IF EXISTS configuracoes, auditoria, refeicoes, quilometragem, reclamacoes,
   pacote_obrigatorios, pacote_categorias, pacotes_agricolas,
   entregas_futuras, promocoes, pedidos_itens, pedidos,
   propostas_itens, propostas, oportunidades,
@@ -502,6 +502,12 @@ CREATE TABLE refeicoes (
   justificativa VARCHAR(255),
   FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
   FOREIGN KEY (cliente_id) REFERENCES clientes(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE configuracoes (
+  chave VARCHAR(60) PRIMARY KEY,
+  valor TEXT NOT NULL,
+  atualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
 CREATE TABLE auditoria (
