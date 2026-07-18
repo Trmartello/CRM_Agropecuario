@@ -15,6 +15,10 @@ A especificação funcional completa (19 módulos) está em `docs/REQUISITOS.md`
 - **Frontend**: Bootstrap 5 + JavaScript vanilla com `fetch` (AJAX). Chart.js para gráficos. **Todos os assets servidos localmente** (sem CDN — o app é usado no campo, com internet ruim).
 - **Auth**: sessão PHP, `password_hash`/`password_verify`, 7 perfis de acesso.
 - **Idioma**: 100% português (UI, mensagens, comentários de negócio). Nomes de tabelas/campos em português (`clientes`, `visitas`, `talhoes`).
+- **Mobile**: o app é um **PWA** (manifest.json + ícones + service worker) — instalável no Android/iOS, um único código. Nada de app nativo sem autorização.
+- **Offline básico (Fase 1)**: service worker cacheia app/assets; carteira do técnico em IndexedDB; visitas/fotos criadas sem sinal entram em fila local e sincronizam ao reconectar (endpoint de sync no ApiController).
+- **Banco via variáveis de ambiente**: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS` com fallback para padrões locais (`localhost`/root) — necessário para o deploy no Railway.
+- **Deploy de testes**: Railway (PHP + MySQL, HTTPS automático, volume para `public/uploads`).
 
 ## Diretrizes de UX (exigência do usuário)
 

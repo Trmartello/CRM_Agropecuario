@@ -40,6 +40,13 @@ Objetivos de negócio norteadores:
 - **Geolocalização automática** em visitas e cadastros.
 - Busca rápida em todas as listagens.
 
+### Estratégia Web / Mobile / Offline
+
+- **Web responsivo**: interface mobile-first (Bootstrap 5); o mesmo sistema atende desktop e celular pelo navegador.
+- **Aplicativo mobile = PWA (Progressive Web App)**: o sistema web é instalável no Android e iOS ("Adicionar à tela inicial"), com ícone próprio e tela cheia, usando um único código. Manifest, ícones e service worker fazem parte da Fase 1. Câmera, GPS e microfone via APIs do navegador. App nativo em loja só será avaliado em fase futura, se surgir necessidade que o PWA não atenda.
+- **Offline básico já na Fase 1**: service worker cacheia o app e os assets (abre sem sinal); dados da carteira do técnico (clientes, propriedades, talhões, modelos de recomendação) armazenados localmente em IndexedDB; **visitas e fotos registradas sem conexão entram em fila local e sincronizam automaticamente quando o sinal volta**. Offline completo (consultas comerciais, pedidos, despesas) evolui nas fases seguintes até a Fase 5.
+- **Ambiente de testes: Railway** — hospedagem do PHP + MySQL para homologação, com HTTPS automático (pré-requisito para PWA, geolocalização, câmera e microfone no celular). A conexão com o banco lê variáveis de ambiente (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS`), com padrão local para desenvolvimento; uploads em volume persistente.
+
 ---
 
 ## 3. Perfis de Usuário
@@ -64,6 +71,9 @@ Regra geral: vendedor/técnico vê **apenas os próprios** dados de metas e cart
 - Estrutura MVC: `public/index.php` (front controller), roteador, controllers, models (PDO), services, views.
 - `database.sql` com schema completo + seed de demonstração (usuários de todos os perfis, clientes, safras, compras, visitas, casos de inadimplência/churn/gap).
 - Layout único: sidebar responsiva + área de conteúdo + modais globais.
+- **PWA**: `manifest.json`, ícones, service worker com cache do app e assets (abre offline).
+- **Offline básico**: carteira do técnico em IndexedDB + fila de sincronização para visitas e fotos registradas sem conexão.
+- **Deploy de testes no Railway**: PHP + MySQL com variáveis de ambiente (`DB_*`), HTTPS automático, volume persistente para uploads.
 
 ### 4.2 Perfis de Usuários (Módulo 19)
 - Login/logout com sessão; 7 perfis.
@@ -223,9 +233,8 @@ Os serviços `ComercialService`, `CapService` e `CreditoService` trocam a fonte 
 ### 8.2 Integração com o aplicativo CAPE
 - Metas e realizados oficiais do programa Copérdia Alta Performance por vendedor.
 
-### 8.3 Operação offline / PWA
-- Funcionamento sem conexão com sincronização automática ao voltar o sinal.
-- Prioridade: registro de visitas, fotos e consultas da carteira do técnico.
+### 8.3 Operação offline completa
+- O offline básico (registro de visitas, fotos e carteira do técnico) nasce na Fase 1; nesta fase ele se estende a **todos os módulos**: consultas comerciais, pedidos, despesas, reclamações e documentos, com sincronização bidirecional com o ERP e resolução de conflitos.
 
 ---
 
