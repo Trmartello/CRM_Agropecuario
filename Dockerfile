@@ -20,5 +20,5 @@ COPY . /var/www/html/
 RUN mkdir -p /var/www/html/public/uploads \
  && chown -R www-data:www-data /var/www/html/public/uploads
 
-# Railway injeta a porta em $PORT
-CMD ["sh", "-c", "sed -i \"s/80/${PORT:-80}/g\" /etc/apache2/ports.conf /etc/apache2/sites-available/000-default.conf && apache2-foreground"]
+# Railway injeta a porta em $PORT — troca apenas as diretivas de porta do Apache
+CMD ["sh", "-c", "sed -ri \"s/^Listen 80$/Listen ${PORT:-80}/\" /etc/apache2/ports.conf; sed -ri \"s/<VirtualHost \\*:80>/<VirtualHost *:${PORT:-80}>/\" /etc/apache2/sites-available/000-default.conf; exec apache2-foreground"]

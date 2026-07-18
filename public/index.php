@@ -30,7 +30,23 @@ use App\Core\Auth;
 use App\Core\Instalador;
 use App\Core\Router;
 
-Instalador::garantirSchema();
+try {
+    Instalador::garantirSchema();
+} catch (\PDOException $e) {
+    // Banco inacessível (ex.: variáveis DB_* ausentes no deploy): orienta em vez de quebrar
+    http_response_code(503);
+    header('Content-Type: text/html; charset=utf-8');
+    echo '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Configuração pendente</title>',
+        '<meta name="viewport" content="width=device-width, initial-scale=1"></head>',
+        '<body style="font-family:sans-serif;max-width:640px;margin:3rem auto;padding:0 1rem">',
+        '<h1 style="color:#1b5e20">🌱 CRM Copérdia — configuração pendente</h1>',
+        '<p>Não foi possível conectar ao banco de dados. Verifique:</p><ul>',
+        '<li>O serviço <strong>MySQL</strong> foi criado no projeto?</li>',
+        '<li>As variáveis <code>DB_HOST</code>, <code>DB_PORT</code>, <code>DB_NAME</code>, <code>DB_USER</code> e <code>DB_PASS</code> estão definidas no serviço da aplicação?</li>',
+        '</ul><p style="color:#666">Detalhe técnico: ', e($e->getMessage()), '</p>',
+        '<p>Após ajustar, recarregue esta página — o banco será instalado automaticamente.</p></body></html>';
+    exit;
+}
 Auth::iniciarSessao();
 
 $router = new Router();
