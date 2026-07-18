@@ -5,6 +5,8 @@ use App\Services\ConfigService;
 
 $logoApp = ConfigService::logoAplicacao();
 $faviconApp = ConfigService::faviconAplicacao();
+$logoLargura = (int) ConfigService::obter('logo_sidebar_largura', '180');
+$logoFundo = ConfigService::obter('logo_fundo', 'branco');
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -25,7 +27,8 @@ $faviconApp = ConfigService::faviconAplicacao();
   <!-- Sidebar -->
   <nav class="sidebar d-flex flex-column flex-shrink-0" id="sidebar">
     <a href="<?= url('dashboard') ?>" class="sidebar-marca text-decoration-none text-center d-block">
-      <span class="logo-cartao d-block mx-auto mb-1"><img src="<?= e($logoApp) ?>" alt="Copérdia" class="w-100"></span>
+      <span class="logo-cartao <?= $logoFundo === 'transparente' ? 'logo-transparente' : '' ?> d-block mx-auto mb-1"
+            style="max-width:<?= $logoLargura ?>px"><img src="<?= e($logoApp) ?>" alt="Copérdia" class="w-100"></span>
       <strong class="rotulo-marca">CRM AGRO</strong>
     </a>
     <hr class="text-white-50 my-2">

@@ -24,7 +24,25 @@ class ConfiguracoesController
             'faviconAtual' => ConfigService::faviconAplicacao(),
             'logoPersonalizada' => ConfigService::obter('logo_aplicacao') !== null,
             'faviconPersonalizado' => ConfigService::obter('favicon_aplicacao') !== null,
+            'ajustes' => [
+                'sidebar_largura' => (int) ConfigService::obter('logo_sidebar_largura', '180'),
+                'login_largura' => (int) ConfigService::obter('logo_login_largura', '170'),
+                'fundo' => ConfigService::obter('logo_fundo', 'branco'),
+            ],
         ]);
+    }
+
+    /** Ajustes de exibição da logo (tamanho e fundo). */
+    public function salvarAjustes(): void
+    {
+        Permissoes::exigir(['Administrador']);
+        $sidebar = max(60, min(240, (int) ($_POST['sidebar_largura'] ?? 180)));
+        $login = max(100, min(340, (int) ($_POST['login_largura'] ?? 170)));
+        $fundo = ($_POST['fundo'] ?? 'branco') === 'transparente' ? 'transparente' : 'branco';
+        ConfigService::definir('logo_sidebar_largura', (string) $sidebar);
+        ConfigService::definir('logo_login_largura', (string) $login);
+        ConfigService::definir('logo_fundo', $fundo);
+        json_ok();
     }
 
     /** Upload da logo ou do favicon (AJAX multipart). */

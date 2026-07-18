@@ -8,12 +8,42 @@
           <img src="<?= e($logoAtual) ?>" alt="Logo atual" style="max-height:110px;max-width:100%">
           <div class="small text-muted mt-1"><?= $logoPersonalizada ? 'Logo personalizada' : 'Logo padrão do sistema' ?></div>
         </div>
-        <form onsubmit="return Config.enviar(event, 'logo_aplicacao')" class="d-flex gap-2 flex-wrap">
+        <form onsubmit="return Config.enviar(event, 'logo_aplicacao')" class="d-flex gap-2 flex-wrap mb-4">
           <input type="file" name="imagem" class="form-control flex-grow-1" accept=".png,.jpg,.jpeg,.webp,.svg" required style="min-width:200px">
           <button class="btn btn-success"><i class="bi bi-upload me-1"></i>Enviar</button>
           <?php if ($logoPersonalizada): ?>
             <button type="button" class="btn btn-outline-secondary" onclick="Config.restaurar('logo_aplicacao')"><i class="bi bi-arrow-counterclockwise me-1"></i>Padrão</button>
           <?php endif; ?>
+        </form>
+
+        <h6 class="text-success"><i class="bi bi-sliders me-1"></i>Ajustes de exibição</h6>
+        <form onsubmit="return Config.salvarAjustes(event)">
+          <div class="mb-3">
+            <label class="form-label d-flex justify-content-between">Largura no menu lateral <span class="text-muted" id="valSidebar"><?= $ajustes['sidebar_largura'] ?>px</span></label>
+            <input type="range" class="form-range" name="sidebar_largura" min="60" max="240" step="5"
+                   value="<?= $ajustes['sidebar_largura'] ?>" oninput="document.getElementById('valSidebar').textContent=this.value+'px'; Config.previa()">
+          </div>
+          <div class="mb-3">
+            <label class="form-label d-flex justify-content-between">Largura na tela de login <span class="text-muted" id="valLogin"><?= $ajustes['login_largura'] ?>px</span></label>
+            <input type="range" class="form-range" name="login_largura" min="100" max="340" step="5"
+                   value="<?= $ajustes['login_largura'] ?>" oninput="document.getElementById('valLogin').textContent=this.value+'px'">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Fundo atrás da logo no menu</label>
+            <select name="fundo" class="form-select" onchange="Config.previa()">
+              <option value="branco" <?= $ajustes['fundo'] === 'branco' ? 'selected' : '' ?>>Cartão branco (para logos com fundo transparente)</option>
+              <option value="transparente" <?= $ajustes['fundo'] === 'transparente' ? 'selected' : '' ?>>Transparente (para logos que já têm fundo próprio)</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small text-muted">Prévia no menu lateral</label>
+            <div class="p-3 rounded" style="background:linear-gradient(180deg,#1b5e20,#123d15)">
+              <span id="previaCartao" class="d-inline-block rounded" style="background:#fff;padding:.4rem .6rem;max-width:<?= $ajustes['sidebar_largura'] ?>px">
+                <img src="<?= e($logoAtual) ?>" style="width:100%" alt="Prévia">
+              </span>
+            </div>
+          </div>
+          <button class="btn btn-success"><i class="bi bi-check-lg me-1"></i>Salvar ajustes</button>
         </form>
       </div>
     </div>
@@ -62,6 +92,23 @@ const Config = {
       App.alerta('Imagem padrão restaurada.');
       setTimeout(() => location.reload(), 700);
     } catch (e) { App.alerta(e.message, 'danger'); }
+  },
+  previa() {
+    const cartao = document.getElementById('previaCartao');
+    const largura = document.querySelector('[name=sidebar_largura]').value;
+    const fundo = document.querySelector('[name=fundo]').value;
+    cartao.style.maxWidth = largura + 'px';
+    cartao.style.background = fundo === 'transparente' ? 'transparent' : '#fff';
+    cartao.style.padding = fundo === 'transparente' ? '0' : '.4rem .6rem';
+  },
+  async salvarAjustes(ev) {
+    ev.preventDefault();
+    try {
+      await App.json('index.php?r=configuracoes/salvar-ajustes', { method: 'POST', body: new FormData(ev.target) });
+      App.alerta('Ajustes salvos — a logo já aparece no novo tamanho.');
+      setTimeout(() => location.reload(), 700);
+    } catch (e) { App.alerta(e.message, 'danger'); }
+    return false;
   },
 };
 </script>

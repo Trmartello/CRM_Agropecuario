@@ -16,7 +16,8 @@
 <div class="card shadow-lg border-0" style="max-width:420px;width:100%">
   <div class="card-body p-4 p-md-5">
     <div class="text-center mb-4">
-      <img src="<?= e(ConfigService::logoAplicacao()) ?>" alt="Copérdia" style="width:170px;max-width:70%">
+      <img src="<?= e(ConfigService::logoAplicacao()) ?>" alt="Copérdia"
+           style="width:<?= (int) ConfigService::obter('logo_login_largura', '170') ?>px;max-width:80%">
       <h1 class="h4 mt-3 mb-0">CRM AGRO</h1>
       <p class="text-muted">Copérdia</p>
     </div>
