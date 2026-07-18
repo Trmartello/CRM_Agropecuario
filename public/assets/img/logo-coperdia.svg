@@ -1,8 +1,38 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 120" role="img" aria-label="Copérdia">
-  <!-- Marca Copérdia estilizada -->
-  <g transform="translate(60,2) scale(1.0)">
-    <path d="M4 62 C 28 10, 72 2, 104 30 L 90 42 C 66 20, 36 26, 20 64 Z" fill="#2e7d32"/>
-    <path d="M30 64 C 52 26, 88 22, 116 48 L 104 58 C 84 40, 60 44, 46 66 Z" fill="#f9a825"/>
-  </g>
-  <text x="120" y="108" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="900" letter-spacing="1" fill="#1a1a1a">COPÉRDIA</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 168" role="img" aria-label="Copérdia">
+  <defs>
+    <linearGradient id="gVerde" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#7cb928"/>
+      <stop offset=".45" stop-color="#33a02c"/>
+      <stop offset="1" stop-color="#00702e"/>
+    </linearGradient>
+    <linearGradient id="gLaranja" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffd200"/>
+      <stop offset=".5" stop-color="#fdb913"/>
+      <stop offset="1" stop-color="#f7941d"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Fita verde: sobe da esquerda e mergulha à direita -->
+  <path d="M38 96
+           C 66 34, 152 18, 208 52
+           L 236 74
+           L 208 76
+           C 168 44, 96 52, 70 96
+           Z" fill="url(#gVerde)"/>
+
+  <!-- Fita laranja: cruza por baixo da verde, da esquerda para a direita -->
+  <path d="M84 100
+           C 118 56, 196 52, 240 88
+           L 222 102
+           C 186 72, 130 76, 112 100
+           Z" fill="url(#gLaranja)"/>
+
+  <!-- Ponta verde-escura da fita laranja (sobreposição) -->
+  <path d="M208 52 L 236 74 L 208 76 C 202 68, 196 60, 208 52 Z" fill="#00702e"/>
+
+  <!-- Letreiro -->
+  <text x="150" y="152" text-anchor="middle"
+        font-family="'Arial Black', Arial, Helvetica, sans-serif"
+        font-size="44" font-weight="900" letter-spacing="2"
+        fill="#111111">COPÉRDIA</text>
 </svg>

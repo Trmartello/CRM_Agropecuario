@@ -18,12 +18,9 @@
 <div class="d-flex" id="app">
   <!-- Sidebar -->
   <nav class="sidebar d-flex flex-column flex-shrink-0" id="sidebar">
-    <a href="<?= url('dashboard') ?>" class="sidebar-marca d-flex align-items-center text-decoration-none">
-      <img src="assets/img/logo-marca.svg" alt="Copérdia" class="logo-marca me-2">
-      <div>
-        <strong>CRM AGRO</strong>
-        <div class="small opacity-75">Copérdia</div>
-      </div>
+    <a href="<?= url('dashboard') ?>" class="sidebar-marca text-decoration-none text-center d-block">
+      <span class="logo-cartao d-block mx-auto mb-1"><img src="assets/img/logo-coperdia.svg" alt="Copérdia" class="w-100"></span>
+      <strong>CRM AGRO</strong>
     </a>
     <hr class="text-white-50 my-2">
     <ul class="nav nav-pills flex-column mb-auto">
