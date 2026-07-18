@@ -21,11 +21,11 @@ Passo a passo para colocar o CRM no ar para homologação (web responsivo + PWA 
 | `DB_USER` | `${{MySQL.MYSQLUSER}}` |
 | `DB_PASS` | `${{MySQL.MYSQLPASSWORD}}` |
 
-## 3. Importar o schema + seed
+## 3. Schema + seed — automático ✅
 
-No painel do serviço MySQL → aba **Data** (ou via `railway connect mysql`), execute o conteúdo de `database.sql`.
+Nada a fazer: na **primeira execução** a aplicação detecta o banco vazio e importa o `database.sql` sozinha (instalação automática). Basta abrir a URL do app depois do deploy.
 
-> Importante: o `database.sql` cria o banco `crm_agropecuario`. Se o Railway já fornece um banco (variável `MYSQLDATABASE`), rode o script sem as duas primeiras linhas (`CREATE DATABASE`/`USE`) ou ajuste `DB_NAME` para `crm_agropecuario`.
+> Para recomeçar do zero, apague as tabelas do banco no painel do MySQL e recarregue o app.
 
 ## 4. Uploads persistentes
 

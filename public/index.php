@@ -27,8 +27,10 @@ use App\Controllers\RelatoriosController;
 use App\Controllers\UsuariosController;
 use App\Controllers\VisitasController;
 use App\Core\Auth;
+use App\Core\Instalador;
 use App\Core\Router;
 
+Instalador::garantirSchema();
 Auth::iniciarSessao();
 
 $router = new Router();
