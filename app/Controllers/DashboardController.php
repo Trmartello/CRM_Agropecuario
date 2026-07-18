@@ -43,6 +43,25 @@ class DashboardController
                   WHERE o.pendente_aprovacao = 1 AND o.aprovada_por IS NULL
                     AND o.estagio NOT IN ('Ganha','Perdida') AND {$filtro}",
                 $params
+            ) + (int) Database::valor(
+                "SELECT COUNT(*) FROM pedidos pe JOIN clientes c ON c.id = pe.cliente_id
+                  WHERE pe.status = 'Pendente de aprovação' AND {$filtro}",
+                $params
+            ),
+            'pedidos_mes' => (int) Database::valor(
+                "SELECT COUNT(*) FROM pedidos pe JOIN clientes c ON c.id = pe.cliente_id
+                  WHERE pe.criado_em >= ? AND pe.status <> 'Cancelado' AND {$filtro}",
+                array_merge([$inicioMes], $params)
+            ),
+            'valor_vendido_mes' => (float) Database::valor(
+                "SELECT COALESCE(SUM(pe.valor_total),0) FROM pedidos pe JOIN clientes c ON c.id = pe.cliente_id
+                  WHERE pe.criado_em >= ? AND pe.status IN ('Aprovado','Faturado') AND {$filtro}",
+                array_merge([$inicioMes], $params)
+            ),
+            'pacotes_mes' => (int) Database::valor(
+                "SELECT COUNT(*) FROM pedidos pe JOIN clientes c ON c.id = pe.cliente_id
+                  WHERE pe.criado_em >= ? AND pe.tipo = 'Pacote Agrícola' AND pe.status <> 'Cancelado' AND {$filtro}",
+                array_merge([$inicioMes], $params)
             ),
         ];
 

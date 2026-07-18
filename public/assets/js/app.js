@@ -364,7 +364,17 @@ const Visitas = {
       <h6 class="text-success">Compras da safra ${p.safra ? p.safra.nome : ''}</h6>
       ${p.compras_safra_atual.length
         ? `<div class="table-responsive"><table class="table table-sm"><thead class="table-light"><tr><th>Produto</th><th class="text-end">Qtde</th><th class="text-end">Valor</th></tr></thead><tbody>${p.compras_safra_atual.map(linhaCompra).join('')}</tbody></table></div>`
-        : '<p class="text-muted small">Nenhuma compra na safra atual.</p>'}`;
+        : '<p class="text-muted small">Nenhuma compra na safra atual.</p>'}
+
+      <h6 class="text-success">Entrega futura</h6>
+      ${(p.entregas_futuras || []).length
+        ? `<div class="table-responsive"><table class="table table-sm"><thead class="table-light"><tr><th>Produto</th><th class="text-end">Contratado</th><th class="text-end">Pendente</th><th>Previsão</th></tr></thead><tbody>${p.entregas_futuras.map(ef => `<tr><td>${ef.produto}</td><td class="text-end">${Number(ef.quantidade_contratada).toLocaleString('pt-BR')} ${ef.unidade}</td><td class="text-end fw-semibold">${Number(ef.quantidade_pendente).toLocaleString('pt-BR')}</td><td>${ef.previsao_entrega ? ef.previsao_entrega.split('-').reverse().join('/') : '—'}</td></tr>`).join('')}</tbody></table></div>`
+        : '<p class="text-muted small">Sem contratos de entrega futura.</p>'}
+
+      <h6 class="text-success">Pedidos recentes</h6>
+      ${(p.pedidos || []).length
+        ? `<ul class="list-unstyled small mb-0">${p.pedidos.slice(0, 5).map(pd => `<li class="py-1 border-bottom d-flex justify-content-between"><span>#${pd.id} · ${pd.tipo}${pd.pacote ? ' (' + pd.pacote + ')' : ''}</span><span><span class="badge text-bg-${{'Rascunho':'secondary','Pendente de aprovação':'warning','Aprovado':'primary','Faturado':'success','Cancelado':'dark'}[pd.status] || 'secondary'}">${pd.status}</span> ${App.moeda(pd.valor_total)}</span></li>`).join('')}</ul>`
+        : '<p class="text-muted small mb-0">Nenhum pedido registrado.</p>'}`;
   },
 
   irParaEtapa(n) {

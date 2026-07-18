@@ -3,10 +3,11 @@
 <!-- Atalhos -->
 <div class="d-flex flex-wrap gap-2 mb-3">
   <a class="btn btn-success btn-atalho" href="<?= url('visitas', ['nova' => 1]) ?>"><i class="bi bi-clipboard2-plus me-1"></i>Nova Visita</a>
+  <a class="btn btn-success btn-atalho" href="<?= url('pedidos') ?>"><i class="bi bi-cart-plus me-1"></i>Novo Pedido</a>
+  <a class="btn btn-outline-success btn-atalho" href="<?= url('pedidos') ?>"><i class="bi bi-box-seam me-1"></i>Pacote Agrícola</a>
   <a class="btn btn-outline-success btn-atalho" href="<?= url('clientes', ['novo' => 1]) ?>"><i class="bi bi-person-plus me-1"></i>Novo Cliente</a>
   <a class="btn btn-outline-success btn-atalho" href="<?= url('clientes') ?>"><i class="bi bi-search me-1"></i>Consultar Cliente</a>
   <a class="btn btn-outline-success btn-atalho" href="<?= url('funil') ?>"><i class="bi bi-funnel me-1"></i>Funil</a>
-  <button class="btn btn-outline-secondary btn-atalho" disabled title="Fase 2"><i class="bi bi-cart-plus me-1"></i>Novo Pedido <span class="badge text-bg-secondary ms-1">Fase 2</span></button>
   <button class="btn btn-outline-secondary btn-atalho" disabled title="Fase 3"><i class="bi bi-exclamation-octagon me-1"></i>Reclamação <span class="badge text-bg-secondary ms-1">Fase 3</span></button>
 </div>
 
@@ -38,6 +39,27 @@
       <div class="text-muted small">Pendências de aprovação</div>
       <div class="fs-2 fw-bold"><?= numero($indicadores['pendencias_aprovacao']) ?></div>
       <i class="bi bi-hourglass-split icone-fundo"></i>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card indicador h-100"><div class="card-body">
+      <div class="text-muted small">Pedidos no mês</div>
+      <div class="fs-2 fw-bold"><?= numero($indicadores['pedidos_mes']) ?></div>
+      <i class="bi bi-cart3 icone-fundo"></i>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card indicador h-100"><div class="card-body">
+      <div class="text-muted small">Valor vendido no mês</div>
+      <div class="fs-4 fw-bold"><?= moeda($indicadores['valor_vendido_mes']) ?></div>
+      <i class="bi bi-currency-dollar icone-fundo"></i>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card indicador h-100"><div class="card-body">
+      <div class="text-muted small">Pacotes vendidos no mês</div>
+      <div class="fs-2 fw-bold"><?= numero($indicadores['pacotes_mes']) ?></div>
+      <i class="bi bi-box-seam icone-fundo"></i>
     </div></div>
   </div>
 </div>

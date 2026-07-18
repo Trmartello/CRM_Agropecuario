@@ -152,6 +152,21 @@ class ComercialService
         ];
     }
 
+    /** Histórico completo de compras (todas as safras) — consulta comercial. */
+    public static function historicoCompras(int $clienteId): array
+    {
+        return Database::todos(
+            'SELECT co.*, p.nome AS produto, p.unidade, f.nome AS familia, s.nome AS safra
+               FROM compras co
+               JOIN produtos p ON p.id = co.produto_id
+               JOIN familias_produto f ON f.id = p.familia_id
+               JOIN safras s ON s.id = co.safra_id
+              WHERE co.cliente_id = ?
+              ORDER BY co.data_compra DESC',
+            [$clienteId]
+        );
+    }
+
     /** Painel comercial completo do cliente (usado na visita e na ficha). */
     public static function painelCliente(int $clienteId): array
     {
@@ -163,6 +178,8 @@ class ComercialService
             'inadimplencia' => self::inadimplencia($clienteId),
             'queda' => self::quedaCompra($clienteId),
             'credito' => CreditoService::situacao($clienteId),
+            'entregas_futuras' => PedidoService::entregasFuturas($clienteId),
+            'pedidos' => PedidoService::doCliente($clienteId),
         ];
     }
 }

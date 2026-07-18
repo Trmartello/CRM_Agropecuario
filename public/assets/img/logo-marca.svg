@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 70" role="img" aria-label="Copérdia">
+  <!-- Marca Copérdia estilizada: faixas verde e laranja -->
+  <path d="M4 62 C 28 10, 72 2, 104 30 L 90 42 C 66 20, 36 26, 20 64 Z" fill="#2e7d32"/>
+  <path d="M30 64 C 52 26, 88 22, 116 48 L 104 58 C 84 40, 60 44, 46 66 Z" fill="#f9a825"/>
+</svg>

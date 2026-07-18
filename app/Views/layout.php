@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1b5e20">
-<title><?= e($titulo ?? 'CRM') ?> — CRM Agropecuário Copérdia</title>
+<title><?= e($titulo ?? 'CRM') ?> — CRM AGRO · Copérdia</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="assets/icons/icone-192.png">
 <link rel="apple-touch-icon" href="assets/icons/icone-192.png">
@@ -18,10 +18,10 @@
   <!-- Sidebar -->
   <nav class="sidebar d-flex flex-column flex-shrink-0" id="sidebar">
     <a href="<?= url('dashboard') ?>" class="sidebar-marca d-flex align-items-center text-decoration-none">
-      <i class="bi bi-flower1 fs-3 me-2"></i>
+      <img src="assets/img/logo-marca.svg" alt="Copérdia" class="logo-marca me-2">
       <div>
-        <strong>CRM Copérdia</strong>
-        <div class="small opacity-75">Comercial &amp; Técnico</div>
+        <strong>CRM AGRO</strong>
+        <div class="small opacity-75">Copérdia</div>
       </div>
     </a>
     <hr class="text-white-50 my-2">
@@ -32,10 +32,14 @@
             ['dashboard', 'bi-speedometer2', 'Dashboard'],
             ['clientes', 'bi-people', 'Clientes'],
             ['visitas', 'bi-clipboard2-pulse', 'Visitas'],
+            ['pedidos', 'bi-cart3', 'Pedidos'],
             ['funil', 'bi-funnel', 'Funil'],
             ['cap', 'bi-trophy', 'Metas CAP'],
             ['relatorios/potencial', 'bi-bar-chart-line', 'Potencial'],
         ];
+        if (in_array(Auth::perfil(), ['Administrador', 'Gestor Comercial', 'Gestor Técnico', 'Analista'], true)) {
+            $menu[] = ['pacotes', 'bi-box-seam', 'Pacotes'];
+        }
         if (Auth::perfil() === 'Administrador') {
             $menu[] = ['usuarios', 'bi-person-gear', 'Usuários'];
         }

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 120" role="img" aria-label="Copérdia">
+  <!-- Marca Copérdia estilizada -->
+  <g transform="translate(60,2) scale(1.0)">
+    <path d="M4 62 C 28 10, 72 2, 104 30 L 90 42 C 66 20, 36 26, 20 64 Z" fill="#2e7d32"/>
+    <path d="M30 64 C 52 26, 88 22, 116 48 L 104 58 C 84 40, 60 44, 46 66 Z" fill="#f9a825"/>
+  </g>
+  <text x="120" y="108" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="900" letter-spacing="1" fill="#1a1a1a">COPÉRDIA</text>
+</svg>

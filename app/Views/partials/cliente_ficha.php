@@ -86,6 +86,68 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
       <p class="text-muted small">Nenhuma compra registrada na safra atual.</p>
     <?php endif; ?>
 
+    <h6 class="text-success"><i class="bi bi-truck me-1"></i>Entrega futura</h6>
+    <?php if ($painel['entregas_futuras']): ?>
+      <div class="table-responsive mb-3">
+        <table class="table table-sm align-middle">
+          <thead class="table-light"><tr><th>Produto</th><th class="text-end">Contratado</th><th class="text-end">Retirado</th><th class="text-end">Pendente</th><th>Previsão</th></tr></thead>
+          <tbody>
+            <?php foreach ($painel['entregas_futuras'] as $ef): ?>
+            <tr>
+              <td><?= e($ef['produto']) ?></td>
+              <td class="text-end"><?= numero($ef['quantidade_contratada'], 1) ?> <?= e($ef['unidade']) ?></td>
+              <td class="text-end"><?= numero($ef['quantidade_retirada'], 1) ?></td>
+              <td class="text-end fw-semibold <?= $ef['quantidade_pendente'] > 0 ? 'text-warning' : 'text-success' ?>"><?= numero($ef['quantidade_pendente'], 1) ?></td>
+              <td><?= data_br($ef['previsao_entrega']) ?></td>
+            </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+    <?php else: ?>
+      <p class="text-muted small">Nenhum contrato de entrega futura.</p>
+    <?php endif; ?>
+
+    <h6 class="text-success"><i class="bi bi-receipt me-1"></i>Pedidos</h6>
+    <?php if ($painel['pedidos']): $coresPed = ['Rascunho' => 'secondary', 'Pendente de aprovação' => 'warning', 'Aprovado' => 'primary', 'Faturado' => 'success', 'Cancelado' => 'dark']; ?>
+      <ul class="list-group mb-3">
+        <?php foreach (array_slice($painel['pedidos'], 0, 6) as $ped): ?>
+        <li class="list-group-item d-flex justify-content-between align-items-center py-2">
+          <div>
+            <strong class="small">#<?= (int) $ped['id'] ?></strong>
+            <span class="small text-muted">· <?= e($ped['tipo']) ?><?= $ped['pacote'] ? ' (' . e($ped['pacote']) . ')' : '' ?> · <?= data_br(substr($ped['criado_em'], 0, 10)) ?></span>
+          </div>
+          <div class="text-end">
+            <span class="badge text-bg-<?= $coresPed[$ped['status']] ?? 'secondary' ?>"><?= e($ped['status']) ?></span>
+            <div class="small fw-semibold"><?= moeda($ped['valor_total']) ?></div>
+          </div>
+        </li>
+        <?php endforeach; ?>
+      </ul>
+    <?php else: ?>
+      <p class="text-muted small">Nenhum pedido registrado.</p>
+    <?php endif; ?>
+
+    <details class="mb-3">
+      <summary class="text-success small fw-semibold"><i class="bi bi-clock-history me-1"></i>Histórico completo de compras (todas as safras)</summary>
+      <div class="table-responsive mt-2">
+        <table class="table table-sm align-middle">
+          <thead class="table-light"><tr><th>Safra</th><th>Produto</th><th class="text-end">Qtde</th><th class="text-end">Valor</th><th>Data</th></tr></thead>
+          <tbody>
+            <?php foreach ($historicoCompras as $hc): ?>
+            <tr>
+              <td><?= e($hc['safra']) ?></td>
+              <td><?= e($hc['produto']) ?> <span class="text-muted small">(<?= e($hc['familia']) ?>)</span></td>
+              <td class="text-end"><?= numero($hc['quantidade'], 1) ?> <?= e($hc['unidade']) ?></td>
+              <td class="text-end"><?= moeda($hc['valor_total']) ?></td>
+              <td><?= data_br($hc['data_compra']) ?></td>
+            </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+    </details>
+
     <h6 class="text-success"><i class="bi bi-calendar3 me-1"></i>Planejamento de safra
       <button class="btn btn-sm btn-outline-success ms-2" onclick="Clientes.novoPlanoSafra(<?= $cliente['id'] ?>)"><i class="bi bi-plus-lg"></i> Intenção de plantio</button>
     </h6>

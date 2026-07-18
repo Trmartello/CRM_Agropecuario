@@ -82,6 +82,22 @@ $router->registrar('funil/mover', FunilController::class, 'mover');
 $router->registrar('funil/aprovar', FunilController::class, 'aprovar');
 $router->registrar('funil/salvar-proposta', FunilController::class, 'salvarProposta');
 
+// Pedidos (Fase 2)
+$router->registrar('pedidos', \App\Controllers\PedidosController::class, 'index');
+$router->registrar('pedidos/salvar', \App\Controllers\PedidosController::class, 'salvar');
+$router->registrar('pedidos/salvar-pacote', \App\Controllers\PedidosController::class, 'salvarPacote');
+$router->registrar('pedidos/avaliar-pacote', \App\Controllers\PedidosController::class, 'avaliarPacote');
+$router->registrar('pedidos/estrutura-pacote', \App\Controllers\PedidosController::class, 'estruturaPacote');
+$router->registrar('pedidos/aprovar', \App\Controllers\PedidosController::class, 'aprovar');
+$router->registrar('pedidos/faturar', \App\Controllers\PedidosController::class, 'faturar');
+$router->registrar('pedidos/cancelar', \App\Controllers\PedidosController::class, 'cancelar');
+$router->registrar('pedidos/detalhe', \App\Controllers\PedidosController::class, 'detalhe');
+
+// Pacotes Agrícolas (Fase 2)
+$router->registrar('pacotes', \App\Controllers\PacotesController::class, 'index');
+$router->registrar('pacotes/obter', \App\Controllers\PacotesController::class, 'obter');
+$router->registrar('pacotes/salvar', \App\Controllers\PacotesController::class, 'salvar');
+
 // Relatórios
 $router->registrar('relatorios/potencial', RelatoriosController::class, 'potencial');
 $router->registrar('relatorios/potencial-dados', RelatoriosController::class, 'potencialDados');

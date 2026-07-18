@@ -10,8 +10,10 @@ CREATE DATABASE IF NOT EXISTS crm_agropecuario CHARACTER SET utf8mb4 COLLATE utf
 USE crm_agropecuario;
 
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS auditoria, refeicoes, quilometragem, reclamacoes, pacotes_agricolas,
-  pedidos_itens, pedidos, propostas_itens, propostas, oportunidades,
+DROP TABLE IF EXISTS auditoria, refeicoes, quilometragem, reclamacoes,
+  pacote_obrigatorios, pacote_categorias, pacotes_agricolas,
+  entregas_futuras, promocoes, pedidos_itens, pedidos,
+  propostas_itens, propostas, oportunidades,
   calendario_agronomico, culturas_referencia, planos_safra,
   metas_cap, realizado_cap, garantias, potencial_compra, titulos_financeiros,
   compras, produtos, familias_produto, safras, concorrencia_registros,
@@ -189,8 +191,30 @@ CREATE TABLE produtos (
   familia_id INT NOT NULL,
   unidade VARCHAR(20) NOT NULL DEFAULT 'un',
   preco_referencia DECIMAL(12,2) NOT NULL DEFAULT 0,
+  estoque DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT 'saldo local até integração ERP (Fase 5)',
   ativo TINYINT(1) NOT NULL DEFAULT 1,
   FOREIGN KEY (familia_id) REFERENCES familias_produto(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE promocoes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  produto_id INT NOT NULL,
+  descricao VARCHAR(200) NOT NULL,
+  desconto_pct DECIMAL(5,2) NOT NULL,
+  valido_ate DATE NOT NULL,
+  FOREIGN KEY (produto_id) REFERENCES produtos(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE entregas_futuras (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  cliente_id INT NOT NULL,
+  produto_id INT NOT NULL,
+  quantidade_contratada DECIMAL(12,2) NOT NULL,
+  quantidade_retirada DECIMAL(12,2) NOT NULL DEFAULT 0,
+  data_contrato DATE NOT NULL,
+  previsao_entrega DATE,
+  FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE CASCADE,
+  FOREIGN KEY (produto_id) REFERENCES produtos(id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE compras (
@@ -360,28 +384,6 @@ CREATE TABLE propostas_itens (
 -- TABELAS ANTECIPADAS (Fases 2–4, sem telas nesta fase)
 -- ============================================================================
 
-CREATE TABLE pedidos (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  cliente_id INT NOT NULL,
-  usuario_id INT NOT NULL,
-  tipo ENUM('Normal','Pacote Agrícola') NOT NULL DEFAULT 'Normal',
-  status ENUM('Rascunho','Pendente de aprovação','Aprovado','Faturado','Cancelado') NOT NULL DEFAULT 'Rascunho',
-  valor_total DECIMAL(14,2) NOT NULL DEFAULT 0,
-  criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (cliente_id) REFERENCES clientes(id),
-  FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
-) ENGINE=InnoDB;
-
-CREATE TABLE pedidos_itens (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  pedido_id INT NOT NULL,
-  produto_id INT NOT NULL,
-  quantidade DECIMAL(12,2) NOT NULL,
-  valor_unitario DECIMAL(12,2) NOT NULL,
-  FOREIGN KEY (pedido_id) REFERENCES pedidos(id) ON DELETE CASCADE,
-  FOREIGN KEY (produto_id) REFERENCES produtos(id)
-) ENGINE=InnoDB;
-
 CREATE TABLE pacotes_agricolas (
   id INT AUTO_INCREMENT PRIMARY KEY,
   nome VARCHAR(160) NOT NULL,
@@ -391,8 +393,72 @@ CREATE TABLE pacotes_agricolas (
   vigencia_fim DATE,
   regiao VARCHAR(120),
   campanha VARCHAR(120),
+  bonificacao_sacas_ha DECIMAL(8,2) NOT NULL DEFAULT 0 COMMENT 'bonificação em sacas de grãos por hectare para pacote completo',
+  ativo TINYINT(1) NOT NULL DEFAULT 1,
   FOREIGN KEY (cultura_id) REFERENCES culturas(id),
   FOREIGN KEY (safra_id) REFERENCES safras(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE pacote_categorias (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  pacote_id INT NOT NULL,
+  familia_id INT NOT NULL,
+  desconto_pct DECIMAL(5,2) NOT NULL DEFAULT 0,
+  bonificacao_pct DECIMAL(5,2) NOT NULL DEFAULT 0,
+  obrigatoria TINYINT(1) NOT NULL DEFAULT 0,
+  qtd_minima DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT 'quantidade mínima da categoria no pedido',
+  UNIQUE KEY uk_pacote_familia (pacote_id, familia_id),
+  FOREIGN KEY (pacote_id) REFERENCES pacotes_agricolas(id) ON DELETE CASCADE,
+  FOREIGN KEY (familia_id) REFERENCES familias_produto(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE pacote_obrigatorios (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  pacote_id INT NOT NULL,
+  produto_id INT NOT NULL,
+  dose_ha DECIMAL(10,3) NOT NULL DEFAULT 0 COMMENT 'dose por hectare',
+  num_aplicacoes TINYINT NOT NULL DEFAULT 1,
+  qtd_minima DECIMAL(12,2) NOT NULL DEFAULT 0,
+  qtd_maxima DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT '0 = sem teto',
+  UNIQUE KEY uk_pacote_produto (pacote_id, produto_id),
+  FOREIGN KEY (pacote_id) REFERENCES pacotes_agricolas(id) ON DELETE CASCADE,
+  FOREIGN KEY (produto_id) REFERENCES produtos(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE pedidos (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  cliente_id INT NOT NULL,
+  usuario_id INT NOT NULL,
+  safra_id INT,
+  tipo ENUM('Normal','Pacote Agrícola') NOT NULL DEFAULT 'Normal',
+  pacote_id INT,
+  area_ha DECIMAL(10,2) COMMENT 'área atendida (pedido de pacote)',
+  status ENUM('Rascunho','Pendente de aprovação','Aprovado','Faturado','Cancelado') NOT NULL DEFAULT 'Rascunho',
+  motivo_pendencia VARCHAR(160) COMMENT 'por que caiu em aprovação (crédito)',
+  aprovado_por INT,
+  condicao_pagamento VARCHAR(120),
+  observacao VARCHAR(255),
+  valor_bruto DECIMAL(14,2) NOT NULL DEFAULT 0,
+  desconto_total DECIMAL(14,2) NOT NULL DEFAULT 0,
+  valor_total DECIMAL(14,2) NOT NULL DEFAULT 0,
+  bonificacao_sacas DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT 'bonificação em grãos prevista (pacote)',
+  criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (cliente_id) REFERENCES clientes(id),
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
+  FOREIGN KEY (safra_id) REFERENCES safras(id),
+  FOREIGN KEY (pacote_id) REFERENCES pacotes_agricolas(id),
+  FOREIGN KEY (aprovado_por) REFERENCES usuarios(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE pedidos_itens (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  pedido_id INT NOT NULL,
+  produto_id INT NOT NULL,
+  quantidade DECIMAL(12,2) NOT NULL,
+  valor_unitario DECIMAL(12,2) NOT NULL,
+  desconto_pct DECIMAL(5,2) NOT NULL DEFAULT 0,
+  FOREIGN KEY (pedido_id) REFERENCES pedidos(id) ON DELETE CASCADE,
+  FOREIGN KEY (produto_id) REFERENCES produtos(id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE reclamacoes (
@@ -494,6 +560,20 @@ INSERT INTO produtos (id, nome, familia_id, unidade, preco_referencia) VALUES
 (15,'Óleo Mineral Adjuvante (L)',8,'L',28.00),
 (16,'Ração Bovinos Leite 22% (sc 40kg)',9,'sc',92.00),
 (17,'Ração Suínos Crescimento (sc 40kg)',9,'sc',88.00);
+
+-- Estoque local de demonstração (Fase 5: virá do ERP)
+UPDATE produtos SET estoque = CASE id
+  WHEN 1 THEN 850 WHEN 2 THEN 320 WHEN 3 THEN 180 WHEN 4 THEN 240
+  WHEN 5 THEN 4200 WHEN 6 THEN 1500 WHEN 7 THEN 950 WHEN 8 THEN 1200
+  WHEN 9 THEN 400 WHEN 10 THEN 800 WHEN 11 THEN 1100 WHEN 12 THEN 700
+  WHEN 13 THEN 2500 WHEN 14 THEN 300 WHEN 15 THEN 900
+  WHEN 16 THEN 1800 WHEN 17 THEN 1600 ELSE 0 END;
+
+-- Promoções vigentes
+INSERT INTO promocoes (produto_id, descricao, desconto_pct, valido_ate) VALUES
+(3,'Campanha de fertilizantes — antecipação safra 26/27',6.00,'2026-08-31'),
+(7,'Programa fungicida antecipado',8.00,'2026-08-15'),
+(16,'Ração leite — fidelidade inverno',4.00,'2026-08-31');
 
 -- Safras: anterior (2024/25) e atual (2025/26, quase encerrando em jul/2026)
 INSERT INTO safras (id, nome, data_inicio, data_fim, atual) VALUES
@@ -741,6 +821,41 @@ INSERT INTO calendario_agronomico (cultura_id, atividade, familia_id, mes_inicio
 (2,'Adubação de cobertura',2,10,12,'Ureia em cobertura no milho (V4-V8)'),
 (3,'Fungicida giberela',4,9,10,'Controle de giberela no florescimento do trigo'),
 (5,'Adubação de pastagem de inverno',2,5,8,'Ureia em cobertura em aveia/azevém');
+
+-- ---------------------------------------------------------------------------
+-- ENTREGAS FUTURAS (produtos contratados com retirada parcial)
+-- ---------------------------------------------------------------------------
+
+INSERT INTO entregas_futuras (cliente_id, produto_id, quantidade_contratada, quantidade_retirada, data_contrato, previsao_entrega) VALUES
+(1,3,65,40,'2025-09-22','2026-08-30'),
+(1,1,320,320,'2025-09-18','2026-09-30'),
+(2,3,38,20,'2025-09-30','2026-08-20'),
+(6,3,30,12,'2025-10-12','2026-08-25'),
+(7,16,650,380,'2026-03-08','2026-10-31');
+
+-- ---------------------------------------------------------------------------
+-- PACOTE AGRÍCOLA de demonstração — Soja 26/27
+-- ---------------------------------------------------------------------------
+
+INSERT INTO pacotes_agricolas (id, nome, cultura_id, safra_id, vigencia_inicio, vigencia_fim, regiao, campanha, bonificacao_sacas_ha) VALUES
+(1,'Pacote Soja Alta Performance 26/27',1,2,'2026-06-01','2026-10-31','Alto Uruguai Catarinense','Campanha Safra 26/27',1.50);
+
+-- Categorias do pacote: desconto/bonificação/obrigatoriedade/quantidade mínima
+INSERT INTO pacote_categorias (pacote_id, familia_id, desconto_pct, bonificacao_pct, obrigatoria, qtd_minima) VALUES
+(1,1,5.00,1.00,1,50),    -- Sementes (obrigatória, mín. 50 sc)
+(1,2,7.00,1.50,1,10),    -- Fertilizantes (obrigatória, mín. 10 t)
+(1,3,4.00,0.50,0,0),     -- Herbicidas
+(1,4,8.00,2.00,1,100),   -- Fungicidas (obrigatória, mín. 100 L)
+(1,5,6.00,1.00,1,30),    -- Inseticidas (obrigatória, mín. 30 L)
+(1,6,3.00,0.50,0,0),     -- Nutrição/Adubo foliar
+(1,7,3.00,0.50,0,0),     -- Biológicos
+(1,8,2.00,0.00,0,0);     -- Adjuvantes
+
+-- Produtos específicos obrigatórios com validação técnica (dose/ha, aplicações, mín/máx)
+INSERT INTO pacote_obrigatorios (pacote_id, produto_id, dose_ha, num_aplicacoes, qtd_minima, qtd_maxima) VALUES
+(1,7,0.75,3,100,2000),   -- Fungicida Triazol+Estrobilurina: 0,75 L/ha x 3 aplicações
+(1,9,0.15,2,20,600),     -- Inseticida Diamida: 0,15 L/ha x 2 aplicações
+(1,1,1.10,1,50,1200);    -- Semente de soja: 1,1 sc/ha
 
 -- ---------------------------------------------------------------------------
 -- OPORTUNIDADES manuais de exemplo (as automáticas são geradas pelo sistema)

@@ -20,6 +20,7 @@ body { background: #f4f6f4; }
   z-index: 1040;
 }
 .sidebar-marca { color: #fff; }
+.logo-marca { width: 44px; height: auto; background: #fff; border-radius: .5rem; padding: 3px 5px; }
 .sidebar .nav-link { color: rgba(255,255,255,.85); border-radius: .5rem; padding: .65rem .75rem; font-size: 1.02rem; }
 .sidebar .nav-link:hover { background: rgba(255,255,255,.08); color: #fff; }
 .sidebar .nav-link.active { background: rgba(255,255,255,.18); color: #fff; font-weight: 600; }

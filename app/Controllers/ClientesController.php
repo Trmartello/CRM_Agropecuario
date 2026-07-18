@@ -127,6 +127,7 @@ class ClientesController
 
         $contatos = Database::todos('SELECT * FROM cliente_contatos WHERE cliente_id = ? ORDER BY nome', [$id]);
         $painel = ComercialService::painelCliente($id);
+        $historicoCompras = ComercialService::historicoCompras($id);
         $potencial = PotencialService::porCliente($id);
         $demandaPlano = PotencialService::demandaPlanoSafra($id);
         $planos = Database::todos(
@@ -158,7 +159,7 @@ class ClientesController
 
         render_parcial('partials/cliente_ficha', compact(
             'cliente', 'propriedades', 'contatos', 'painel', 'potencial',
-            'demandaPlano', 'planos', 'historico', 'culturas'
+            'demandaPlano', 'planos', 'historico', 'historicoCompras', 'culturas'
         ));
     }
 
