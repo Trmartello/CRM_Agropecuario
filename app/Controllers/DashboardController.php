@@ -9,6 +9,7 @@ use App\Services\CapService;
 use App\Services\CreditoService;
 use App\Services\OportunidadeService;
 use App\Services\PriorizacaoService;
+use App\Services\ReclamacaoService;
 
 class DashboardController
 {
@@ -23,6 +24,8 @@ class DashboardController
         $inicioMes = date('Y-m-01');
 
         $filtroVisitas = Permissoes::ehGestor() ? '1=1' : 'v.usuario_id = ' . Auth::id();
+        // Despesas: gestor vê a equipe; campo vê as próprias (tabelas de coluna única usuario_id)
+        $filtroDespesa = Permissoes::ehGestor() ? '1=1' : 'usuario_id = ' . Auth::id();
 
         $indicadores = [
             'visitas_mes' => (int) Database::valor(
@@ -62,6 +65,14 @@ class DashboardController
                 "SELECT COUNT(*) FROM pedidos pe JOIN clientes c ON c.id = pe.cliente_id
                   WHERE pe.criado_em >= ? AND pe.tipo = 'Pacote Agrícola' AND pe.status <> 'Cancelado' AND {$filtro}",
                 array_merge([$inicioMes], $params)
+            ),
+            'reclamacoes_abertas' => ReclamacaoService::indicadores($filtro, $params)['abertas'],
+            'despesas_mes' => (float) Database::valor(
+                "SELECT COALESCE(SUM(valor),0) FROM quilometragem WHERE {$filtroDespesa} AND data >= ?",
+                [$inicioMes]
+            ) + (float) Database::valor(
+                "SELECT COALESCE(SUM(valor),0) FROM refeicoes WHERE {$filtroDespesa} AND data >= ?",
+                [$inicioMes]
             ),
         ];
 

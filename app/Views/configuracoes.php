@@ -85,6 +85,58 @@
       </div>
     </div>
   </div>
+
+  <!-- Categorias de reembolso (KM/refeições) -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header d-flex align-items-center">
+        <i class="bi bi-cash-stack me-2 text-success"></i><strong>Categorias de reembolso (KM e refeições)</strong>
+        <button class="btn btn-sm btn-success ms-auto" onclick="Config.novaCategoria()"><i class="bi bi-plus-lg me-1"></i>Nova categoria</button>
+      </div>
+      <div class="card-body">
+        <p class="text-muted small">Defina o valor pago por km rodado e o teto de refeição de cada categoria (ex.: Agrônomo, Extensionista, Vendedor, Gestor). Cada usuário recebe uma categoria na tela de <strong>Usuários</strong> — o valor da despesa é calculado automaticamente por ela.</p>
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-light"><tr><th>Categoria</th><th class="text-end">Valor por km</th><th class="text-end">Teto refeição</th><th>Situação</th><th class="text-end">Usuários</th><th></th></tr></thead>
+            <tbody>
+              <?php foreach ($categoriasReembolso as $c): ?>
+              <tr>
+                <td class="fw-semibold"><?= e($c['nome']) ?></td>
+                <td class="text-end"><?= moeda($c['valor_km']) ?></td>
+                <td class="text-end"><?= (float)$c['teto_refeicao'] > 0 ? moeda($c['teto_refeicao']) : '—' ?></td>
+                <td><span class="badge text-bg-<?= $c['ativo'] ? 'success' : 'secondary' ?>"><?= $c['ativo'] ? 'Ativa' : 'Inativa' ?></span></td>
+                <td class="text-end"><?= (int)$c['qtd_usuarios'] ?></td>
+                <td class="text-end"><button class="btn btn-sm btn-outline-secondary" onclick='Config.editarCategoria(<?= json_encode($c, JSON_UNESCAPED_UNICODE) ?>)'><i class="bi bi-pencil"></i></button></td>
+              </tr>
+              <?php endforeach; ?>
+              <?php if (!$categoriasReembolso): ?><tr><td colspan="6" class="text-muted text-center py-3">Nenhuma categoria cadastrada.</td></tr><?php endif; ?>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: categoria de reembolso -->
+<div class="modal fade" id="modalCategoria" tabindex="-1">
+  <div class="modal-dialog modal-fullscreen-sm-down">
+    <form class="modal-content" id="formCategoria" onsubmit="return Config.salvarCategoria(event)">
+      <div class="modal-header"><h5 class="modal-title"><i class="bi bi-cash-stack me-2 text-success"></i><span id="modalCategoriaTitulo">Nova categoria</span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <input type="hidden" name="id" value="0">
+        <div class="mb-3"><label class="form-label">Nome *</label><input name="nome" class="form-control" required placeholder="Ex.: Agrônomo"></div>
+        <div class="row g-3">
+          <div class="col-6"><label class="form-label">Valor por km (R$) *</label><input type="number" step="0.01" min="0" name="valor_km" class="form-control" required></div>
+          <div class="col-6"><label class="form-label">Teto refeição (R$)</label><input type="number" step="0.01" min="0" name="teto_refeicao" class="form-control" placeholder="0 = sem teto"></div>
+          <div class="col-12"><label class="form-label">Situação</label><select name="ativo" class="form-select"><option value="1">Ativa</option><option value="0">Inativa</option></select></div>
+        </div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-success"><i class="bi bi-check-lg me-1"></i>Salvar</button></div>
+    </form>
+  </div>
 </div>
 
 <script>
@@ -132,6 +184,34 @@ const Config = {
       await App.json('index.php?r=configuracoes/salvar-ajustes', { method: 'POST', body: new FormData(ev.target) });
       App.alerta('Ajustes salvos — a logo já aparece no novo tamanho.');
       setTimeout(() => location.reload(), 700);
+    } catch (e) { App.alerta(e.message, 'danger'); }
+    return false;
+  },
+  novaCategoria() {
+    const form = document.getElementById('formCategoria');
+    form.reset();
+    form.querySelector('[name=id]').value = 0;
+    document.getElementById('modalCategoriaTitulo').textContent = 'Nova categoria';
+    new bootstrap.Modal('#modalCategoria').show();
+  },
+  editarCategoria(c) {
+    const form = document.getElementById('formCategoria');
+    form.reset();
+    form.querySelector('[name=id]').value = c.id;
+    form.querySelector('[name=nome]').value = c.nome;
+    form.querySelector('[name=valor_km]').value = c.valor_km;
+    form.querySelector('[name=teto_refeicao]').value = c.teto_refeicao;
+    form.querySelector('[name=ativo]').value = c.ativo;
+    document.getElementById('modalCategoriaTitulo').textContent = 'Editar categoria';
+    new bootstrap.Modal('#modalCategoria').show();
+  },
+  async salvarCategoria(ev) {
+    ev.preventDefault();
+    try {
+      await App.json('index.php?r=configuracoes/salvar-categoria', { method: 'POST', body: new FormData(ev.target) });
+      bootstrap.Modal.getInstance('#modalCategoria').hide();
+      App.alerta('Categoria salva.');
+      setTimeout(() => location.reload(), 600);
     } catch (e) { App.alerta(e.message, 'danger'); }
     return false;
   },

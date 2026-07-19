@@ -12,8 +12,13 @@ class UsuariosController
     public function index(): void
     {
         Permissoes::exigir(['Administrador']);
-        $usuarios = Database::todos('SELECT id, nome, email, perfil, telefone, ativo FROM usuarios ORDER BY nome');
-        render('usuarios', ['usuarios' => $usuarios, 'perfis' => self::PERFIS, 'titulo' => 'Usuários']);
+        $usuarios = Database::todos(
+            'SELECT u.id, u.nome, u.email, u.perfil, u.telefone, u.ativo, u.categoria_reembolso_id, cr.nome AS categoria
+               FROM usuarios u LEFT JOIN categorias_reembolso cr ON cr.id = u.categoria_reembolso_id
+              ORDER BY u.nome'
+        );
+        $categorias = Database::todos('SELECT id, nome FROM categorias_reembolso WHERE ativo = 1 ORDER BY nome');
+        render('usuarios', ['usuarios' => $usuarios, 'perfis' => self::PERFIS, 'categorias' => $categorias, 'titulo' => 'Usuários']);
     }
 
     public function salvar(): void
@@ -33,10 +38,15 @@ class UsuariosController
             json_erro('Já existe um usuário com este e-mail.');
         }
 
+        $categoriaId = (int) ($_POST['categoria_reembolso_id'] ?? 0) ?: null;
+        if ($categoriaId !== null && !Database::valor('SELECT 1 FROM categorias_reembolso WHERE id = ?', [$categoriaId])) {
+            $categoriaId = null;
+        }
+
         if ($id > 0) {
             Database::executar(
-                'UPDATE usuarios SET nome=?, email=?, perfil=?, telefone=?, ativo=? WHERE id=?',
-                [$nome, $email, $perfil, trim($_POST['telefone'] ?? '') ?: null, (int) ($_POST['ativo'] ?? 1), $id]
+                'UPDATE usuarios SET nome=?, email=?, perfil=?, telefone=?, categoria_reembolso_id=?, ativo=? WHERE id=?',
+                [$nome, $email, $perfil, trim($_POST['telefone'] ?? '') ?: null, $categoriaId, (int) ($_POST['ativo'] ?? 1), $id]
             );
             if ($senha !== '') {
                 Database::executar(
@@ -49,8 +59,8 @@ class UsuariosController
                 json_erro('Informe a senha do novo usuário.');
             }
             Database::executar(
-                'INSERT INTO usuarios (nome, email, perfil, telefone, senha_hash, ativo) VALUES (?,?,?,?,?,1)',
-                [$nome, $email, $perfil, trim($_POST['telefone'] ?? '') ?: null, password_hash($senha, PASSWORD_DEFAULT)]
+                'INSERT INTO usuarios (nome, email, perfil, telefone, categoria_reembolso_id, senha_hash, ativo) VALUES (?,?,?,?,?,?,1)',
+                [$nome, $email, $perfil, trim($_POST['telefone'] ?? '') ?: null, $categoriaId, password_hash($senha, PASSWORD_DEFAULT)]
             );
             $id = Database::ultimoId();
         }

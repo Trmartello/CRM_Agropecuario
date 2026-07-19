@@ -8,7 +8,8 @@
   <a class="btn btn-outline-success btn-atalho" href="<?= url('clientes', ['novo' => 1]) ?>"><i class="bi bi-person-plus me-1"></i>Novo Cliente</a>
   <a class="btn btn-outline-success btn-atalho" href="<?= url('clientes') ?>"><i class="bi bi-search me-1"></i>Consultar Cliente</a>
   <a class="btn btn-outline-success btn-atalho" href="<?= url('funil') ?>"><i class="bi bi-funnel me-1"></i>Funil</a>
-  <button class="btn btn-outline-secondary btn-atalho" disabled title="Fase 3"><i class="bi bi-exclamation-octagon me-1"></i>Reclamação <span class="badge text-bg-secondary ms-1">Fase 3</span></button>
+  <a class="btn btn-outline-success btn-atalho" href="<?= url('reclamacoes') ?>"><i class="bi bi-exclamation-octagon me-1"></i>Reclamações</a>
+  <a class="btn btn-outline-success btn-atalho" href="<?= url('despesas') ?>"><i class="bi bi-receipt me-1"></i>Despesas</a>
 </div>
 
 <!-- Indicadores -->
@@ -61,6 +62,20 @@
       <div class="fs-2 fw-bold"><?= numero($indicadores['pacotes_mes']) ?></div>
       <i class="bi bi-box-seam icone-fundo"></i>
     </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <a class="card indicador h-100 text-decoration-none text-reset <?= $indicadores['reclamacoes_abertas'] > 0 ? 'border-warning' : '' ?>" href="<?= url('reclamacoes') ?>"><div class="card-body">
+      <div class="text-muted small">Reclamações abertas</div>
+      <div class="fs-2 fw-bold"><?= numero($indicadores['reclamacoes_abertas']) ?></div>
+      <i class="bi bi-exclamation-octagon icone-fundo"></i>
+    </div></a>
+  </div>
+  <div class="col-6 col-md-3">
+    <a class="card indicador h-100 text-decoration-none text-reset" href="<?= url('despesas') ?>"><div class="card-body">
+      <div class="text-muted small">Despesas no mês</div>
+      <div class="fs-4 fw-bold"><?= moeda($indicadores['despesas_mes']) ?></div>
+      <i class="bi bi-receipt icone-fundo"></i>
+    </div></a>
   </div>
 </div>
 

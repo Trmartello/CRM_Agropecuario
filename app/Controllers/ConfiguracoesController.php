@@ -2,6 +2,7 @@
 
 namespace App\Controllers;
 
+use App\Core\Database;
 use App\Core\Permissoes;
 use App\Services\ConfigService;
 
@@ -20,6 +21,10 @@ class ConfiguracoesController
         Permissoes::exigir(['Administrador']);
         render('configuracoes', [
             'titulo' => 'Configurações',
+            'categoriasReembolso' => Database::todos(
+                'SELECT cr.*, (SELECT COUNT(*) FROM usuarios u WHERE u.categoria_reembolso_id = cr.id) AS qtd_usuarios
+                   FROM categorias_reembolso cr ORDER BY cr.nome'
+            ),
             'logoAtual' => ConfigService::logoAplicacao(),
             'faviconAtual' => ConfigService::faviconAplicacao(),
             'logoPersonalizada' => ConfigService::logoPersonalizada(),
@@ -89,5 +94,33 @@ class ConfiguracoesController
         }
         ConfigService::removerImagem($chave);
         json_ok();
+    }
+
+    /** Cria/atualiza uma categoria de reembolso (valor por km e teto de refeição). */
+    public function salvarCategoria(): void
+    {
+        Permissoes::exigir(['Administrador']);
+        $id = (int) ($_POST['id'] ?? 0);
+        $nome = trim($_POST['nome'] ?? '');
+        if ($nome === '') {
+            json_erro('Informe o nome da categoria.');
+        }
+        $valorKm = max(0, (float) str_replace(',', '.', $_POST['valor_km'] ?? 0));
+        $teto = max(0, (float) str_replace(',', '.', $_POST['teto_refeicao'] ?? 0));
+        $ativo = (int) ($_POST['ativo'] ?? 1);
+
+        if ($id > 0) {
+            Database::executar(
+                'UPDATE categorias_reembolso SET nome=?, valor_km=?, teto_refeicao=?, ativo=? WHERE id=?',
+                [$nome, $valorKm, $teto, $ativo, $id]
+            );
+        } else {
+            Database::executar(
+                'INSERT INTO categorias_reembolso (nome, valor_km, teto_refeicao, ativo) VALUES (?,?,?,?)',
+                [$nome, $valorKm, $teto, $ativo]
+            );
+            $id = Database::ultimoId();
+        }
+        json_ok(['id' => $id]);
     }
 }

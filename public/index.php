@@ -138,6 +138,7 @@ $router->registrar('configuracoes', \App\Controllers\ConfiguracoesController::cl
 $router->registrar('configuracoes/salvar-imagem', \App\Controllers\ConfiguracoesController::class, 'salvarImagem');
 $router->registrar('configuracoes/restaurar-padrao', \App\Controllers\ConfiguracoesController::class, 'restaurarPadrao');
 $router->registrar('configuracoes/salvar-ajustes', \App\Controllers\ConfiguracoesController::class, 'salvarAjustes');
+$router->registrar('configuracoes/salvar-categoria', \App\Controllers\ConfiguracoesController::class, 'salvarCategoria');
 
 try {
     $router->despachar($_GET['r'] ?? 'dashboard');

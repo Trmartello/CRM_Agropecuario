@@ -58,6 +58,13 @@
             <input name="telefone" class="form-control">
           </div>
           <div class="col-6">
+            <label class="form-label">Categoria de reembolso <span class="text-muted small">(KM/refeições)</span></label>
+            <select name="categoria_reembolso_id" class="form-select">
+              <option value="0">— não recebe —</option>
+              <?php foreach ($categorias as $cat): ?><option value="<?= $cat['id'] ?>"><?= e($cat['nome']) ?></option><?php endforeach; ?>
+            </select>
+          </div>
+          <div class="col-6">
             <label class="form-label">Senha <span class="text-muted small">(vazio = manter)</span></label>
             <input type="password" name="senha" class="form-control" autocomplete="new-password">
           </div>
