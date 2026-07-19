@@ -11,10 +11,12 @@ $wa = function (?string $tel, string $texto): ?string {
 <?php if (!$eventos): ?><p class="text-muted">Nenhum evento para este dia.</p><?php endif; ?>
 <ol class="list-group list-group-numbered">
   <?php foreach ($eventos as $e): $link = $wa($e['cliente_telefone'] ?? null, 'Olá! Sobre a visita de hoje: ' . $e['titulo'] . '. Podemos confirmar o horário?'); ?>
-  <li class="list-group-item d-flex align-items-start gap-2">
+  <?php $vencida = !empty($e['visita_vencida']) && ($e['status'] ?? '') !== 'Concluído'; $diasTxt = isset($e['dias_sem_visita']) ? ($e['dias_sem_visita'] >= 120 ? '+120' : $e['dias_sem_visita']) . 'd s/ visita' : null; ?>
+  <li class="list-group-item d-flex align-items-start gap-2 <?= $vencida ? 'border-start border-warning border-3' : '' ?>">
     <div class="flex-grow-1">
-      <div class="fw-semibold"><?= $e['hora'] ? substr($e['hora'],0,5) . ' · ' : '' ?><?= e($e['titulo']) ?></div>
-      <div class="small text-muted"><?= e($e['cliente'] ?? '—') ?><?= $e['municipio'] ? ' · ' . e($e['municipio']) : '' ?></div>
+      <div class="fw-semibold"><?= $e['hora'] ? substr($e['hora'],0,5) . ' · ' : '' ?><?= e($e['titulo']) ?>
+        <?php if ($vencida): ?><span class="badge text-bg-warning text-dark ms-1" title="Sem visita há <?= $diasTxt ?>"><i class="bi bi-exclamation-triangle me-1"></i>Visita vencida</span><?php endif; ?></div>
+      <div class="small text-muted"><?= e($e['cliente'] ?? '—') ?><?= $e['municipio'] ? ' · ' . e($e['municipio']) : '' ?><?= $diasTxt ? ' · ' . $diasTxt : '' ?></div>
       <?php if ($e['descricao']): ?><div class="small"><?= e($e['descricao']) ?></div><?php endif; ?>
     </div>
     <div class="d-flex flex-column gap-1">

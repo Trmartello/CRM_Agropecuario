@@ -39,11 +39,14 @@ $wa = function (?string $tel, string $texto): ?string {
   <div class="card-header bg-success-subtle d-flex align-items-center"><i class="bi bi-signpost-split me-2"></i><strong>Roteiro de hoje</strong>
     <span class="ms-auto small text-muted"><?= count($roteiroHoje) ?> parada(s)</span></div>
   <ol class="list-group list-group-flush list-group-numbered">
-    <?php foreach ($roteiroHoje as $r): $link = $wa($r['cliente_telefone'] ?? null, 'Olá! Sobre a visita agendada (' . ($r['titulo']) . ').'); ?>
-    <li class="list-group-item d-flex align-items-center gap-2">
+    <?php foreach ($roteiroHoje as $r): $link = $wa($r['cliente_telefone'] ?? null, 'Olá! Sobre a visita agendada (' . ($r['titulo']) . ').');
+      $vencida = !empty($r['visita_vencida']) && ($r['status'] ?? '') !== 'Concluído';
+      $diasTxt = isset($r['dias_sem_visita']) ? ($r['dias_sem_visita'] >= 120 ? '+120' : $r['dias_sem_visita']) . 'd s/ visita' : null; ?>
+    <li class="list-group-item d-flex align-items-center gap-2 <?= $vencida ? 'border-start border-warning border-3' : '' ?>">
       <div class="flex-grow-1">
         <span class="fw-semibold"><?= $r['hora'] ? substr($r['hora'],0,5) . ' · ' : '' ?><?= e($r['titulo']) ?></span>
-        <div class="small text-muted"><?= e($r['cliente'] ?? '—') ?><?= $r['municipio'] ? ' · ' . e($r['municipio']) : '' ?></div>
+        <?php if ($vencida): ?><span class="badge text-bg-warning text-dark ms-1" title="Sem visita há <?= $diasTxt ?>"><i class="bi bi-exclamation-triangle me-1"></i>Visita vencida</span><?php endif; ?>
+        <div class="small text-muted"><?= e($r['cliente'] ?? '—') ?><?= $r['municipio'] ? ' · ' . e($r['municipio']) : '' ?><?= $diasTxt ? ' · ' . $diasTxt : '' ?></div>
       </div>
       <?php if ($link): ?><a class="btn btn-sm btn-outline-success" href="<?= e($link) ?>" target="_blank" title="Agendar por WhatsApp"><i class="bi bi-whatsapp"></i></a><?php endif; ?>
       <?php if ($r['latitude'] && $r['longitude']): ?><a class="btn btn-sm btn-outline-secondary" href="https://www.google.com/maps/search/?api=1&query=<?= $r['latitude'] ?>,<?= $r['longitude'] ?>" target="_blank" title="Abrir no mapa"><i class="bi bi-geo-alt"></i></a><?php endif; ?>
