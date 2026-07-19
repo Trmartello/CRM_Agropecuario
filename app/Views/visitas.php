@@ -36,6 +36,15 @@
                   <?php if ($p['risco_churn']): ?><span class="badge text-bg-danger ms-1">Churn −<?= $p['queda_percentual'] ?>%</span><?php endif; ?>
                 </div>
                 <div class="small text-muted"><?= e($p['municipio'] ?? '') ?></div>
+                <div class="mt-1">
+                  <?php if (($p['ultima_completude'] ?? null) === null): ?>
+                    <span class="badge rounded-pill text-bg-light border text-muted" title="Nenhuma visita registrada"><i class="bi bi-clipboard-x me-1"></i>sem visita</span>
+                  <?php elseif ($p['ultima_finalizada']): ?>
+                    <span class="badge rounded-pill text-bg-success" title="Preenchimento do cadastro da última visita"><i class="bi bi-clipboard-check me-1"></i>Cadastro 100%</span>
+                  <?php else: ?>
+                    <span class="badge rounded-pill text-bg-warning text-dark" title="Cadastro da última visita não finalizado"><i class="bi bi-clipboard-check me-1"></i>Cadastro <?= (int) $p['ultima_completude'] ?>%</span>
+                  <?php endif; ?>
+                </div>
               </td>
               <td class="d-none d-md-table-cell <?= $p['dias_sem_visita'] >= 120 ? 'text-danger fw-bold' : '' ?>">
                 <?= $p['dias_sem_visita'] >= 120 ? '120+' : $p['dias_sem_visita'] ?>
