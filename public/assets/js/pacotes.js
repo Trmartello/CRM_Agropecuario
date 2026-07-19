@@ -56,7 +56,7 @@ const Pacotes = {
     const tr = document.createElement('tr');
     tr.dataset.produto = produtoId;
     tr.innerHTML = `
-      <td class="small">${nome}</td>
+      <td class="small">${App.escapeHtml(nome)}</td>
       <td><input class="form-control form-control-sm ob-dose" inputmode="decimal" value="${dose}"></td>
       <td><input class="form-control form-control-sm ob-aplic" inputmode="numeric" value="${aplicacoes}"></td>
       <td><input class="form-control form-control-sm ob-min" inputmode="decimal" value="${min}"></td>

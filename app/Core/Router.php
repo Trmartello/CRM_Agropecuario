@@ -20,8 +20,9 @@ class Router
         $rota = $rota ?: 'dashboard';
         if (!isset($this->rotas[$rota])) {
             http_response_code(404);
+            // Não ecoa a rota recebida (evita reflexão de payload)
             if (Auth::ehAjax()) {
-                json_erro('Rota não encontrada: ' . $rota, 404);
+                json_erro('Rota não encontrada.', 404);
             }
             echo 'Página não encontrada.';
             return;

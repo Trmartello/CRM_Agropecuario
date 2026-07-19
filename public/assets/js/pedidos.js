@@ -51,8 +51,8 @@ const Pedidos = {
       const sub = it.quantidade * it.valor_unitario * (1 - it.desconto_pct / 100);
       total += sub;
       return `<tr>
-        <td class="small">${it.nome}</td>
-        <td class="text-end">${it.quantidade.toLocaleString('pt-BR')} ${it.unidade}</td>
+        <td class="small">${App.escapeHtml(it.nome)}</td>
+        <td class="text-end">${it.quantidade.toLocaleString('pt-BR')} ${App.escapeHtml(it.unidade)}</td>
         <td class="text-end">${App.moeda(it.valor_unitario)}</td>
         <td class="text-end">${it.desconto_pct ? it.desconto_pct + '%' : '—'}</td>
         <td class="text-end">${App.moeda(sub)}</td>
@@ -158,7 +158,7 @@ const Pedidos = {
   renderItensPacote() {
     const corpo = document.querySelector('#pacoteItens tbody');
     corpo.innerHTML = Pedidos.itensPacote.map((it, i) => `<tr>
-        <td class="small">${it.nome}</td>
+        <td class="small">${App.escapeHtml(it.nome)}</td>
         <td class="text-end">${it.quantidade.toLocaleString('pt-BR')} ${it.unidade || ''}</td>
         <td class="text-end">${App.moeda(it.valor_unitario)}</td>
         <td class="text-end">${App.moeda(it.quantidade * it.valor_unitario)}</td>

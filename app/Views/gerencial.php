@@ -64,7 +64,7 @@
 </div>
 
 <script>
-(function () {
+document.addEventListener('DOMContentLoaded', function () {
   const cv = document.getElementById('chartFamilia');
   if (cv && typeof Chart !== 'undefined') {
     const dados = JSON.parse(cv.dataset.familia || '[]');
@@ -76,5 +76,5 @@
     chart.$rotulo = { formatter: v => 'R$ ' + Math.round(v/1000) + 'k', color: '#1b5e20' };
     chart.update();
   }
-})();
+});
 </script>

@@ -18,6 +18,7 @@ class Auth
                 'lifetime' => self::DIAS_LEMBRAR * 86400,
                 'httponly' => true,
                 'samesite' => 'Lax',
+                'secure' => self::httpsAtivo(),
             ]);
             session_start();
         }
@@ -80,7 +81,16 @@ class Auth
             'path' => '/',
             'httponly' => true,
             'samesite' => 'Lax',
+            'secure' => self::httpsAtivo(),
         ]);
+    }
+
+    /** Detecta HTTPS (inclui proxy do Railway via X-Forwarded-Proto). */
+    private static function httpsAtivo(): bool
+    {
+        return (($_SERVER['HTTPS'] ?? '') !== '' && ($_SERVER['HTTPS'] ?? 'off') !== 'off')
+            || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https'
+            || ($_SERVER['SERVER_PORT'] ?? '') === '443';
     }
 
     private static function restaurarPeloToken(string $token): void

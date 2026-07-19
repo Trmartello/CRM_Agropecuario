@@ -22,7 +22,7 @@ const App = {
   alerta(mensagem, tipo = 'success') {
     const div = document.createElement('div');
     div.className = `toast align-items-center text-bg-${tipo} border-0 show mb-2`;
-    div.innerHTML = `<div class="d-flex"><div class="toast-body">${mensagem}</div>
+    div.innerHTML = `<div class="d-flex"><div class="toast-body">${App.escapeHtml(mensagem)}</div>
       <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
     document.getElementById('alertas').appendChild(div);
     setTimeout(() => div.remove(), 5000);
@@ -446,7 +446,7 @@ const Visitas = {
     const corInad = { success: 'success', warning: 'warning', orange: 'warning', danger: 'danger' }[p.inadimplencia.cor] || 'secondary';
     const linhaCompra = c => `<tr><td>${c.produto}</td><td class="text-end">${Number(c.quantidade).toLocaleString('pt-BR')} ${c.unidade}</td><td class="text-end">${App.moeda(c.valor_total)}</td></tr>`;
     const linhaGap = g => `<li class="list-group-item d-flex justify-content-between align-items-center py-1">
-        <span>${g.produto} <span class="text-muted small">(${g.familia})</span></span>
+        <span>${App.escapeHtml(g.produto)} <span class="text-muted small">(${App.escapeHtml(g.familia)})</span></span>
         <span class="badge text-bg-success-subtle text-success border border-success">${App.moeda(g.valor_anterior)}</span></li>`;
 
     alvo.innerHTML = `
@@ -694,7 +694,7 @@ const Potencial = {
     corpo.innerHTML = ranking.map((r, i) => `
       <tr>
         <td>${i + 1}º</td>
-        <td>${r.dimensao}</td>
+        <td>${App.escapeHtml(r.dimensao)}</td>
         <td class="text-end small">${App.moeda(r.potencial)}</td>
         <td class="text-end small">${App.moeda(r.realizado)}</td>
         <td class="text-end fw-bold ${Number(r.percentual) >= 70 ? 'text-success' : (Number(r.percentual) >= 40 ? 'text-warning' : 'text-danger')}">${r.percentual}%</td>

@@ -8,6 +8,12 @@ declare(strict_types=1);
 
 require dirname(__DIR__) . '/app/helpers.php';
 
+// Cabeçalhos de segurança (defesa em profundidade)
+header_remove('X-Powered-By');
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: SAMEORIGIN');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+
 // Autoloader PSR-4 simples: App\ → /app
 spl_autoload_register(function (string $classe): void {
     if (str_starts_with($classe, 'App\\')) {
