@@ -235,7 +235,7 @@ class AgendaService
         $paradas = Database::todos(
             "SELECT e.id, c.latitude AS lat, c.longitude AS lng
                FROM agenda_eventos e LEFT JOIN clientes c ON c.id = e.cliente_id
-              WHERE e.usuario_id = ? AND e.data = ? AND e.status <> 'Cancelado'
+              WHERE e.usuario_id = ? AND e.data = ? AND e.tipo = 'Visita' AND e.status = 'Pendente'
               ORDER BY e.ordem, e.id",
             [$usuarioId, $data]
         );
@@ -303,14 +303,15 @@ class AgendaService
     }
 
     /**
-     * Estimativa do dia: distância total, tempo de viagem (pela velocidade média),
-     * tempo de visitas (paradas × duração média) e tempo total, em minutos.
+     * Estimativa do dia (apenas visitas pendentes): distância total, tempo de
+     * viagem (pela velocidade média), tempo de visitas (paradas × duração média)
+     * e tempo total, em minutos.
      */
     public static function estimativaDia(string $data, int $usuarioId): array
     {
         $km = self::distanciaRoteiro($data, $usuarioId);
         $paradas = (int) Database::valor(
-            "SELECT COUNT(*) FROM agenda_eventos WHERE usuario_id = ? AND data = ? AND status <> 'Cancelado'",
+            "SELECT COUNT(*) FROM agenda_eventos WHERE usuario_id = ? AND data = ? AND tipo = 'Visita' AND status = 'Pendente'",
             [$usuarioId, $data]
         );
         $minViagem = $km > 0 ? (int) round($km / self::VELOCIDADE_KMH * 60) : 0;
@@ -367,7 +368,7 @@ class AgendaService
         $paradas = Database::todos(
             "SELECT c.latitude AS lat, c.longitude AS lng
                FROM agenda_eventos e LEFT JOIN clientes c ON c.id = e.cliente_id
-              WHERE e.usuario_id = ? AND e.data = ? AND e.status <> 'Cancelado'
+              WHERE e.usuario_id = ? AND e.data = ? AND e.tipo = 'Visita' AND e.status = 'Pendente'
                 AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL
               ORDER BY e.ordem, e.id",
             [$usuarioId, $data]
