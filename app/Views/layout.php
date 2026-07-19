@@ -3,10 +3,10 @@ use App\Core\Auth;
 use App\Core\Permissoes;
 use App\Services\ConfigService;
 
-$logoApp = ConfigService::logoAplicacao();
+$logoApp = ConfigService::logoMenu();
 $faviconApp = ConfigService::faviconAplicacao();
 $logoLargura = (int) ConfigService::obter('logo_sidebar_largura', '180');
-$logoFundo = ConfigService::obter('logo_fundo', 'branco');
+$logoFundo = ConfigService::obter('logo_fundo', ConfigService::logoPersonalizada() ? 'branco' : 'transparente');
 $logoPosicao = ConfigService::obter('logo_posicao', 'acima');
 ?>
 <!DOCTYPE html>
