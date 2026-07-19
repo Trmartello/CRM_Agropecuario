@@ -1132,5 +1132,12 @@ UPDATE clientes SET linha='Linha São Roque' WHERE id IN (1,4);
 UPDATE clientes SET linha='Linha Barra Fria' WHERE id IN (2,5);
 UPDATE clientes SET linha='Linha Sede' WHERE id IN (3,6);
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','12')
-  ON DUPLICATE KEY UPDATE valor = '11';
+-- Idempotência do offline (O3): dedup de reenvios da fila por uuid
+DROP TABLE IF EXISTS sync_processados;
+CREATE TABLE sync_processados (
+  uuid VARCHAR(36) NOT NULL PRIMARY KEY,
+  criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','13')
+  ON DUPLICATE KEY UPDATE valor = '13';

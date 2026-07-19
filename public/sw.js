@@ -2,7 +2,7 @@
  * Cache do app e assets para abrir sem conexão (offline básico da Fase 1).
  */
 
-const CACHE = 'crm-coperdia-v27';
+const CACHE = 'crm-coperdia-v28';
 
 const ARQUIVOS_APP = [
   'assets/vendor/bootstrap.min.css',
@@ -41,6 +41,17 @@ self.addEventListener('activate', ev => {
       Promise.all(chaves.filter(c => c !== CACHE).map(c => caches.delete(c)))
     ).then(() => self.clients.claim())
   );
+});
+
+// Background Sync: ao voltar a conexão, avisa os clientes abertos para enviar a fila.
+self.addEventListener('sync', ev => {
+  if (ev.tag === 'sync-fila') {
+    ev.waitUntil(
+      self.clients.matchAll({ includeUncontrolled: true }).then(cs => {
+        cs.forEach(c => c.postMessage('sincronizar-fila'));
+      })
+    );
+  }
 });
 
 self.addEventListener('fetch', ev => {

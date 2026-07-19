@@ -108,8 +108,14 @@ uma com o usuário.
   re-renderiza do snapshot as telas Produtores, Priorização e Organizador
   (sugestões) quando offline, com banner de modo offline. Ações que exigem
   servidor (ficha completa, montar/otimizar roteiro) seguem online.
-- **O3 — Robustez.** Background Sync, idempotência (`uuid_offline` + migração),
-  tratamento de sessão expirada, monitoramento de cota.
+- **O3 — Robustez. ✅ ENTREGUE.** Idempotência: cada item da fila leva um `uuid`
+  (`uuid_offline`) e o servidor deduplica via a tabela `sync_processados` (schema
+  v13) — reenvio à prova de resposta perdida, sem cadastro duplicado. Sessão
+  expirada durante o sync mantém a fila e pede login (não perde dados). Aviso de
+  cota de armazenamento ao enfileirar anexos. Background Sync: o SW registra a
+  tag `sync-fila` e, ao voltar a conexão, avisa os clientes abertos para enviar a
+  fila (o reenvio headless, com a aba fechada, ainda depende do evento `online`/
+  do próximo load — replay dentro do SW fica como evolução futura).
 
 ## 7. Testes (a cada fase)
 

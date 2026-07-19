@@ -172,6 +172,21 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '12'"
             );
         }
+        if ($versao < 13) {
+            // Idempotência do offline (O3): dedup de reenvios da fila por uuid.
+            if (!self::temTabela('sync_processados')) {
+                Database::executar(
+                    'CREATE TABLE sync_processados (
+                        uuid VARCHAR(36) NOT NULL PRIMARY KEY,
+                        criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                     ) ENGINE=InnoDB'
+                );
+            }
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '13')
+                 ON DUPLICATE KEY UPDATE valor = '13'"
+            );
+        }
     }
 
     /** Fase 5: log de integração (ERP/CAPE). */

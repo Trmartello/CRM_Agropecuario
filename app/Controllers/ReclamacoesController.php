@@ -42,6 +42,9 @@ class ReclamacoesController
     public function salvar(): void
     {
         Permissoes::exigirInterno();
+        if (sync_uuid_processado($_POST['uuid_offline'] ?? null)) {
+            json_ok(['duplicado' => true]);
+        }
         // Confirma que o cliente está na carteira do usuário
         $clienteId = (int) ($_POST['cliente_id'] ?? 0);
         [$filtro, $params] = Permissoes::filtroCarteira();
@@ -57,6 +60,7 @@ class ReclamacoesController
         } catch (\InvalidArgumentException $e) {
             json_erro($e->getMessage());
         }
+        sync_registrar_uuid($_POST['uuid_offline'] ?? null);
         $this->salvarFotos($id);
         json_ok(['id' => $id]);
     }

@@ -58,8 +58,9 @@ const Offline = {
    */
   async enfileirar(rota, origem, opc = {}) {
     const fd = origem instanceof FormData ? origem : new FormData(origem);
+    const uuid = Offline._uuid();
     const registro = {
-      rota, modulo: opc.modulo || '', rotulo: opc.rotulo || rota,
+      rota, modulo: opc.modulo || '', rotulo: opc.rotulo || rota, uuid,
       campos: {}, arquivos: [], criado_em: new Date().toISOString(),
     };
     for (const [chave, valor] of fd.entries()) {
@@ -70,6 +71,7 @@ const Offline = {
       }
     }
     registro.campos['offline'] = '1';
+    registro.campos['uuid_offline'] = uuid; // idempotência no servidor (O3)
 
     const db = await Offline.abrirBanco();
     await new Promise((resolver, rejeitar) => {
@@ -78,7 +80,40 @@ const Offline = {
       tx.oncomplete = resolver;
       tx.onerror = () => rejeitar(tx.error);
     });
+    if (registro.arquivos.length) Offline._avisarCota();
+    Offline._registrarBackgroundSync();
     Offline.notificarMudanca();
+  },
+
+  /** uuid v4 (crypto quando disponível). */
+  _uuid() {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.floor(Math.random() * 16);
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  },
+
+  /** Avisa se o armazenamento do aparelho está quase cheio (anexos ocupam espaço). */
+  async _avisarCota() {
+    try {
+      if (navigator.storage && navigator.storage.estimate) {
+        const { usage, quota } = await navigator.storage.estimate();
+        if (quota && usage / quota > 0.9 && typeof App !== 'undefined') {
+          App.alerta('Armazenamento do aparelho quase cheio — sincronize assim que tiver conexão.', 'warning');
+        }
+      }
+    } catch (e) { /* ignore */ }
+  },
+
+  /** Registra Background Sync (o navegador reenvia ao voltar a conexão). */
+  async _registrarBackgroundSync() {
+    try {
+      if ('serviceWorker' in navigator && 'SyncManager' in window) {
+        const reg = await navigator.serviceWorker.ready;
+        await reg.sync.register('sync-fila');
+      }
+    } catch (e) { /* sem suporte: cai no evento 'online' e no timer de load */ }
   },
 
   /** Lista os itens da fila (para o painel de pendências). */
@@ -162,6 +197,11 @@ const Offline = {
       } catch (e) {
         break; // conexão caiu de novo — tenta na próxima
       }
+      // Sessão expirada: mantém a fila intacta e pede login (não perde dados)
+      if ((resp.redirected && /r=login/.test(resp.url)) || resp.status === 401 || resp.status === 403) {
+        if (typeof App !== 'undefined') App.alerta('Sessão expirada. Faça login para enviar os lançamentos pendentes.', 'warning');
+        break;
+      }
       let dados = null;
       try { dados = await resp.json(); } catch (e) { dados = null; }
       if (dados && dados.ok) {
@@ -222,6 +262,10 @@ const Offline = {
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+  // Background Sync: o SW avisa os clientes para sincronizar quando a conexão volta
+  navigator.serviceWorker.addEventListener('message', ev => {
+    if (ev.data === 'sincronizar-fila') Offline.sincronizar();
   });
 }
 

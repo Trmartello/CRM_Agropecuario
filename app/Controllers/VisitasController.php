@@ -117,6 +117,9 @@ class VisitasController
     public function salvar(): void
     {
         Permissoes::exigir(['Administrador', 'Gestor Técnico', 'Consultor Técnico', 'Vendedor', 'Gestor Comercial']);
+        if (sync_uuid_processado($_POST['uuid_offline'] ?? null)) {
+            json_ok(['duplicado' => true]);
+        }
         $clienteId = (int) ($_POST['cliente_id'] ?? 0);
         [$filtro, $params] = Permissoes::filtroCarteira();
         $cliente = Database::um(
@@ -163,6 +166,7 @@ class VisitasController
         );
         $visitaId = Database::ultimoId();
 
+        sync_registrar_uuid($_POST['uuid_offline'] ?? null);
         $this->salvarFotos($visitaId);
         $this->salvarConcorrencia($visitaId, $clienteId);
 

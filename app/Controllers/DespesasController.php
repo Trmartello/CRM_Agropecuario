@@ -90,17 +90,24 @@ class DespesasController
     public function salvarKm(): void
     {
         Permissoes::exigirInterno();
+        if (sync_uuid_processado($_POST['uuid_offline'] ?? null)) {
+            json_ok(['duplicado' => true]);
+        }
         try {
             $r = DespesaService::registrarKm(Auth::id(), $_POST);
         } catch (\InvalidArgumentException $e) {
             json_erro($e->getMessage());
         }
+        sync_registrar_uuid($_POST['uuid_offline'] ?? null);
         json_ok($r);
     }
 
     public function salvarRefeicao(): void
     {
         Permissoes::exigirInterno();
+        if (sync_uuid_processado($_POST['uuid_offline'] ?? null)) {
+            json_ok(['duplicado' => true]);
+        }
         $dados = $_POST;
         $dados['comprovante'] = $this->salvarComprovante();
         try {
@@ -108,6 +115,7 @@ class DespesasController
         } catch (\InvalidArgumentException $e) {
             json_erro($e->getMessage());
         }
+        sync_registrar_uuid($_POST['uuid_offline'] ?? null);
         json_ok($r);
     }
 

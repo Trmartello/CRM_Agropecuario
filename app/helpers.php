@@ -38,6 +38,29 @@ function json_erro(string $mensagem, int $status = 400): never
     json_resposta(['ok' => false, 'erro' => $mensagem], $status);
 }
 
+/**
+ * Idempotência do offline (O3): true se este uuid de reenvio da fila já foi
+ * processado antes (evita cadastro duplicado se a resposta do OK se perdeu).
+ */
+function sync_uuid_processado(?string $uuid): bool
+{
+    $uuid = trim((string) $uuid);
+    if ($uuid === '') {
+        return false;
+    }
+    return (bool) \App\Core\Database::valor('SELECT 1 FROM sync_processados WHERE uuid = ?', [$uuid]);
+}
+
+/** Registra o uuid de um reenvio já processado com sucesso. */
+function sync_registrar_uuid(?string $uuid): void
+{
+    $uuid = trim((string) $uuid);
+    if ($uuid === '') {
+        return;
+    }
+    \App\Core\Database::executar('INSERT IGNORE INTO sync_processados (uuid) VALUES (?)', [$uuid]);
+}
+
 /** Formata valor em reais. */
 function moeda(float|int|string|null $valor): string
 {
