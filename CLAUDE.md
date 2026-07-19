@@ -4,9 +4,11 @@ Guia para o Claude Code trabalhar neste repositório.
 
 ## Sobre o projeto
 
-**CRM Agropecuário Copérdia** — Sistema de Gestão Comercial e Assistência Técnica Agrícola. Aplicativo integrado para as áreas Comercial, Assistência Técnica e Relacionamento com o Produtor da cooperativa Copérdia. Centraliza as atividades do profissional de campo (agrônomo, extensionista, vendedor): visitas técnicas, recomendações, vendas, priorização de clientes, metas, crédito e prestação de contas.
+**CRM AGRO — Copérdia** — Sistema de Gestão Comercial e Assistência Técnica Agrícola. Aplicativo integrado para as áreas Comercial, Assistência Técnica e Relacionamento com o Produtor da cooperativa Copérdia. Centraliza as atividades do profissional de campo (agrônomo, extensionista, vendedor): visitas técnicas, recomendações, vendas, priorização de clientes, metas, crédito e prestação de contas.
 
-A especificação funcional completa (19 módulos) está em `docs/REQUISITOS.md`. O roadmap de fases está em `docs/ROADMAP.md`. **O desenvolvimento é feito por fases, uma a uma, sempre validando com o usuário antes de avançar de fase.**
+A especificação completa está em `docs/ESCOPO_DO_PROJETO.md` (19 módulos + fases). **O desenvolvimento é feito por fases, uma a uma, sempre validando com o usuário antes de avançar.**
+
+**Status**: Fases 1 e 2 entregues (dashboard, clientes, visitas com voz/GPS/fotos, priorização, CAP, crédito, funil, potencial, pedidos, pacotes agrícolas, consulta comercial, configurações de identidade visual, PWA + offline básico, login persistente). Próxima: Fase 3 (KM, refeições, prestação de contas, reclamações, documentos). App em produção de teste no Railway: https://crmagropecuario-production.up.railway.app
 
 ## Stack (padrão Copérdia — não alterar sem autorização)
 
@@ -18,7 +20,7 @@ A especificação funcional completa (19 módulos) está em `docs/REQUISITOS.md`
 - **Mobile**: o app é um **PWA** (manifest.json + ícones + service worker) — instalável no Android/iOS, um único código. Nada de app nativo sem autorização.
 - **Offline básico (Fase 1)**: service worker cacheia app/assets; carteira do técnico em IndexedDB; visitas/fotos criadas sem sinal entram em fila local e sincronizam ao reconectar (endpoint de sync no ApiController).
 - **Banco via variáveis de ambiente**: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS` com fallback para padrões locais (`localhost`/root) — necessário para o deploy no Railway.
-- **Deploy de testes**: Railway (PHP + MySQL, HTTPS automático, volume para `public/uploads`).
+- **Deploy de testes**: Railway (Dockerfile com servidor embutido do PHP em `$PORT`, MySQL interno `mysql.railway.internal`, HTTPS automático, volume para `public/uploads` — necessário só para fotos de visitas; identidade visual fica no banco). Guia em `docs/DEPLOY_RAILWAY.md`.
 
 ## Diretrizes de UX (exigência do usuário)
 
@@ -49,6 +51,23 @@ Regras de código:
 - Toda rota passa pelo helper de permissões (`Permissoes::exigir(...)`) conforme o perfil.
 - Nunca interpolar variáveis em SQL; sempre prepared statements.
 - Escapar saída HTML com `htmlspecialchars` (helper `e()`).
+- Preços e valores sempre calculados no servidor (nunca confiar no que vem do navegador).
+- Erros são capturados globalmente no `index.php` (JSON legível para AJAX).
+
+**Migrações de banco (obrigatório ao mudar o schema):**
+- `database.sql` é a fonte da verdade para instalações novas (idempotente).
+- Bancos já instalados (Railway) migram sozinhos: `Instalador::migracoesLeves()` usa a chave `schema_versao` em `configuracoes`. Ao alterar o schema, **incremente a versão e adicione os passos** (CREATE IF NOT EXISTS / ADD COLUMN com verificação em information_schema + seed leve se vazio). Nunca exigir recriação manual do banco.
+
+**Cache do PWA (obrigatório ao mudar assets):**
+- `app.css`, `app.js` e `offline.js` são versionados por `filemtime` no layout — automático.
+- Outros assets estáticos novos: adicionar na lista do `sw.js` **e** incrementar a constante `CACHE` (vN) — senão o service worker serve versão antiga.
+
+**Sessão/login:** persistente por 30 dias via token hasheado em `sessoes_persistentes` (sobrevive a deploys). `Auth::iniciarSessao()` restaura sozinho.
+
+**Identidade visual:** logo e favicon personalizáveis em Configurações (Administrador), gravados em base64 no banco (`configuracoes`) e servidos por `arquivo/logo|favicon` — não usar arquivos em uploads para identidade.
+
+**Validação visual:** o Chromium da sessão permite screenshot real das telas:
+`/opt/pw-browsers/chromium --headless --no-sandbox --screenshot=... URL` (ou playwright-core no scratchpad para fluxos com login). Use antes de commitar mudanças de UI.
 
 ## Perfis de acesso
 

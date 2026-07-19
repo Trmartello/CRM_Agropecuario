@@ -119,4 +119,16 @@ $router->registrar('configuracoes/salvar-imagem', \App\Controllers\Configuracoes
 $router->registrar('configuracoes/restaurar-padrao', \App\Controllers\ConfiguracoesController::class, 'restaurarPadrao');
 $router->registrar('configuracoes/salvar-ajustes', \App\Controllers\ConfiguracoesController::class, 'salvarAjustes');
 
-$router->despachar($_GET['r'] ?? 'dashboard');
+try {
+    $router->despachar($_GET['r'] ?? 'dashboard');
+} catch (\Throwable $e) {
+    // Erro legível em vez de "resposta inválida" nas chamadas AJAX
+    error_log('[CRM] ' . $e->getMessage() . ' em ' . $e->getFile() . ':' . $e->getLine());
+    if (Auth::ehAjax()) {
+        json_erro('Erro interno do servidor: ' . $e->getMessage(), 500);
+    }
+    http_response_code(500);
+    echo '<div style="font-family:sans-serif;max-width:640px;margin:3rem auto">',
+        '<h1 style="color:#c62828">Erro interno</h1><p>', e($e->getMessage()), '</p>',
+        '<p><a href="index.php?r=dashboard">Voltar ao Dashboard</a></p></div>';
+}
