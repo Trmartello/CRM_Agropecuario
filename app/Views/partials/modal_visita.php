@@ -73,23 +73,23 @@
             </div>
             <div class="col-md-8">
               <label class="form-label">Desenvolvimento</label>
-              <div class="campo-voz"><input name="desenvolvimento" class="form-control" placeholder="Condição geral da lavoura…"><button type="button" class="btn btn-outline-success btn-voz" title="Falar"><i class="bi bi-mic"></i></button></div>
+              <div class="campo-voz"><input name="desenvolvimento" class="form-control" placeholder="Condição geral da lavoura…"><button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
             </div>
             <div class="col-md-6">
               <label class="form-label">Pragas</label>
-              <div class="campo-voz"><input name="pragas" class="form-control" placeholder="Percevejo, lagarta…"><button type="button" class="btn btn-outline-success btn-voz"><i class="bi bi-mic"></i></button></div>
+              <div class="campo-voz"><input name="pragas" class="form-control" placeholder="Percevejo, lagarta…"><button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
             </div>
             <div class="col-md-6">
               <label class="form-label">Doenças</label>
-              <div class="campo-voz"><input name="doencas" class="form-control" placeholder="Ferrugem, mancha…"><button type="button" class="btn btn-outline-success btn-voz"><i class="bi bi-mic"></i></button></div>
+              <div class="campo-voz"><input name="doencas" class="form-control" placeholder="Ferrugem, mancha…"><button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
             </div>
             <div class="col-md-6">
               <label class="form-label">Plantas daninhas</label>
-              <div class="campo-voz"><input name="plantas_daninhas" class="form-control" placeholder="Buva, azevém…"><button type="button" class="btn btn-outline-success btn-voz"><i class="bi bi-mic"></i></button></div>
+              <div class="campo-voz"><input name="plantas_daninhas" class="form-control" placeholder="Buva, azevém…"><button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
             </div>
             <div class="col-md-6">
               <label class="form-label">Deficiência nutricional</label>
-              <div class="campo-voz"><input name="deficiencia_nutricional" class="form-control" placeholder="N, K, Mn…"><button type="button" class="btn btn-outline-success btn-voz"><i class="bi bi-mic"></i></button></div>
+              <div class="campo-voz"><input name="deficiencia_nutricional" class="form-control" placeholder="N, K, Mn…"><button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
             </div>
             <div class="col-md-4">
               <label class="form-label">Condições climáticas</label>
@@ -97,7 +97,7 @@
             </div>
             <div class="col-md-8">
               <label class="form-label">Observações <span class="text-muted small">(use o microfone para ditar)</span></label>
-              <div class="campo-voz"><textarea name="observacoes" class="form-control" rows="3"></textarea><button type="button" class="btn btn-outline-success btn-voz"><i class="bi bi-mic"></i></button></div>
+              <div class="campo-voz"><textarea name="observacoes" class="form-control" rows="3"></textarea><button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
             </div>
           </div>
         </div>
@@ -113,7 +113,7 @@
           <label class="form-label">Recomendação técnica <span class="text-muted small">(texto livre — pode ditar pelo microfone)</span></label>
           <div class="campo-voz">
             <textarea name="recomendacao" class="form-control" rows="8" placeholder="Escreva ou carregue um modelo padrão…"></textarea>
-            <button type="button" class="btn btn-outline-success btn-voz"><i class="bi bi-mic"></i></button>
+            <button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button>
           </div>
         </div>
 

@@ -89,7 +89,7 @@ const Voz = {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return; // fallback silencioso: botões ficam ocultos
 
-    document.querySelectorAll('.btn-voz').forEach(btn => { btn.style.display = 'inline-block'; });
+    document.querySelectorAll('.btn-voz').forEach(btn => { btn.style.display = 'inline-flex'; });
 
     document.addEventListener('click', ev => {
       const btn = ev.target.closest('.btn-voz');
@@ -121,6 +121,7 @@ const Voz = {
 
     rec.start();
     btn.classList.add('gravando');
+    btn.title = 'Parar gravação';
     btn.querySelector('i').className = 'bi bi-stop-fill';
     Voz.reconhecimento = rec;
     Voz.botaoAtivo = btn;
@@ -130,7 +131,8 @@ const Voz = {
     if (Voz.reconhecimento) { try { Voz.reconhecimento.stop(); } catch (e) {} }
     if (Voz.botaoAtivo) {
       Voz.botaoAtivo.classList.remove('gravando');
-      Voz.botaoAtivo.querySelector('i').className = 'bi bi-mic';
+      Voz.botaoAtivo.title = 'Ditar por voz';
+      Voz.botaoAtivo.querySelector('i').className = 'bi bi-mic-fill';
     }
     Voz.reconhecimento = null;
     Voz.botaoAtivo = null;

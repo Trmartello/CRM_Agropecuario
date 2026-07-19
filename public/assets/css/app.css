@@ -109,16 +109,30 @@ body.menu-recolhido #btnRecolherMenu { background: #e8f0e9; }
 .kanban-corpo { min-height: 120px; }
 .kanban-cartao { border-left: 4px solid var(--verde-claro); }
 
-/* ---------- Campo com microfone ---------- */
+/* ---------- Campo com microfone (ditado por voz) ---------- */
 .campo-voz { position: relative; }
-.campo-voz .form-control { padding-right: 3rem; }
+.campo-voz .form-control { padding-right: 2.9rem; }
 .campo-voz .btn-voz {
-  position: absolute; right: .35rem; top: .35rem;
-  border-radius: 50%; width: 2.2rem; height: 2.2rem; padding: 0;
+  position: absolute; right: .45rem; top: 50%; transform: translateY(-50%);
+  width: 2rem; height: 2rem; padding: 0; border: 0; border-radius: 50%;
+  background: rgba(46,125,50,.1); color: var(--verde-claro);
   display: none; /* exibido via JS se o navegador suportar */
+  align-items: center; justify-content: center;
+  font-size: .95rem; line-height: 1;
+  transition: background-color .15s ease, color .15s ease, box-shadow .15s ease;
 }
-.campo-voz .btn-voz.gravando { background: #dc3545; border-color: #dc3545; color: #fff; animation: pulso 1s infinite; }
-@keyframes pulso { 50% { box-shadow: 0 0 0 6px rgba(220,53,69,.25); } }
+.campo-voz .btn-voz:hover { background: var(--verde-claro); color: #fff; }
+.campo-voz .btn-voz:focus-visible { outline: 0; box-shadow: 0 0 0 3px rgba(46,125,50,.25); }
+/* Em textarea o botão fica no canto superior (não briga com a alça de redimensionar) */
+.campo-voz textarea + .btn-voz { top: .5rem; transform: none; }
+.campo-voz .btn-voz.gravando {
+  background: #dc3545; color: #fff;
+  animation: pulso-voz 1.2s ease-out infinite;
+}
+@keyframes pulso-voz {
+  0%   { box-shadow: 0 0 0 0 rgba(220,53,69,.45); }
+  100% { box-shadow: 0 0 0 10px rgba(220,53,69,0); }
+}
 
 /* ---------- Wizard de visita ---------- */
 .etapas .nav-link { font-size: .9rem; }
