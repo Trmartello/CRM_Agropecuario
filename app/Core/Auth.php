@@ -7,11 +7,23 @@ namespace App\Core;
  */
 class Auth
 {
+    /** Dias de validade do login persistente (cookie + token no banco). */
+    private const DIAS_LEMBRAR = 30;
+    private const COOKIE_LEMBRAR = 'crm_lembrar';
+
     public static function iniciarSessao(): void
     {
         if (session_status() === PHP_SESSION_NONE) {
-            session_set_cookie_params(['httponly' => true, 'samesite' => 'Lax']);
+            session_set_cookie_params([
+                'lifetime' => self::DIAS_LEMBRAR * 86400,
+                'httponly' => true,
+                'samesite' => 'Lax',
+            ]);
             session_start();
+        }
+        // Sessão perdida (ex.: deploy recriou o container)? Restaura pelo token do banco.
+        if (!self::logado() && isset($_COOKIE[self::COOKIE_LEMBRAR])) {
+            self::restaurarPeloToken($_COOKIE[self::COOKIE_LEMBRAR]);
         }
     }
 
@@ -25,19 +37,68 @@ class Auth
             return false;
         }
         session_regenerate_id(true);
+        self::gravarSessao($usuario);
+        self::criarTokenPersistente((int) $usuario['id']);
+        return true;
+    }
+
+    public static function sair(): void
+    {
+        if (isset($_COOKIE[self::COOKIE_LEMBRAR])) {
+            Database::executar(
+                'DELETE FROM sessoes_persistentes WHERE token_hash = ?',
+                [hash('sha256', $_COOKIE[self::COOKIE_LEMBRAR])]
+            );
+            setcookie(self::COOKIE_LEMBRAR, '', time() - 3600, '/', '', false, true);
+        }
+        $_SESSION = [];
+        session_destroy();
+    }
+
+    private static function gravarSessao(array $usuario): void
+    {
         $_SESSION['usuario'] = [
             'id' => (int) $usuario['id'],
             'nome' => $usuario['nome'],
             'email' => $usuario['email'],
             'perfil' => $usuario['perfil'],
         ];
-        return true;
     }
 
-    public static function sair(): void
+    private static function criarTokenPersistente(int $usuarioId): void
     {
-        $_SESSION = [];
-        session_destroy();
+        $token = bin2hex(random_bytes(32));
+        Database::executar(
+            'INSERT INTO sessoes_persistentes (usuario_id, token_hash, expira_em)
+             VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? DAY))',
+            [$usuarioId, hash('sha256', $token), self::DIAS_LEMBRAR]
+        );
+        // Limpeza oportunista de tokens vencidos
+        Database::executar('DELETE FROM sessoes_persistentes WHERE expira_em < NOW()');
+        setcookie(self::COOKIE_LEMBRAR, $token, [
+            'expires' => time() + self::DIAS_LEMBRAR * 86400,
+            'path' => '/',
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+    }
+
+    private static function restaurarPeloToken(string $token): void
+    {
+        try {
+            $usuario = Database::um(
+                'SELECT u.* FROM sessoes_persistentes sp
+                   JOIN usuarios u ON u.id = sp.usuario_id
+                  WHERE sp.token_hash = ? AND sp.expira_em > NOW() AND u.ativo = 1',
+                [hash('sha256', $token)]
+            );
+        } catch (\PDOException $e) {
+            return; // tabela ainda não migrada — segue sem restaurar
+        }
+        if ($usuario) {
+            session_regenerate_id(true);
+            self::gravarSessao($usuario);
+        }
     }
 
     public static function usuario(): ?array

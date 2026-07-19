@@ -70,6 +70,16 @@ class Instalador
                atualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
              ) ENGINE=InnoDB'
         );
+        Database::executar(
+            'CREATE TABLE IF NOT EXISTS sessoes_persistentes (
+               id INT AUTO_INCREMENT PRIMARY KEY,
+               usuario_id INT NOT NULL,
+               token_hash CHAR(64) NOT NULL UNIQUE,
+               expira_em DATETIME NOT NULL,
+               criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+               FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
+             ) ENGINE=InnoDB'
+        );
         // Amplia a coluna em bancos criados antes (imagens em base64 exigem MEDIUMTEXT)
         $tipo = Database::valor(
             "SELECT DATA_TYPE FROM information_schema.COLUMNS
