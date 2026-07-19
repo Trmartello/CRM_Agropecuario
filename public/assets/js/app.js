@@ -642,6 +642,18 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Tooltips dos itens do menu — só aparecem com o menu recolhido (apenas ícones)
+  if (window.bootstrap) {
+    document.querySelectorAll('#sidebar [title]').forEach(el => {
+      new bootstrap.Tooltip(el, { placement: 'right', trigger: 'hover', container: 'body' });
+      el.addEventListener('show.bs.tooltip', ev => {
+        if (!document.body.classList.contains('menu-recolhido') || window.innerWidth < 992) {
+          ev.preventDefault();
+        }
+      });
+    });
+  }
+
   // Menu lateral no celular
   const btnMenu = document.getElementById('btnMenu');
   if (btnMenu) {

@@ -71,7 +71,7 @@ $logoRaio = (int) ConfigService::obter('logo_borda_raio', '10');
       ?>
       <?php foreach ($menu as [$rota, $icone, $rotulo]): ?>
       <li class="nav-item">
-        <a href="<?= url($rota) ?>" class="nav-link <?= str_starts_with($rotaAtual, explode('/', $rota)[0]) && (explode('/', $rotaAtual)[0] === explode('/', $rota)[0]) ? 'active' : 'text-white' ?>">
+        <a href="<?= url($rota) ?>" title="<?= e($rotulo) ?>" class="nav-link <?= str_starts_with($rotaAtual, explode('/', $rota)[0]) && (explode('/', $rotaAtual)[0] === explode('/', $rota)[0]) ? 'active' : 'text-white' ?>">
           <i class="bi <?= $icone ?> me-2"></i><span class="rotulo"><?= $rotulo ?></span>
         </a>
       </li>
