@@ -47,6 +47,17 @@ const App = {
     return (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   },
 
+  /** Escapa texto para inserção segura via innerHTML. */
+  escapeHtml(v) {
+    return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  },
+
+  /** Aceita apenas links internos (index.php…); descarta esquemas perigosos como javascript:. */
+  linkSeguro(v) {
+    const s = String(v || '');
+    return /^(index\.php|\?|#|\/|uploads\/)/.test(s) ? s : '#';
+  },
+
   /** Renderiza miniaturas das fotos/PDFs escolhidos em um input múltiplo. */
   previewFotosGrid(input, gridId) {
     const grid = document.getElementById(gridId);
@@ -86,6 +97,7 @@ const App = {
         indexAxis: 'y',
         plugins: {
           legend: { display: false },
+          rotuloDados: { formatter: v => v + '%', color: '#1b5e20' },
           tooltip: { callbacks: { label: ctx => {
             const d = dados[ctx.dataIndex];
             return `${d.percentual}% — ${App.moeda(d.realizado)} de ${App.moeda(d.valor_potencial)}`;
@@ -176,11 +188,11 @@ const Notificacoes = {
     const itens = Notificacoes._itens || [];
     if (!itens.length) { alvo.innerHTML = '<div class="text-muted small text-center py-3">Sem notificações.</div>'; return; }
     alvo.innerHTML = itens.map(n => `
-      <a class="dropdown-item d-flex gap-2 py-2 ${n.lida == 0 ? 'bg-success-subtle' : ''}" href="${n.link || '#'}"
-         onclick="Notificacoes.ler(${n.id})">
+      <a class="dropdown-item d-flex gap-2 py-2 ${n.lida == 0 ? 'bg-success-subtle' : ''}" href="${App.escapeHtml(App.linkSeguro(n.link))}"
+         onclick="Notificacoes.ler(${Number(n.id)})">
         <i class="bi bi-dot fs-4 ${n.lida == 0 ? 'text-success' : 'text-muted'}"></i>
-        <div style="white-space:normal"><div class="fw-semibold small">${n.titulo}</div>
-          <div class="small text-muted">${n.texto || ''}</div></div>
+        <div style="white-space:normal"><div class="fw-semibold small">${App.escapeHtml(n.titulo)}</div>
+          <div class="small text-muted">${App.escapeHtml(n.texto || '')}</div></div>
       </a>`).join('');
   },
 
@@ -625,6 +637,10 @@ const Potencial = {
     Potencial.carregar();
   },
 
+  _dados: [],
+  _ordCol: null,
+  _ordDir: 'desc',
+
   async carregar() {
     const familia = document.getElementById('filtroFamilia').value;
     const ordem = document.getElementById('filtroOrdem').value;
@@ -632,9 +648,40 @@ const Potencial = {
       const { ranking } = await App.json(
         `index.php?r=relatorios/potencial-dados&dimensao=${Potencial.dimensao}&ordem=${ordem}&familia_id=${familia}`
       );
-      Potencial.renderTabela(ranking);
-      Potencial.renderGrafico(ranking);
+      Potencial._dados = ranking;
+      Potencial._ordCol = null; // volta a respeitar a ordem do servidor
+      Potencial.aplicar();
     } catch (e) { App.alerta(e.message, 'danger'); }
+  },
+
+  /** Aplica busca textual + ordenação de coluna (client-side) sobre os dados carregados. */
+  aplicar() {
+    const termo = (document.getElementById('filtroBusca').value || '').toLowerCase();
+    let lista = Potencial._dados.filter(r => String(r.dimensao).toLowerCase().includes(termo));
+    if (Potencial._ordCol) {
+      const col = Potencial._ordCol, dir = Potencial._ordDir === 'asc' ? 1 : -1;
+      lista = lista.slice().sort((a, b) => {
+        const va = col === 'dimensao' ? String(a.dimensao).toLowerCase() : Number(a[col]);
+        const vb = col === 'dimensao' ? String(b.dimensao).toLowerCase() : Number(b[col]);
+        return va < vb ? -1 * dir : (va > vb ? dir : 0);
+      });
+    }
+    Potencial.renderTabela(lista);
+    Potencial.renderGrafico(lista);
+  },
+
+  ordenarPor(col) {
+    if (Potencial._ordCol === col) {
+      Potencial._ordDir = Potencial._ordDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      Potencial._ordCol = col;
+      Potencial._ordDir = col === 'dimensao' ? 'asc' : 'desc';
+    }
+    document.querySelectorAll('#tabelaRankingHead th[data-col]').forEach(th => {
+      const ic = th.querySelector('.bi');
+      if (ic) ic.className = 'bi ' + (th.dataset.col === col ? (Potencial._ordDir === 'asc' ? 'bi-sort-up' : 'bi-sort-down') : 'bi-arrow-down-up') + ' ms-1 small';
+    });
+    Potencial.aplicar();
   },
 
   renderTabela(ranking) {
@@ -669,7 +716,7 @@ const Potencial = {
       },
       options: {
         indexAxis: 'y',
-        plugins: { legend: { display: false } },
+        plugins: { legend: { display: false }, rotuloDados: { formatter: v => v + '%', color: '#1b5e20' } },
         scales: { x: { ticks: { callback: v => v + '%' } } },
       },
     });
@@ -713,6 +760,38 @@ const Usuarios = {
 };
 
 /* ============================== INICIALIZAÇÃO ============================== */
+
+// Plugin global de rótulos de dados: mostra o valor em barras e pontos de todos os gráficos.
+if (typeof Chart !== 'undefined') {
+  Chart.register({
+    id: 'rotuloDados',
+    afterDatasetsDraw(chart) {
+      const cfg = chart.options.plugins && chart.options.plugins.rotuloDados;
+      if (cfg === false) return;
+      const fmt = (cfg && cfg.formatter) || (v => (typeof v === 'number' ? v.toLocaleString('pt-BR') : v));
+      const ctx = chart.ctx;
+      ctx.save();
+      ctx.font = '600 11px sans-serif';
+      ctx.fillStyle = (cfg && cfg.color) || '#333';
+      chart.data.datasets.forEach((ds, di) => {
+        const meta = chart.getDatasetMeta(di);
+        if (meta.hidden) return;
+        meta.data.forEach((el, i) => {
+          const raw = ds.data[i];
+          if (raw === null || raw === undefined || raw === 0) return;
+          const txt = fmt(raw, ds, i);
+          const horizontal = chart.options.indexAxis === 'y';
+          ctx.textAlign = horizontal ? 'left' : 'center';
+          ctx.textBaseline = horizontal ? 'middle' : 'bottom';
+          const x = horizontal ? el.x + 6 : el.x;
+          const y = horizontal ? el.y : el.y - 4;
+          ctx.fillText(txt, x, y);
+        });
+      });
+      ctx.restore();
+    },
+  });
+}
 
 document.addEventListener('DOMContentLoaded', () => {
   Voz.iniciar();

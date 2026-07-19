@@ -142,6 +142,16 @@ class PedidoService
             );
         }
         Database::executar("UPDATE pedidos SET status = 'Faturado' WHERE id = ?", [$pedidoId]);
+
+        // Notifica o vendedor responsável e o produtor (se tiver usuário no portal)
+        $cliente = Database::valor('SELECT nome FROM clientes WHERE id = ?', [(int) $pedido['cliente_id']]);
+        NotificacaoService::criar((int) $pedido['usuario_id'], 'pedido', 'Pedido faturado',
+            'Pedido #' . $pedidoId . ' de ' . $cliente . ' faturado (' . moeda($pedido['valor_total']) . ').', 'index.php?r=pedidos');
+        $produtorUid = (int) Database::valor('SELECT id FROM usuarios WHERE cliente_id = ? AND perfil = "Produtor"', [(int) $pedido['cliente_id']]);
+        if ($produtorUid) {
+            NotificacaoService::criar($produtorUid, 'pedido', 'Seu pedido foi faturado',
+                'Pedido #' . $pedidoId . ' — ' . moeda($pedido['valor_total']), 'index.php?r=portal');
+        }
     }
 
     /** Catálogo para o modal de pedido: produtos com estoque, preço e promoção vigente. */

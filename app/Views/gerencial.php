@@ -31,7 +31,7 @@
       <div class="card-header"><i class="bi bi-bar-chart me-2 text-success"></i><strong>Vendas por família (mês)</strong></div>
       <div class="card-body">
         <?php if (!$porFamilia): ?><span class="text-muted small">Sem vendas no mês.</span>
-        <?php else: ?><canvas id="chartFamilia" height="180" data-familia='<?= json_encode($porFamilia, JSON_UNESCAPED_UNICODE) ?>'></canvas><?php endif; ?>
+        <?php else: ?><canvas id="chartFamilia" height="180" data-familia='<?= json_attr($porFamilia) ?>'></canvas><?php endif; ?>
       </div>
     </div>
     <div class="card">
@@ -71,7 +71,7 @@
     new Chart(cv, {
       type: 'bar',
       data: { labels: dados.map(d => d.familia), datasets: [{ data: dados.map(d => Number(d.total)), backgroundColor: '#2e7d32', borderRadius: 6 }] },
-      options: { indexAxis: 'y', plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => App.moeda(c.raw) } } }, scales: { x: { ticks: { callback: v => 'R$ ' + (v/1000) + 'k' } } } },
+      options: { indexAxis: 'y', plugins: { legend: { display: false }, rotuloDados: { formatter: v => 'R$ ' + Math.round(v/1000) + 'k', color: '#1b5e20' }, tooltip: { callbacks: { label: c => App.moeda(c.raw) } } }, scales: { x: { ticks: { callback: v => 'R$ ' + (v/1000) + 'k' } } } },
     });
   }
 })();

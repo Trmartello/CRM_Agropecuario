@@ -144,6 +144,17 @@ class VisitasController
         // Amarra automaticamente a quilometragem do dia (mesmo técnico/produtor) a esta visita
         \App\Services\DespesaService::vincularVisitaPorEvento($visitaId, Auth::id(), $clienteId, $data);
 
+        // Notifica o produtor (portal) quando há recomendação técnica nova
+        if (trim($_POST['recomendacao'] ?? '') !== '') {
+            $produtorUid = (int) Database::valor(
+                'SELECT id FROM usuarios WHERE cliente_id = ? AND perfil = "Produtor"', [$clienteId]
+            );
+            if ($produtorUid) {
+                \App\Services\NotificacaoService::criar($produtorUid, 'recomendacao',
+                    'Nova recomendação técnica', 'Seu consultor registrou uma recomendação na visita de ' . data_br($data) . '.', 'index.php?r=portal');
+            }
+        }
+
         json_ok(['id' => $visitaId]);
     }
 

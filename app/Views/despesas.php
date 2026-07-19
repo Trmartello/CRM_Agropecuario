@@ -317,7 +317,7 @@ $statusCor = ['Aberta'=>'secondary','Enviada'=>'info','Aprovada'=>'success','Rej
 <div class="modal fade" id="modalRefeicao" tabindex="-1">
   <div class="modal-dialog modal-fullscreen-sm-down">
     <form class="modal-content" id="formRefeicao" onsubmit="return Despesas.salvarRefeicao(event)" enctype="multipart/form-data"
-          data-valores='<?= json_encode($valoresRefeicao, JSON_UNESCAPED_UNICODE) ?>'>
+          data-valores='<?= json_attr($valoresRefeicao) ?>'>
       <div class="modal-header"><h5 class="modal-title"><i class="bi bi-cup-hot me-2 text-success"></i>Lançar Refeição</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">

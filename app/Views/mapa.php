@@ -9,10 +9,10 @@
       <?php if (!$comGeo): ?>
         <p class="text-muted text-center py-5">Nenhum cliente com coordenadas cadastradas. Capture a localização no cadastro/visita.</p>
       <?php else: ?>
-        <canvas id="mapaCanvas" height="360" data-pontos='<?= json_encode(array_map(fn($c) => [
+        <canvas id="mapaCanvas" height="360" data-pontos='<?= json_attr(array_map(fn($c) => [
           'id' => (int)$c['id'], 'nome' => $c['nome'], 'lat' => (float)$c['latitude'], 'lng' => (float)$c['longitude'],
           'nivel' => $c['nivel_tecnologico'], 'prospecto' => (int)$c['prospecto'],
-        ], $comGeo), JSON_UNESCAPED_UNICODE) ?>'></canvas>
+        ], $comGeo)) ?>'></canvas>
         <div class="small text-muted mt-2"><i class="bi bi-info-circle me-1"></i>Distribuição aproximada por coordenadas (sem mapa online — pensado para uso em campo).</div>
       <?php endif; ?>
     </div></div>

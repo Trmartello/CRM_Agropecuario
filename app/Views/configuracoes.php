@@ -109,7 +109,7 @@
                 </td>
                 <td><span class="badge text-bg-<?= $c['ativo'] ? 'success' : 'secondary' ?>"><?= $c['ativo'] ? 'Ativa' : 'Inativa' ?></span></td>
                 <td class="text-end"><?= (int)$c['qtd_usuarios'] ?></td>
-                <td class="text-end"><button class="btn btn-sm btn-outline-secondary" onclick='Config.editarCategoria(<?= json_encode($c, JSON_UNESCAPED_UNICODE) ?>)'><i class="bi bi-pencil"></i></button></td>
+                <td class="text-end"><button class="btn btn-sm btn-outline-secondary" onclick='Config.editarCategoria(<?= json_attr($c) ?>)'><i class="bi bi-pencil"></i></button></td>
               </tr>
               <?php endforeach; ?>
               <?php if (!$categoriasReembolso): ?><tr><td colspan="6" class="text-muted text-center py-3">Nenhuma categoria cadastrada.</td></tr><?php endif; ?>

@@ -9,6 +9,16 @@ function e(?string $valor): string
     return htmlspecialchars($valor ?? '', ENT_QUOTES, 'UTF-8');
 }
 
+/** JSON seguro para embutir em atributo HTML (onclick/data-*) — evita quebra de aspas e injeção de tags. */
+function json_attr(mixed $valor): string
+{
+    return htmlspecialchars(
+        (string) json_encode($valor, JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_TAG | JSON_HEX_AMP),
+        ENT_QUOTES,
+        'UTF-8'
+    );
+}
+
 /** Resposta JSON padronizada para as chamadas AJAX. */
 function json_resposta(array $dados, int $status = 200): never
 {

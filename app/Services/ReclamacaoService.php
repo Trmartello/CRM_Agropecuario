@@ -73,6 +73,14 @@ class ReclamacaoService
               WHERE id = ?',
             [$novoStatus, trim($parecer) ?: null, $valorIndenizacao, $id]
         );
+
+        // Notifica quem registrou a reclamação sobre a movimentação do laudo
+        $rec2 = Database::um('SELECT usuario_id, cliente_id FROM reclamacoes WHERE id = ?', [$id]);
+        if ($rec2 && $rec2['usuario_id']) {
+            $cli = Database::valor('SELECT nome FROM clientes WHERE id = ?', [(int) $rec2['cliente_id']]);
+            NotificacaoService::criar((int) $rec2['usuario_id'], 'reclamacao',
+                'Reclamação: ' . $novoStatus, 'Laudo de ' . $cli . ' foi para "' . $novoStatus . '".', 'index.php?r=reclamacoes');
+        }
     }
 
     /** Lista aplicando o filtro de carteira (gestor vê tudo; campo vê os próprios clientes). */

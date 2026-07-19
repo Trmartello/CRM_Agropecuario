@@ -19,7 +19,7 @@
             <span class="badge text-bg-<?= $u['ativo'] ? 'success' : 'secondary' ?>"><?= $u['ativo'] ? 'Ativo' : 'Inativo' ?></span>
           </td>
           <td class="text-end">
-            <button class="btn btn-sm btn-outline-secondary" onclick='Usuarios.editar(<?= json_encode($u, JSON_UNESCAPED_UNICODE) ?>)'><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-sm btn-outline-secondary" onclick='Usuarios.editar(<?= json_attr($u) ?>)'><i class="bi bi-pencil"></i></button>
           </td>
         </tr>
         <?php endforeach; ?>

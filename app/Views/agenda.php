@@ -70,7 +70,7 @@ $wa = function (?string $tel, string $texto): ?string {
     <?php if ($link): ?><a class="btn btn-sm btn-outline-success" href="<?= e($link) ?>" target="_blank" title="WhatsApp"><i class="bi bi-whatsapp"></i></a><?php endif; ?>
     <?php if ($e['status'] === 'Pendente'): ?>
     <button class="btn btn-sm btn-outline-success" title="Concluir" onclick="Agenda.status(<?= $e['id'] ?>,'Concluído')"><i class="bi bi-check-lg"></i></button>
-    <button class="btn btn-sm btn-outline-secondary" title="Editar" onclick='Agenda.editar(<?= json_encode($e, JSON_UNESCAPED_UNICODE) ?>)'><i class="bi bi-pencil"></i></button>
+    <button class="btn btn-sm btn-outline-secondary" title="Editar" onclick='Agenda.editar(<?= json_attr($e) ?>)'><i class="bi bi-pencil"></i></button>
     <?php endif; ?>
   </div>
   <?php endforeach; ?>

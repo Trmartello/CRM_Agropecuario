@@ -246,7 +246,7 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
       <div class="card-header py-2 d-flex justify-content-between align-items-center">
         <div><strong><?= e($p['nome']) ?></strong> <span class="text-muted small"><?= numero($p['area_ha'], 0) ?> ha · <?= e($p['municipio'] ?? '—') ?></span></div>
         <div class="btn-group">
-          <button class="btn btn-sm btn-outline-secondary" onclick='Clientes.editarPropriedade(<?= json_encode($p, JSON_UNESCAPED_UNICODE) ?>)'><i class="bi bi-pencil"></i></button>
+          <button class="btn btn-sm btn-outline-secondary" onclick='Clientes.editarPropriedade(<?= json_attr($p) ?>)'><i class="bi bi-pencil"></i></button>
           <button class="btn btn-sm btn-outline-success" onclick="Clientes.novoTalhao(<?= $p['id'] ?>)"><i class="bi bi-plus-lg"></i> Talhão</button>
         </div>
       </div>
@@ -256,7 +256,7 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
         <li class="list-group-item py-1 d-flex justify-content-between align-items-center">
           <span><i class="bi bi-grid-3x3-gap me-1 text-muted"></i><?= e($t['nome']) ?>
             <span class="text-muted small">· <?= numero($t['area_ha'], 0) ?> ha<?= $t['cultura'] ? ' · ' . e($t['cultura']) : '' ?></span></span>
-          <button class="btn btn-sm btn-outline-secondary" onclick='Clientes.editarTalhao(<?= json_encode($t, JSON_UNESCAPED_UNICODE) ?>)'><i class="bi bi-pencil"></i></button>
+          <button class="btn btn-sm btn-outline-secondary" onclick='Clientes.editarTalhao(<?= json_attr($t) ?>)'><i class="bi bi-pencil"></i></button>
         </li>
         <?php endforeach; ?>
       </ul>

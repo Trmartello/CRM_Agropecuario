@@ -23,6 +23,10 @@
         <option value="asc">Menor utilização primeiro</option>
       </select>
     </div>
+    <div class="flex-grow-1" style="min-width:180px">
+      <label class="form-label mb-1">Buscar</label>
+      <input type="search" id="filtroBusca" class="form-control" placeholder="Nome do produtor, município…" oninput="Potencial.aplicar()">
+    </div>
   </div>
 </div>
 
@@ -38,7 +42,13 @@
       <div class="card-header"><i class="bi bi-list-ol me-1 text-success"></i><strong>Ranking</strong></div>
       <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
-          <thead class="table-light"><tr><th>#</th><th>Dimensão</th><th class="text-end">Potencial</th><th class="text-end">Realizado</th><th class="text-end">%</th></tr></thead>
+          <thead class="table-light" id="tabelaRankingHead"><tr>
+            <th>#</th>
+            <th role="button" data-col="dimensao" onclick="Potencial.ordenarPor('dimensao')">Dimensão <i class="bi bi-arrow-down-up ms-1 small"></i></th>
+            <th role="button" class="text-end" data-col="potencial" onclick="Potencial.ordenarPor('potencial')">Potencial <i class="bi bi-arrow-down-up ms-1 small"></i></th>
+            <th role="button" class="text-end" data-col="realizado" onclick="Potencial.ordenarPor('realizado')">Realizado <i class="bi bi-arrow-down-up ms-1 small"></i></th>
+            <th role="button" class="text-end" data-col="percentual" onclick="Potencial.ordenarPor('percentual')">% <i class="bi bi-arrow-down-up ms-1 small"></i></th>
+          </tr></thead>
           <tbody id="tabelaRanking">
             <tr><td colspan="5" class="text-center text-muted py-4">Carregando…</td></tr>
           </tbody>
