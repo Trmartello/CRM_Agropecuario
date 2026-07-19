@@ -64,18 +64,24 @@ class ConfigService
         ) ?: '');
     }
 
-    /** URL da logo do aplicativo (personalizada no banco ou padrão para fundo claro). */
+    /**
+     * URL única da logo do sistema: a personalizada (banco) ou a padrão.
+     * Sempre versionada — o cache do navegador nunca serve versão antiga.
+     */
     public static function logoAplicacao(): string
     {
         $v = self::versaoImagem('logo_aplicacao');
-        return $v !== '' ? 'index.php?r=arquivo/logo&v=' . $v : 'assets/img/logo-coperdia.svg';
+        if ($v !== '') {
+            return 'index.php?r=arquivo/logo&v=' . $v;
+        }
+        $padrao = dirname(__DIR__, 2) . '/public/assets/img/logo-coperdia-clara.svg';
+        return 'assets/img/logo-coperdia-clara.svg?v=' . (is_file($padrao) ? filemtime($padrao) : 1);
     }
 
-    /** Logo para o menu lateral (fundo escuro): personalizada ou padrão clara. */
+    /** Mantida por compatibilidade — mesma logo única do sistema. */
     public static function logoMenu(): string
     {
-        $v = self::versaoImagem('logo_aplicacao');
-        return $v !== '' ? 'index.php?r=arquivo/logo&v=' . $v : 'assets/img/logo-coperdia-clara.svg';
+        return self::logoAplicacao();
     }
 
     /** URL do ícone da aba do navegador (personalizado no banco ou padrão). */
