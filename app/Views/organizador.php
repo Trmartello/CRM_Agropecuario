@@ -65,9 +65,9 @@ $diaBr = data_br($data);
           <span class="input-group-text"><i class="bi bi-search"></i></span>
           <input type="search" id="buscaProdutor" class="form-control" placeholder="Buscar produtor por nome…" oninput="Organizador.buscar()">
         </div>
-        <div class="row g-2">
+        <div class="row g-2" data-linhas-por-municipio='<?= json_attr($linhasPorMunicipio) ?>'>
           <div class="col-6">
-            <select id="filtroMunicipio" class="form-select form-select-sm" onchange="Organizador.buscar()">
+            <select id="filtroMunicipio" class="form-select form-select-sm" onchange="Organizador.municipioMudou()">
               <option value="">Todos os municípios</option>
               <?php foreach ($municipios as $m): ?><option value="<?= e($m) ?>"><?= e($m) ?></option><?php endforeach; ?>
             </select>
@@ -146,6 +146,18 @@ const Organizador = {
         : 'Poucas paradas com localização para otimizar.', r.otimizadas > 1 ? 'success' : 'info');
       setTimeout(() => location.reload(), 900);
     } catch (e) { App.alerta(e.message, 'danger'); }
+  },
+
+  /** Ao trocar o município, mostra só as linhas daquele município. */
+  municipioMudou() {
+    const mun = document.getElementById('filtroMunicipio').value;
+    const selLinha = document.getElementById('filtroLinha');
+    const mapa = JSON.parse(document.querySelector('[data-linhas-por-municipio]').dataset.linhasPorMunicipio || '{}');
+    const todas = Object.values(mapa).flat();
+    const linhas = mun ? (mapa[mun] || []) : [...new Set(todas)].sort();
+    selLinha.innerHTML = '<option value="">Todas as linhas</option>' +
+      linhas.map(l => `<option value="${App.escapeHtml(l)}">${App.escapeHtml(l)}</option>`).join('');
+    Organizador.buscar();
   },
 
   _t: null,

@@ -376,19 +376,29 @@ class AgendaService
     public static function locaisCarteira(): array
     {
         [$filtro, $params] = Permissoes::filtroCarteira();
-        $municipios = Database::todos(
-            "SELECT DISTINCT municipio FROM clientes c WHERE c.ativo = 1 AND {$filtro} AND municipio IS NOT NULL AND municipio <> '' ORDER BY municipio",
+        $pares = Database::todos(
+            "SELECT DISTINCT municipio, linha FROM clientes c
+              WHERE c.ativo = 1 AND {$filtro} AND municipio IS NOT NULL AND municipio <> ''
+              ORDER BY municipio, linha",
             $params
         );
-        [$filtro2, $params2] = Permissoes::filtroCarteira();
-        $linhas = Database::todos(
-            "SELECT DISTINCT linha FROM clientes c WHERE c.ativo = 1 AND {$filtro2} AND linha IS NOT NULL AND linha <> '' ORDER BY linha",
-            $params2
-        );
-        return [
-            'municipios' => array_map(fn ($r) => $r['municipio'], $municipios),
-            'linhas' => array_map(fn ($r) => $r['linha'], $linhas),
-        ];
+        $municipios = [];
+        $linhas = [];
+        $porMunicipio = []; // município => [linhas]
+        foreach ($pares as $p) {
+            $mun = $p['municipio'];
+            if (!in_array($mun, $municipios, true)) {
+                $municipios[] = $mun;
+            }
+            if (!empty($p['linha'])) {
+                if (!in_array($p['linha'], $linhas, true)) {
+                    $linhas[] = $p['linha'];
+                }
+                $porMunicipio[$mun][] = $p['linha'];
+            }
+        }
+        sort($linhas);
+        return ['municipios' => $municipios, 'linhas' => $linhas, 'porMunicipio' => $porMunicipio];
     }
 
     /** Distância aproximada (Haversine, km). */

@@ -91,6 +91,7 @@ class AgendaController
             'kmRoteiro' => AgendaService::distanciaRoteiro($data, Auth::id()),
             'municipios' => $locais['municipios'],
             'linhas' => $locais['linhas'],
+            'linhasPorMunicipio' => $locais['porMunicipio'],
             'titulo' => 'Organizador de Visitas',
         ]);
     }
