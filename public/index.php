@@ -71,6 +71,9 @@ $router->registrar('clientes/ficha', ClientesController::class, 'ficha');
 $router->registrar('clientes/salvar-propriedade', ClientesController::class, 'salvarPropriedade');
 $router->registrar('clientes/salvar-talhao', ClientesController::class, 'salvarTalhao');
 $router->registrar('clientes/salvar-plano-safra', ClientesController::class, 'salvarPlanoSafra');
+$router->registrar('clientes/salvar-documento', ClientesController::class, 'salvarDocumento');
+$router->registrar('clientes/baixar-documento', ClientesController::class, 'baixarDocumento');
+$router->registrar('clientes/excluir-documento', ClientesController::class, 'excluirDocumento');
 
 // Visitas
 $router->registrar('visitas', VisitasController::class, 'index');

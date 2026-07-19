@@ -156,11 +156,113 @@ class ClientesController
         unset($h);
 
         $culturas = Database::todos('SELECT * FROM culturas ORDER BY nome');
+        $documentos = Database::todos(
+            'SELECT d.*, u.nome AS enviado_por FROM documentos d
+               LEFT JOIN usuarios u ON u.id = d.usuario_id
+              WHERE d.cliente_id = ? ORDER BY d.criado_em DESC',
+            [$id]
+        );
 
         render_parcial('partials/cliente_ficha', compact(
             'cliente', 'propriedades', 'contatos', 'painel', 'potencial',
-            'demandaPlano', 'planos', 'historico', 'historicoCompras', 'culturas'
+            'demandaPlano', 'planos', 'historico', 'historicoCompras', 'culturas', 'documentos'
         ));
+    }
+
+    /** Tipos de documento e extensões aceitas na gestão documental. */
+    private const DOC_EXT = ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'heic', 'doc', 'docx', 'xls', 'xlsx'];
+    private const DOC_TIPOS = ['Foto', 'Laudo', 'Receita', 'Contrato', 'Nota fiscal', 'PDF', 'Outro'];
+
+    /** Anexa um documento ao produtor (upload multipart). */
+    public function salvarDocumento(): void
+    {
+        Permissoes::exigirInterno();
+        $clienteId = (int) ($_POST['cliente_id'] ?? 0);
+        $this->clienteDaCarteira($clienteId);
+
+        if (empty($_FILES['arquivo']['name'] ?? null) || !is_uploaded_file($_FILES['arquivo']['tmp_name'] ?? '')) {
+            json_erro('Selecione um arquivo.');
+        }
+        if (($_FILES['arquivo']['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
+            json_erro('Falha no envio do arquivo (verifique o tamanho).');
+        }
+        $ext = strtolower(pathinfo($_FILES['arquivo']['name'], PATHINFO_EXTENSION));
+        if (!in_array($ext, self::DOC_EXT, true)) {
+            json_erro('Tipo de arquivo não permitido. Aceitos: ' . implode(', ', self::DOC_EXT) . '.');
+        }
+        $tipo = $_POST['tipo'] ?? 'Outro';
+        if (!in_array($tipo, self::DOC_TIPOS, true)) {
+            $tipo = 'Outro';
+        }
+        $nome = trim($_POST['nome'] ?? '') ?: pathinfo($_FILES['arquivo']['name'], PATHINFO_FILENAME);
+
+        $dir = dirname(__DIR__, 2) . '/public/uploads/documentos';
+        if (!is_dir($dir)) {
+            mkdir($dir, 0775, true);
+        }
+        $arquivo = sprintf('doc_%d_%s.%s', $clienteId, bin2hex(random_bytes(8)), $ext);
+        if (!move_uploaded_file($_FILES['arquivo']['tmp_name'], $dir . '/' . $arquivo)) {
+            json_erro('Não foi possível salvar o arquivo.');
+        }
+        Database::executar(
+            'INSERT INTO documentos (cliente_id, usuario_id, tipo, nome, arquivo, mime, tamanho) VALUES (?,?,?,?,?,?,?)',
+            [
+                $clienteId,
+                Auth::id(),
+                $tipo,
+                mb_substr($nome, 0, 160),
+                $arquivo,
+                $_FILES['arquivo']['type'] ?? null,
+                (int) ($_FILES['arquivo']['size'] ?? 0),
+            ]
+        );
+        json_ok(['id' => Database::ultimoId()]);
+    }
+
+    /** Baixa um documento (autenticado, restrito à carteira do usuário). */
+    public function baixarDocumento(): void
+    {
+        Permissoes::exigirInterno();
+        $doc = $this->documentoDaCarteira((int) ($_GET['id'] ?? 0));
+        $caminho = dirname(__DIR__, 2) . '/public/uploads/documentos/' . basename($doc['arquivo']);
+        if (!is_file($caminho)) {
+            http_response_code(404);
+            echo 'Arquivo não encontrado.';
+            return;
+        }
+        $ext = strtolower(pathinfo($doc['arquivo'], PATHINFO_EXTENSION));
+        header('Content-Type: ' . ($doc['mime'] ?: 'application/octet-stream'));
+        header('Content-Disposition: inline; filename="' . rawurlencode($doc['nome']) . '.' . $ext . '"');
+        header('Content-Length: ' . filesize($caminho));
+        header('X-Content-Type-Options: nosniff');
+        readfile($caminho);
+    }
+
+    public function excluirDocumento(): void
+    {
+        Permissoes::exigirInterno();
+        $doc = $this->documentoDaCarteira((int) ($_POST['id'] ?? 0));
+        $caminho = dirname(__DIR__, 2) . '/public/uploads/documentos/' . basename($doc['arquivo']);
+        if (is_file($caminho)) {
+            @unlink($caminho);
+        }
+        Database::executar('DELETE FROM documentos WHERE id = ?', [(int) $doc['id']]);
+        json_ok();
+    }
+
+    /** Carrega o documento garantindo que o cliente está na carteira do usuário. */
+    private function documentoDaCarteira(int $id): array
+    {
+        [$filtro, $params] = Permissoes::filtroCarteira();
+        $doc = Database::um(
+            "SELECT d.* FROM documentos d JOIN clientes c ON c.id = d.cliente_id
+              WHERE d.id = ? AND {$filtro}",
+            array_merge([$id], $params)
+        );
+        if (!$doc) {
+            json_erro('Documento não encontrado na sua carteira.', 404);
+        }
+        return $doc;
     }
 
     /** Salva propriedade (modal AJAX). */

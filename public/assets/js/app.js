@@ -184,6 +184,27 @@ const Clientes = {
     App.graficoPotencialCliente();
   },
 
+  async salvarDocumento(ev) {
+    ev.preventDefault();
+    try {
+      await App.enviarForm(ev.target, 'index.php?r=clientes/salvar-documento');
+      App.alerta('Documento anexado.');
+      Clientes.ficha(Number(ev.target.querySelector('[name=cliente_id]').value));
+    } catch (e) { App.alerta(e.message, 'danger'); }
+    return false;
+  },
+
+  async excluirDocumento(id, clienteId) {
+    if (!confirm('Excluir este documento?')) return;
+    try {
+      const fd = new FormData();
+      fd.append('id', id);
+      await App.json('index.php?r=clientes/excluir-documento', { method: 'POST', body: fd });
+      App.alerta('Documento excluído.');
+      Clientes.ficha(clienteId);
+    } catch (e) { App.alerta(e.message, 'danger'); }
+  },
+
   novaPropriedade(clienteId) {
     const form = document.getElementById('formPropriedade');
     form.reset();

@@ -35,6 +35,7 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
   <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#abaCredito"><i class="bi bi-cash-coin me-1"></i>Crédito</button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#abaPropriedades"><i class="bi bi-house me-1"></i>Propriedades</button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#abaHistorico"><i class="bi bi-clock-history me-1"></i>Histórico</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#abaDocumentos"><i class="bi bi-folder2-open me-1"></i>Documentos</button></li>
 </ul>
 
 <div class="tab-content">
@@ -312,6 +313,49 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
             <?php endif; ?>
           </div>
         </div>
+      </div>
+      <?php endforeach; ?>
+    </div>
+  </div>
+
+  <!-- ABA: DOCUMENTOS -->
+  <div class="tab-pane fade" id="abaDocumentos">
+    <h6 class="text-success mb-2"><i class="bi bi-folder2-open me-1"></i>Documentos do produtor</h6>
+    <form class="row g-2 align-items-end mb-3" onsubmit="return Clientes.salvarDocumento(event)" enctype="multipart/form-data">
+      <input type="hidden" name="cliente_id" value="<?= (int)$cliente['id'] ?>">
+      <div class="col-6 col-md-3">
+        <label class="form-label small mb-0">Tipo</label>
+        <select name="tipo" class="form-select form-select-sm">
+          <?php foreach (['Foto','Laudo','Receita','Contrato','Nota fiscal','PDF','Outro'] as $t): ?><option><?= $t ?></option><?php endforeach; ?>
+        </select>
+      </div>
+      <div class="col-6 col-md-4">
+        <label class="form-label small mb-0">Nome/descrição</label>
+        <input name="nome" class="form-control form-control-sm" placeholder="opcional">
+      </div>
+      <div class="col-8 col-md-3">
+        <label class="form-label small mb-0">Arquivo</label>
+        <input type="file" name="arquivo" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx,.xls,.xlsx" required>
+      </div>
+      <div class="col-4 col-md-2">
+        <button class="btn btn-sm btn-success w-100"><i class="bi bi-upload me-1"></i>Anexar</button>
+      </div>
+    </form>
+
+    <?php if (!$documentos): ?><p class="text-muted small">Nenhum documento anexado.</p><?php endif; ?>
+    <div class="list-group">
+      <?php foreach ($documentos as $d): ?>
+      <div class="list-group-item d-flex justify-content-between align-items-center gap-2">
+        <div class="d-flex align-items-center gap-2 text-truncate">
+          <i class="bi <?= in_array(strtolower(pathinfo($d['arquivo'], PATHINFO_EXTENSION)), ['jpg','jpeg','png','webp','heic']) ? 'bi-image' : 'bi-file-earmark-text' ?> text-success fs-5"></i>
+          <div class="text-truncate">
+            <a href="<?= url('clientes/baixar-documento', ['id' => $d['id']]) ?>" target="_blank" class="fw-semibold text-decoration-none"><?= e($d['nome']) ?></a>
+            <div class="small text-muted"><span class="badge text-bg-light border text-dark"><?= e($d['tipo']) ?></span>
+              <?= data_br($d['criado_em']) ?><?= $d['enviado_por'] ? ' · ' . e($d['enviado_por']) : '' ?>
+              <?= $d['tamanho'] ? ' · ' . numero($d['tamanho'] / 1024) . ' KB' : '' ?></div>
+          </div>
+        </div>
+        <button class="btn btn-sm btn-outline-danger flex-shrink-0" title="Excluir" onclick="Clientes.excluirDocumento(<?= $d['id'] ?>, <?= (int)$cliente['id'] ?>)"><i class="bi bi-trash"></i></button>
       </div>
       <?php endforeach; ?>
     </div>
