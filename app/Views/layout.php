@@ -65,7 +65,6 @@ $logoRaio = (int) ConfigService::obter('logo_borda_raio', '10');
         }
         if (Auth::perfil() === 'Administrador') {
             $menu[] = ['usuarios', 'bi-person-gear', 'Usuários'];
-            $menu[] = ['configuracoes', 'bi-gear', 'Configurações'];
         }
       ?>
       <?php foreach ($menu as [$rota, $icone, $rotulo]): ?>
@@ -92,6 +91,12 @@ $logoRaio = (int) ConfigService::obter('logo_borda_raio', '10');
               title="Recolher/expandir o menu lateral" aria-label="Recolher menu">
         <i class="bi bi-layout-sidebar"></i>
       </button>
+      <?php if (Auth::perfil() === 'Administrador'): ?>
+      <a class="btn btn-light border <?= ($_GET['r'] ?? '') === 'configuracoes' ? 'active' : '' ?>"
+         href="<?= url('configuracoes') ?>" title="Configurações do sistema" aria-label="Configurações">
+        <i class="bi bi-gear"></i>
+      </a>
+      <?php endif; ?>
       <h1 class="h5 mb-0 flex-grow-1"><?= e($titulo ?? '') ?></h1>
       <span id="indicadorOffline" class="badge text-bg-warning d-none"><i class="bi bi-wifi-off me-1"></i>Offline</span>
       <span id="indicadorSync" class="badge text-bg-info d-none"><i class="bi bi-arrow-repeat me-1"></i>Sincronizando…</span>
