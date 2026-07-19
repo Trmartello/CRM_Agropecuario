@@ -143,6 +143,11 @@ $router->registrar('mapa', \App\Controllers\MapaController::class, 'index');
 // Portal do Produtor (Fase 4)
 $router->registrar('portal', \App\Controllers\PortalController::class, 'index');
 
+// Integração ERP/CAPE (Fase 5)
+$router->registrar('integracao', \App\Controllers\IntegracaoController::class, 'index');
+$router->registrar('integracao/salvar-config', \App\Controllers\IntegracaoController::class, 'salvarConfig');
+$router->registrar('integracao/sincronizar', \App\Controllers\IntegracaoController::class, 'sincronizar');
+
 // Relatórios
 $router->registrar('relatorios/potencial', RelatoriosController::class, 'potencial');
 $router->registrar('relatorios/potencial-dados', RelatoriosController::class, 'potencialDados');

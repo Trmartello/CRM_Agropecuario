@@ -78,6 +78,7 @@ $logoRaio = (int) ConfigService::obter('logo_borda_raio', '10');
             }
             if (Auth::perfil() === 'Administrador') {
                 $menu[] = ['usuarios', 'bi-person-gear', 'Usuários'];
+                $menu[] = ['integracao', 'bi-hdd-network', 'Integração'];
             }
         }
       ?>

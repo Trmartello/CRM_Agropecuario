@@ -141,6 +141,34 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '8'"
             );
         }
+        if ($versao < 9) {
+            self::migrarParaV9();
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '9')
+                 ON DUPLICATE KEY UPDATE valor = '9'"
+            );
+        }
+    }
+
+    /** Fase 5: log de integração (ERP/CAPE). */
+    private static function migrarParaV9(): void
+    {
+        if (!self::temTabela('integracao_log')) {
+            Database::executar(
+                'CREATE TABLE integracao_log (
+                   id INT AUTO_INCREMENT PRIMARY KEY,
+                   fonte VARCHAR(40) NOT NULL,
+                   entidade VARCHAR(60) NOT NULL,
+                   direcao ENUM("Importação","Exportação") NOT NULL DEFAULT "Importação",
+                   status ENUM("Sucesso","Parcial","Erro") NOT NULL DEFAULT "Sucesso",
+                   registros INT NOT NULL DEFAULT 0,
+                   mensagem VARCHAR(255),
+                   usuario_id INT NULL,
+                   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                   FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE SET NULL
+                 ) ENGINE=InnoDB'
+            );
+        }
     }
 
     /** Fase 4: agenda, notificações e vínculo do Produtor ao cliente (portal). */

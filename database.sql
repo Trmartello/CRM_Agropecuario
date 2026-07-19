@@ -11,7 +11,7 @@ USE crm_agropecuario;
 
 SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS sessoes_persistentes, configuracoes, auditoria,
-  notificacoes, agenda_eventos,
+  integracao_log, notificacoes, agenda_eventos,
   documentos, prestacao_contas, reclamacao_fotos, reembolso_refeicoes, refeicoes, quilometragem, veiculos, reclamacoes, categorias_reembolso,
   pacote_obrigatorios, pacote_categorias, pacotes_agricolas,
   entregas_futuras, promocoes, pedidos_itens, pedidos,
@@ -663,6 +663,23 @@ CREATE TABLE sessoes_persistentes (
   FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+-- ============================================================================
+-- FASE 5 — Integração (ERP/CAPE) e sincronização
+-- ============================================================================
+
+CREATE TABLE integracao_log (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  fonte VARCHAR(40) NOT NULL COMMENT 'ERP, CAPE, Local…',
+  entidade VARCHAR(60) NOT NULL,
+  direcao ENUM('Importação','Exportação') NOT NULL DEFAULT 'Importação',
+  status ENUM('Sucesso','Parcial','Erro') NOT NULL DEFAULT 'Sucesso',
+  registros INT NOT NULL DEFAULT 0,
+  mensagem VARCHAR(255),
+  usuario_id INT NULL,
+  criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
 CREATE TABLE configuracoes (
   chave VARCHAR(60) PRIMARY KEY,
   valor MEDIUMTEXT NOT NULL,
@@ -1106,5 +1123,5 @@ INSERT INTO notificacoes (usuario_id, tipo, titulo, texto, link) VALUES
 (5,'agenda','Visita agendada','Acompanhar florescimento — Berenice (22/07)','index.php?r=agenda'),
 (5,'churn','Risco de churn','Celso Casagrande com queda de 62% vs. safra anterior','index.php?r=clientes');
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','8')
-  ON DUPLICATE KEY UPDATE valor = '8';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','9')
+  ON DUPLICATE KEY UPDATE valor = '9';
