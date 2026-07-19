@@ -213,4 +213,4 @@ $ehGestor = in_array(Auth::perfil(), ['Administrador', 'Gestor Comercial'], true
   </div>
 </div>
 
-<script src="assets/js/pedidos.js"></script>
+<script src="assets/js/pedidos.js?v=<?= filemtime(dirname(__DIR__, 2) . '/public/assets/js/pedidos.js') ?>"></script>

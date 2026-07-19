@@ -140,5 +140,5 @@
   </div>
 </div>
 
-<script src="assets/js/pacotes.js"></script>
+<script src="assets/js/pacotes.js?v=<?= filemtime(dirname(__DIR__, 2) . '/public/assets/js/pacotes.js') ?>"></script>
 <?php endif; ?>

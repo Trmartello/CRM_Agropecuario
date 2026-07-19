@@ -17,6 +17,8 @@ const ARQUIVOS_APP = [
   'assets/js/despesas.js',
   'assets/js/reclamacoes.js',
   'assets/js/agenda.js',
+  'assets/js/pedidos.js',
+  'assets/js/pacotes.js',
   'assets/icons/icone-192.png',
   'assets/icons/icone-512.png',
   'assets/icons/favicon-32.png',
