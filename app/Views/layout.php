@@ -36,6 +36,7 @@ $logoRaio = (int) ConfigService::obter('logo_borda_raio', '10');
         <strong class="d-block">CRM AGRO</strong>
         <span class="small opacity-75">Copérdia</span>
       </span>
+      <img src="<?= e($faviconApp) ?>" class="logo-mini" alt="CRM AGRO">
     </a>
     <?php else: ?>
     <a href="<?= url('dashboard') ?>" class="sidebar-marca text-decoration-none text-center d-block">
@@ -45,6 +46,7 @@ $logoRaio = (int) ConfigService::obter('logo_borda_raio', '10');
         <strong class="d-block">CRM AGRO</strong>
         <span class="small opacity-75">Copérdia</span>
       </span>
+      <img src="<?= e($faviconApp) ?>" class="logo-mini" alt="CRM AGRO">
     </a>
     <?php endif; ?>
     <hr class="text-white-50 my-2">
