@@ -10,6 +10,31 @@ use App\Services\PriorizacaoService;
 
 class VisitasController
 {
+    /** Campos de conteúdo do cadastro considerados no percentual de preenchimento. */
+    private const CAMPOS_COMPLETUDE = [
+        'propriedade_id', 'talhao_id', 'cultura_id', 'objetivo', 'estagio_cultura',
+        'desenvolvimento', 'pragas', 'doencas', 'plantas_daninhas', 'deficiencia_nutricional',
+        'condicoes_climaticas', 'observacoes', 'recomendacao',
+    ];
+
+    /** Percentual (0-100) de campos do cadastro preenchidos (fotos contam como 1 campo). */
+    private function calcularCompletude(array $post, bool $temFotos): int
+    {
+        $total = count(self::CAMPOS_COMPLETUDE) + 1; // +1 = fotos
+        $preenchidos = $temFotos ? 1 : 0;
+        foreach (self::CAMPOS_COMPLETUDE as $campo) {
+            $valor = $post[$campo] ?? '';
+            if (in_array($campo, ['propriedade_id', 'talhao_id', 'cultura_id'], true)) {
+                if ((int) $valor > 0) {
+                    $preenchidos++;
+                }
+            } elseif (trim((string) $valor) !== '') {
+                $preenchidos++;
+            }
+        }
+        return (int) round($preenchidos / $total * 100);
+    }
+
     public function index(): void
     {
         Permissoes::exigirInterno();
@@ -106,13 +131,16 @@ class VisitasController
             json_erro('Cliente não encontrado na sua carteira.', 404);
         }
         $data = $_POST['data_visita'] ?? date('Y-m-d');
+        $temFotos = !empty($_FILES['fotos']['name'][0] ?? null);
+        $completude = $this->calcularCompletude($_POST, $temFotos);
+        $finalizada = $completude >= 100 ? 1 : 0;
 
         Database::executar(
             'INSERT INTO visitas (cliente_id, propriedade_id, talhao_id, cultura_id, usuario_id, data_visita, hora,
                     objetivo, estagio_cultura, desenvolvimento, pragas, doencas, plantas_daninhas,
                     deficiencia_nutricional, condicoes_climaticas, observacoes, recomendacao,
-                    latitude, longitude, sincronizada_offline)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                    latitude, longitude, sincronizada_offline, finalizada, completude)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
             [
                 $clienteId,
                 (int) ($_POST['propriedade_id'] ?? 0) ?: null,
@@ -134,6 +162,8 @@ class VisitasController
                 $_POST['latitude'] !== '' ? (float) $_POST['latitude'] : null,
                 $_POST['longitude'] !== '' ? (float) $_POST['longitude'] : null,
                 (int) ($_POST['offline'] ?? 0),
+                $finalizada,
+                $completude,
             ]
         );
         $visitaId = Database::ultimoId();

@@ -374,6 +374,7 @@ const Visitas = {
     form.reset();
     Visitas.irParaEtapa(1);
     document.getElementById('visitaFotosPreview').innerHTML = '';
+    Visitas.atualizarCompletude();
     new bootstrap.Modal('#modalVisita').show();
 
     const status = document.getElementById('visitaGeoStatus');
@@ -502,15 +503,42 @@ const Visitas = {
   },
 
   proximaEtapa() {
-    if (Visitas.etapa === 1 && !document.getElementById('visitaCliente').value) {
-      App.alerta('Selecione o cliente antes de avançar.', 'warning');
-      return;
-    }
     if (Visitas.etapa < 5) Visitas.irParaEtapa(Visitas.etapa + 1);
   },
 
   etapaAnterior() {
     if (Visitas.etapa > 1) Visitas.irParaEtapa(Visitas.etapa - 1);
+  },
+
+  // Campos de conteúdo contados no percentual de preenchimento (espelha o servidor).
+  CAMPOS_COMPLETUDE: ['propriedade_id', 'talhao_id', 'cultura_id', 'objetivo', 'estagio_cultura',
+    'desenvolvimento', 'pragas', 'doencas', 'plantas_daninhas', 'deficiencia_nutricional',
+    'condicoes_climaticas', 'observacoes', 'recomendacao'],
+
+  /** Percentual (0-100) de campos do cadastro preenchidos (fotos contam como 1). */
+  completude() {
+    const form = document.getElementById('formVisita');
+    if (!form) return 0;
+    const total = Visitas.CAMPOS_COMPLETUDE.length + 1; // +1 = fotos
+    let n = 0;
+    for (const c of Visitas.CAMPOS_COMPLETUDE) {
+      const el = form.querySelector(`[name="${c}"]`);
+      if (el && String(el.value).trim() !== '') n++;
+    }
+    const fotos = document.getElementById('visitaFotos');
+    if (fotos && fotos.files && fotos.files.length) n++;
+    return Math.round(n / total * 100);
+  },
+
+  atualizarCompletude() {
+    const pct = Visitas.completude();
+    const bar = document.getElementById('visitaCompletudeBar');
+    const lbl = document.getElementById('visitaCompletudePct');
+    if (bar) {
+      bar.style.width = pct + '%';
+      bar.className = 'progress-bar bg-' + (pct >= 80 ? 'success' : pct >= 40 ? 'warning' : 'danger');
+    }
+    if (lbl) lbl.textContent = pct;
   },
 
   previewFotos() {
@@ -531,6 +559,12 @@ const Visitas = {
     if (!form.querySelector('[name=cliente_id]').value) {
       App.alerta('Selecione o cliente.', 'warning');
       Visitas.irParaEtapa(1);
+      return false;
+    }
+    const pct = Visitas.completude();
+    if (pct < 100 && !confirm(
+        `Você preencheu ${pct}% do cadastro da visita.\n\n` +
+        'Deseja finalizar assim mesmo? A visita ficará marcada como NÃO FINALIZADA e poderá ser completada depois.')) {
       return false;
     }
     try {

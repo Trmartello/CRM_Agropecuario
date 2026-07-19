@@ -154,6 +154,8 @@ CREATE TABLE visitas (
   latitude DECIMAL(10,7),
   longitude DECIMAL(10,7),
   sincronizada_offline TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = criada offline e sincronizada depois',
+  finalizada TINYINT(1) NOT NULL DEFAULT 1 COMMENT '0 = cadastro salvo incompleto (não finalizada)',
+  completude TINYINT NOT NULL DEFAULT 100 COMMENT 'percentual de campos do cadastro preenchidos (0-100)',
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (cliente_id) REFERENCES clientes(id),
   FOREIGN KEY (propriedade_id) REFERENCES propriedades(id),
@@ -1130,5 +1132,5 @@ UPDATE clientes SET linha='Linha São Roque' WHERE id IN (1,4);
 UPDATE clientes SET linha='Linha Barra Fria' WHERE id IN (2,5);
 UPDATE clientes SET linha='Linha Sede' WHERE id IN (3,6);
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','11')
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','12')
   ON DUPLICATE KEY UPDATE valor = '11';

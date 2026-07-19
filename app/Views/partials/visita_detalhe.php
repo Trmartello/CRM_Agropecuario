@@ -1,9 +1,17 @@
 <?php /** Detalhe da visita — carregado via AJAX no offcanvas. */ ?>
 <h5 class="mb-1"><?= e($visita['cliente']) ?></h5>
-<div class="text-muted small mb-3">
+<div class="text-muted small mb-2">
   <?= data_br($visita['data_visita']) ?><?= $visita['hora'] ? ' às ' . substr($visita['hora'], 0, 5) : '' ?>
   · <?= e($visita['tecnico']) ?>
   <?php if ($visita['sincronizada_offline']): ?><span class="badge text-bg-info ms-1">registrada offline</span><?php endif; ?>
+  <?php if (isset($visita['finalizada']) && !$visita['finalizada']): ?><span class="badge text-bg-warning text-dark ms-1"><i class="bi bi-hourglass-split me-1"></i>Não finalizada</span><?php endif; ?>
+</div>
+<?php $compl = (int) ($visita['completude'] ?? 100); ?>
+<div class="d-flex align-items-center gap-2 mb-3">
+  <div class="progress flex-grow-1" style="height:8px" title="Percentual de campos preenchidos">
+    <div class="progress-bar bg-<?= $compl >= 80 ? 'success' : ($compl >= 40 ? 'warning' : 'danger') ?>" style="width:<?= $compl ?>%"></div>
+  </div>
+  <span class="small text-muted text-nowrap"><?= $compl ?>% preenchido</span>
 </div>
 
 <dl class="row small">

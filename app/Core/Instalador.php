@@ -162,6 +162,16 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '11'"
             );
         }
+        if ($versao < 12) {
+            self::adicionarColuna('visitas', 'finalizada',
+                "finalizada TINYINT(1) NOT NULL DEFAULT 1 COMMENT '0 = cadastro salvo incompleto' AFTER sincronizada_offline");
+            self::adicionarColuna('visitas', 'completude',
+                "completude TINYINT NOT NULL DEFAULT 100 COMMENT 'percentual de campos preenchidos' AFTER finalizada");
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '12')
+                 ON DUPLICATE KEY UPDATE valor = '12'"
+            );
+        }
     }
 
     /** Fase 5: log de integração (ERP/CAPE). */

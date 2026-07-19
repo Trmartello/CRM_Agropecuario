@@ -82,7 +82,9 @@
             <tr>
               <td class="text-nowrap"><?= data_br($v['data_visita']) ?></td>
               <td>
-                <div class="fw-semibold"><?= e($v['cliente']) ?></div>
+                <div class="fw-semibold"><?= e($v['cliente']) ?>
+                  <?php if (isset($v['finalizada']) && !$v['finalizada']): ?><span class="badge text-bg-warning text-dark ms-1" title="Cadastro incompleto (<?= (int) $v['completude'] ?>% preenchido)"><i class="bi bi-hourglass-split me-1"></i>Não finalizada · <?= (int) $v['completude'] ?>%</span><?php endif; ?>
+                </div>
                 <?php if ($v['qtd_fotos'] > 0): ?><span class="small text-muted"><i class="bi bi-camera me-1"></i><?= $v['qtd_fotos'] ?> foto(s)</span><?php endif; ?>
               </td>
               <td class="d-none d-md-table-cell small"><?= e($v['propriedade'] ?? '—') ?><?= $v['talhao'] ? ' · ' . e($v['talhao']) : '' ?></td>

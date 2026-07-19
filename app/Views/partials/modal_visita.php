@@ -1,7 +1,7 @@
 <!-- Modal: nova visita técnica (wizard em etapas) -->
 <div class="modal fade" id="modalVisita" tabindex="-1" data-bs-backdrop="static">
   <div class="modal-dialog modal-xl modal-fullscreen-md-down">
-    <form class="modal-content" id="formVisita" onsubmit="return Visitas.salvar(event)">
+    <form class="modal-content" id="formVisita" onsubmit="return Visitas.salvar(event)" oninput="Visitas.atualizarCompletude()" onchange="Visitas.atualizarCompletude()">
       <div class="modal-header">
         <h5 class="modal-title"><i class="bi bi-clipboard2-plus me-2 text-success"></i>Nova Visita Técnica</h5>
         <span class="badge text-bg-light border ms-2" id="visitaGeoStatus"><i class="bi bi-geo-alt me-1"></i>capturando GPS…</span>
@@ -11,14 +11,22 @@
       <div class="modal-body">
         <input type="hidden" name="latitude"><input type="hidden" name="longitude">
 
-        <!-- Navegação das etapas -->
+        <!-- Navegação das etapas (clique para preencher em qualquer ordem) -->
         <ul class="nav nav-pills nav-fill mb-3 etapas" id="visitaEtapas">
-          <li class="nav-item"><button type="button" class="nav-link active" data-etapa="1">1. Identificação</button></li>
-          <li class="nav-item"><button type="button" class="nav-link" data-etapa="2">2. Avaliação</button></li>
-          <li class="nav-item"><button type="button" class="nav-link" data-etapa="3">3. Recomendação</button></li>
-          <li class="nav-item"><button type="button" class="nav-link" data-etapa="4">4. Fotos & Extras</button></li>
-          <li class="nav-item"><button type="button" class="nav-link" data-etapa="5"><i class="bi bi-cart me-1"></i>Comercial</button></li>
+          <li class="nav-item"><button type="button" class="nav-link active" data-etapa="1" onclick="Visitas.irParaEtapa(1)">1. Identificação</button></li>
+          <li class="nav-item"><button type="button" class="nav-link" data-etapa="2" onclick="Visitas.irParaEtapa(2)">2. Avaliação</button></li>
+          <li class="nav-item"><button type="button" class="nav-link" data-etapa="3" onclick="Visitas.irParaEtapa(3)">3. Recomendação</button></li>
+          <li class="nav-item"><button type="button" class="nav-link" data-etapa="4" onclick="Visitas.irParaEtapa(4)">4. Fotos & Extras</button></li>
+          <li class="nav-item"><button type="button" class="nav-link" data-etapa="5" onclick="Visitas.irParaEtapa(5)"><i class="bi bi-cart me-1"></i>Comercial</button></li>
         </ul>
+
+        <!-- Progresso de preenchimento do cadastro -->
+        <div class="d-flex align-items-center gap-2 mb-3">
+          <div class="progress flex-grow-1" style="height:8px" title="Percentual de campos preenchidos">
+            <div class="progress-bar bg-danger" id="visitaCompletudeBar" role="progressbar" style="width:0%"></div>
+          </div>
+          <span class="small text-muted text-nowrap"><i class="bi bi-clipboard-check me-1"></i><span id="visitaCompletudePct">0</span>% preenchido</span>
+        </div>
 
         <!-- ETAPA 1: Identificação -->
         <div class="etapa" data-etapa="1">
