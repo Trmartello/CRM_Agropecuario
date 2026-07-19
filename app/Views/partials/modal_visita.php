@@ -1,7 +1,7 @@
 <!-- Modal: nova visita técnica (wizard em etapas) -->
 <div class="modal fade" id="modalVisita" tabindex="-1" data-bs-backdrop="static">
   <div class="modal-dialog modal-xl modal-fullscreen-md-down">
-    <form class="modal-content" id="formVisita" onsubmit="return Visitas.salvar(event)" oninput="Visitas.atualizarCompletude()" onchange="Visitas.atualizarCompletude()">
+    <form class="modal-content" id="formVisita" novalidate onsubmit="return Visitas.salvar(event)" oninput="Visitas.atualizarCompletude()" onchange="Visitas.atualizarCompletude()">
       <div class="modal-header">
         <h5 class="modal-title"><i class="bi bi-clipboard2-plus me-2 text-success"></i>Nova Visita Técnica</h5>
         <span class="badge text-bg-light border ms-2" id="visitaGeoStatus"><i class="bi bi-geo-alt me-1"></i>capturando GPS…</span>

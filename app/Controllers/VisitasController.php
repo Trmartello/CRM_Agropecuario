@@ -126,7 +126,7 @@ class VisitasController
         if (!$cliente) {
             json_erro('Cliente não encontrado na sua carteira.', 404);
         }
-        $data = $_POST['data_visita'] ?? date('Y-m-d');
+        $data = trim($_POST['data_visita'] ?? '') ?: date('Y-m-d');
         $completude = $this->calcularCompletude($_POST);
         $finalizada = $completude >= 100 ? 1 : 0;
 
@@ -143,7 +143,7 @@ class VisitasController
                 (int) ($_POST['cultura_id'] ?? 0) ?: null,
                 Auth::id(),
                 $data,
-                $_POST['hora'] ?? date('H:i'),
+                trim($_POST['hora'] ?? '') ?: date('H:i'),
                 trim($_POST['objetivo'] ?? '') ?: null,
                 trim($_POST['estagio_cultura'] ?? '') ?: null,
                 trim($_POST['desenvolvimento'] ?? '') ?: null,

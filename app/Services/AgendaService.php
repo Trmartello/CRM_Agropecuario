@@ -14,7 +14,7 @@ class AgendaService
     /** Dias sem visita a partir dos quais a parada é considerada "visita vencida". */
     public const DIAS_VISITA_VENCIDA = 90;
     /** Teto de dias exibido (produtor nunca visitado usa este valor). */
-    private const DIAS_TETO = 120;
+    public const DIAS_TETO = 120;
     /** Velocidade média assumida em estrada rural (km/h) para estimar o tempo de viagem. */
     private const VELOCIDADE_KMH = 45.0;
     /** Duração média estimada de uma visita/parada (minutos). */

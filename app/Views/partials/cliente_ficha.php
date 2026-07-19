@@ -44,7 +44,7 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
     <h6 class="text-success"><i class="bi bi-bar-chart me-1"></i>Potencial x Realizado por família (safra <?= e($painel['safra']['nome'] ?? '') ?>)</h6>
     <?php if ($potencial): ?>
       <canvas id="graficoPotencial" height="170"
-              data-potencial='<?= e(json_encode($potencial, JSON_UNESCAPED_UNICODE)) ?>'></canvas>
+              data-potencial='<?= json_attr($potencial) ?>'></canvas>
     <?php else: ?>
       <p class="text-muted small">Sem potencial cadastrado para a safra atual.</p>
     <?php endif; ?>

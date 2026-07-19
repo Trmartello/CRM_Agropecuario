@@ -39,7 +39,7 @@ $diaBr = data_br($data);
       <ol class="list-group list-group-flush list-group-numbered" id="listaRoteiro">
         <?php if (!$roteiro): ?><li class="list-group-item text-muted">Nenhuma parada. Adicione produtores das sugestões ao lado.</li><?php endif; ?>
         <?php foreach ($roteiro as $i => $r): $link = $wa($r['cliente_telefone'] ?? null, 'Olá! Podemos agendar uma visita para ' . $diaBr . '? (' . str_replace('Visita — ', '', $r['titulo']) . ')'); $lmap = $mapa($r['latitude'], $r['longitude']); ?>
-        <?php $vencida = !empty($r['visita_vencida']) && $r['status'] === 'Pendente'; $diasTxt = isset($r['dias_sem_visita']) ? ($r['dias_sem_visita'] >= 120 ? '+120' : $r['dias_sem_visita']) . 'd s/ visita' : null; ?>
+        <?php $vencida = !empty($r['visita_vencida']) && ($r['status'] ?? '') !== 'Concluído'; $diasTxt = isset($r['dias_sem_visita']) ? ($r['dias_sem_visita'] >= \App\Services\AgendaService::DIAS_TETO ? '+' . \App\Services\AgendaService::DIAS_TETO : $r['dias_sem_visita']) . 'd s/ visita' : null; ?>
         <li class="list-group-item d-flex align-items-center gap-2 <?= $r['status'] === 'Concluído' ? 'opacity-50' : ($vencida ? 'border-start border-warning border-3' : '') ?>">
           <div class="flex-grow-1">
             <div class="fw-semibold"><?= e($r['cliente'] ?? str_replace('Visita — ', '', $r['titulo'])) ?>

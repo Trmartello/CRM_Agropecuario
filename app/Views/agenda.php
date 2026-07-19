@@ -41,7 +41,7 @@ $wa = function (?string $tel, string $texto): ?string {
   <ol class="list-group list-group-flush list-group-numbered">
     <?php foreach ($roteiroHoje as $r): $link = $wa($r['cliente_telefone'] ?? null, 'Olá! Sobre a visita agendada (' . ($r['titulo']) . ').');
       $vencida = !empty($r['visita_vencida']) && ($r['status'] ?? '') !== 'Concluído';
-      $diasTxt = isset($r['dias_sem_visita']) ? ($r['dias_sem_visita'] >= 120 ? '+120' : $r['dias_sem_visita']) . 'd s/ visita' : null; ?>
+      $diasTxt = isset($r['dias_sem_visita']) ? ($r['dias_sem_visita'] >= \App\Services\AgendaService::DIAS_TETO ? '+' . \App\Services\AgendaService::DIAS_TETO : $r['dias_sem_visita']) . 'd s/ visita' : null; ?>
     <li class="list-group-item d-flex align-items-center gap-2 <?= $vencida ? 'border-start border-warning border-3' : '' ?>">
       <div class="flex-grow-1">
         <span class="fw-semibold"><?= $r['hora'] ? substr($r['hora'],0,5) . ' · ' : '' ?><?= e($r['titulo']) ?></span>

@@ -22,7 +22,7 @@ A especificação completa está em `docs/ESCOPO_DO_PROJETO.md` (19 módulos + f
 - **Auth**: sessão PHP, `password_hash`/`password_verify`, 7 perfis de acesso.
 - **Idioma**: 100% português (UI, mensagens, comentários de negócio). Nomes de tabelas/campos em português (`clientes`, `visitas`, `talhoes`).
 - **Mobile**: o app é um **PWA** (manifest.json + ícones + service worker) — instalável no Android/iOS, um único código. Nada de app nativo sem autorização.
-- **Offline básico (Fase 1)**: service worker cacheia app/assets; carteira do técnico em IndexedDB; visitas/fotos criadas sem sinal entram em fila local e sincronizam ao reconectar (endpoint de sync no ApiController).
+- **Offline básico (Fase 1)**: service worker cacheia app/assets; carteira do técnico em IndexedDB; visitas/fotos criadas sem sinal entram em fila local e sincronizam ao reconectar (a fila reenvia para a rota `visitas/salvar`, que recalcula tudo no servidor).
 - **Banco via variáveis de ambiente**: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS` com fallback para padrões locais (`localhost`/root) — necessário para o deploy no Railway.
 - **Deploy de testes**: Railway (Dockerfile com servidor embutido do PHP em `$PORT`, MySQL interno `mysql.railway.internal`, HTTPS automático, volume para `public/uploads` — necessário só para fotos de visitas; identidade visual fica no banco). Guia em `docs/DEPLOY_RAILWAY.md`.
 
@@ -40,7 +40,7 @@ A especificação completa está em `docs/ESCOPO_DO_PROJETO.md` (19 módulos + f
 /public/assets/       # css, js, chart.js, bootstrap (locais)
 /public/uploads/      # fotos de visitas e documentos
 /app/Core/            # Router, Database (PDO singleton), Auth, Permissoes
-/app/Controllers/     # um controller por módulo + ApiController p/ AJAX
+/app/Controllers/     # um controller por módulo (respondem também às chamadas AJAX)
 /app/Models/          # um model por tabela principal
 /app/Services/        # regras de negócio: CreditoService, ComercialService,
                       # CapService, PriorizacaoService, OportunidadeService...

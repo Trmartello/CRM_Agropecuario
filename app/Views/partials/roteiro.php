@@ -7,11 +7,11 @@ $wa = function (?string $tel, string $texto): ?string {
     return 'https://wa.me/' . $num . '?text=' . rawurlencode($texto);
 };
 ?>
-<p class="text-muted small">Roteiro de <?= data_br($data) ?> — <?= count($eventos) ?> parada(s), na ordem dos horários.</p>
+<p class="text-muted small">Roteiro de <?= data_br($data) ?> — <?= count($eventos) ?> parada(s), na ordem do roteiro.</p>
 <?php if (!$eventos): ?><p class="text-muted">Nenhum evento para este dia.</p><?php endif; ?>
 <ol class="list-group list-group-numbered">
   <?php foreach ($eventos as $e): $link = $wa($e['cliente_telefone'] ?? null, 'Olá! Sobre a visita de hoje: ' . $e['titulo'] . '. Podemos confirmar o horário?'); ?>
-  <?php $vencida = !empty($e['visita_vencida']) && ($e['status'] ?? '') !== 'Concluído'; $diasTxt = isset($e['dias_sem_visita']) ? ($e['dias_sem_visita'] >= 120 ? '+120' : $e['dias_sem_visita']) . 'd s/ visita' : null; ?>
+  <?php $vencida = !empty($e['visita_vencida']) && ($e['status'] ?? '') !== 'Concluído'; $diasTxt = isset($e['dias_sem_visita']) ? ($e['dias_sem_visita'] >= \App\Services\AgendaService::DIAS_TETO ? '+' . \App\Services\AgendaService::DIAS_TETO : $e['dias_sem_visita']) . 'd s/ visita' : null; ?>
   <li class="list-group-item d-flex align-items-start gap-2 <?= $vencida ? 'border-start border-warning border-3' : '' ?>">
     <div class="flex-grow-1">
       <div class="fw-semibold"><?= $e['hora'] ? substr($e['hora'],0,5) . ' · ' : '' ?><?= e($e['titulo']) ?>

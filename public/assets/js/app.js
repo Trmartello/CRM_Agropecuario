@@ -372,6 +372,12 @@ const Visitas = {
     const form = document.getElementById('formVisita');
     if (!form) { location.href = 'index.php?r=visitas&nova=1' + (clienteId ? '&cliente_id=' + clienteId : ''); return; }
     form.reset();
+    // Limpa o estado do cliente anterior (evita mostrar propriedades/talhões/painel de outro produtor)
+    Visitas.apoio = null;
+    document.getElementById('visitaPropriedade').innerHTML = '';
+    document.getElementById('visitaTalhao').innerHTML = '';
+    document.getElementById('visitaPainelComercial').innerHTML = '<span class="text-muted small">Selecione o cliente na etapa 1 para carregar os dados comerciais.</span>';
+    document.getElementById('visitaModelos').innerHTML = '<span class="text-muted small">Escolha a cultura na etapa 1 para listar os modelos.</span>';
     Visitas.irParaEtapa(1);
     document.getElementById('visitaFotosPreview').innerHTML = '';
     Visitas.atualizarCompletude();
@@ -453,7 +459,7 @@ const Visitas = {
     const alvo = document.getElementById('visitaPainelComercial');
     if (!p) { alvo.innerHTML = 'Sem dados.'; return; }
     const corInad = { success: 'success', warning: 'warning', orange: 'warning', danger: 'danger' }[p.inadimplencia.cor] || 'secondary';
-    const linhaCompra = c => `<tr><td>${c.produto}</td><td class="text-end">${Number(c.quantidade).toLocaleString('pt-BR')} ${c.unidade}</td><td class="text-end">${App.moeda(c.valor_total)}</td></tr>`;
+    const linhaCompra = c => `<tr><td>${App.escapeHtml(c.produto)}</td><td class="text-end">${Number(c.quantidade).toLocaleString('pt-BR')} ${App.escapeHtml(c.unidade || '')}</td><td class="text-end">${App.moeda(c.valor_total)}</td></tr>`;
     const linhaGap = g => `<li class="list-group-item d-flex justify-content-between align-items-center py-1">
         <span>${App.escapeHtml(g.produto)} <span class="text-muted small">(${App.escapeHtml(g.familia)})</span></span>
         <span class="badge text-bg-success-subtle text-success border border-success">${App.moeda(g.valor_anterior)}</span></li>`;
@@ -471,19 +477,19 @@ const Visitas = {
       <h6 class="text-success">Oportunidades — gap de recompra</h6>
       ${p.gap_recompra.length ? `<ul class="list-group mb-3">${p.gap_recompra.map(linhaGap).join('')}</ul>` : '<p class="text-muted small">Sem gap de recompra.</p>'}
 
-      <h6 class="text-success">Compras da safra ${p.safra ? p.safra.nome : ''}</h6>
+      <h6 class="text-success">Compras da safra ${p.safra ? App.escapeHtml(p.safra.nome) : ''}</h6>
       ${p.compras_safra_atual.length
         ? `<div class="table-responsive"><table class="table table-sm"><thead class="table-light"><tr><th>Produto</th><th class="text-end">Qtde</th><th class="text-end">Valor</th></tr></thead><tbody>${p.compras_safra_atual.map(linhaCompra).join('')}</tbody></table></div>`
         : '<p class="text-muted small">Nenhuma compra na safra atual.</p>'}
 
       <h6 class="text-success">Entrega futura</h6>
       ${(p.entregas_futuras || []).length
-        ? `<div class="table-responsive"><table class="table table-sm"><thead class="table-light"><tr><th>Produto</th><th class="text-end">Contratado</th><th class="text-end">Pendente</th><th>Previsão</th></tr></thead><tbody>${p.entregas_futuras.map(ef => `<tr><td>${ef.produto}</td><td class="text-end">${Number(ef.quantidade_contratada).toLocaleString('pt-BR')} ${ef.unidade}</td><td class="text-end fw-semibold">${Number(ef.quantidade_pendente).toLocaleString('pt-BR')}</td><td>${ef.previsao_entrega ? ef.previsao_entrega.split('-').reverse().join('/') : '—'}</td></tr>`).join('')}</tbody></table></div>`
+        ? `<div class="table-responsive"><table class="table table-sm"><thead class="table-light"><tr><th>Produto</th><th class="text-end">Contratado</th><th class="text-end">Pendente</th><th>Previsão</th></tr></thead><tbody>${p.entregas_futuras.map(ef => `<tr><td>${App.escapeHtml(ef.produto)}</td><td class="text-end">${Number(ef.quantidade_contratada).toLocaleString('pt-BR')} ${App.escapeHtml(ef.unidade || '')}</td><td class="text-end fw-semibold">${Number(ef.quantidade_pendente).toLocaleString('pt-BR')}</td><td>${ef.previsao_entrega ? ef.previsao_entrega.split('-').reverse().join('/') : '—'}</td></tr>`).join('')}</tbody></table></div>`
         : '<p class="text-muted small">Sem contratos de entrega futura.</p>'}
 
       <h6 class="text-success">Pedidos recentes</h6>
       ${(p.pedidos || []).length
-        ? `<ul class="list-unstyled small mb-0">${p.pedidos.slice(0, 5).map(pd => `<li class="py-1 border-bottom d-flex justify-content-between"><span>#${pd.id} · ${pd.tipo}${pd.pacote ? ' (' + pd.pacote + ')' : ''}</span><span><span class="badge text-bg-${{'Rascunho':'secondary','Pendente de aprovação':'warning','Aprovado':'primary','Faturado':'success','Cancelado':'dark'}[pd.status] || 'secondary'}">${pd.status}</span> ${App.moeda(pd.valor_total)}</span></li>`).join('')}</ul>`
+        ? `<ul class="list-unstyled small mb-0">${p.pedidos.slice(0, 5).map(pd => `<li class="py-1 border-bottom d-flex justify-content-between"><span>#${Number(pd.id)} · ${App.escapeHtml(pd.tipo)}${pd.pacote ? ' (' + App.escapeHtml(pd.pacote) + ')' : ''}</span><span><span class="badge text-bg-${{'Rascunho':'secondary','Pendente de aprovação':'warning','Aprovado':'primary','Faturado':'success','Cancelado':'dark'}[pd.status] || 'secondary'}">${App.escapeHtml(pd.status)}</span> ${App.moeda(pd.valor_total)}</span></li>`).join('')}</ul>`
         : '<p class="text-muted small mb-0">Nenhum pedido registrado.</p>'}`;
   },
 
