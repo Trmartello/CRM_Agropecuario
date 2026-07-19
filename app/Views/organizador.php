@@ -25,9 +25,10 @@ $diaBr = data_br($data);
   <!-- Roteiro do dia -->
   <div class="col-lg-6">
     <div class="card">
-      <div class="card-header d-flex align-items-center bg-success-subtle">
+      <div class="card-header d-flex align-items-center bg-success-subtle flex-wrap gap-1">
         <i class="bi bi-signpost-split me-2 text-success"></i><strong>Roteiro de <?= $diaBr ?></strong>
         <span class="ms-auto badge text-bg-success"><?= count($roteiro) ?> parada(s)</span>
+        <?php if ($kmRoteiro > 0): ?><span class="badge text-bg-light border text-dark" title="Distância total do roteiro na ordem atual"><i class="bi bi-signpost me-1"></i>≈ <?= numero($kmRoteiro, 1) ?> km</span><?php endif; ?>
       </div>
       <ol class="list-group list-group-flush list-group-numbered" id="listaRoteiro">
         <?php if (!$roteiro): ?><li class="list-group-item text-muted">Nenhuma parada. Adicione produtores das sugestões ao lado.</li><?php endif; ?>
@@ -55,11 +56,20 @@ $diaBr = data_br($data);
   <!-- Sugestões priorizadas -->
   <div class="col-lg-6">
     <div class="card">
-      <div class="card-header d-flex align-items-center">
-        <i class="bi bi-stars me-2 text-success"></i><strong>Sugestões para visitar</strong>
-        <span class="ms-auto small text-muted">por prioridade</span>
+      <div class="card-header">
+        <div class="d-flex align-items-center mb-2">
+          <i class="bi bi-stars me-2 text-success"></i><strong>Adicionar ao roteiro</strong>
+          <span class="ms-auto small text-muted">buscar ou sugestões</span>
+        </div>
+        <div class="input-group input-group-sm">
+          <span class="input-group-text"><i class="bi bi-search"></i></span>
+          <input type="search" id="buscaProdutor" class="form-control" placeholder="Buscar qualquer produtor por nome…" oninput="Organizador.buscar(this.value)">
+        </div>
       </div>
-      <div class="list-group list-group-flush" style="max-height:520px;overflow:auto">
+      <!-- Resultados da busca -->
+      <div class="list-group list-group-flush d-none" id="resultadosBusca"></div>
+      <!-- Sugestões priorizadas -->
+      <div class="list-group list-group-flush" id="listaSugestoes" style="max-height:460px;overflow:auto">
         <?php if (!$sugestoes): ?><div class="list-group-item text-muted small">Sem sugestões — todos os prioritários já estão no roteiro.</div><?php endif; ?>
         <?php foreach ($sugestoes as $s): $link = $wa($s['telefone'] ?? null, 'Olá! Podemos agendar uma visita técnica?'); ?>
         <div class="list-group-item d-flex align-items-center gap-2">
@@ -117,9 +127,42 @@ const Organizador = {
     try {
       const fd = new FormData(); fd.append('data', Organizador.data);
       const r = await App.json('index.php?r=agenda/roteiro-otimizar', { method: 'POST', body: fd });
-      App.alerta(r.otimizadas > 1 ? 'Rota otimizada por proximidade (' + r.otimizadas + ' paradas).' : 'Poucas paradas com localização para otimizar.', r.otimizadas > 1 ? 'success' : 'info');
-      setTimeout(() => location.reload(), 700);
+      App.alerta(r.otimizadas > 1
+        ? 'Rota otimizada para a menor distância: ≈ ' + r.km.toLocaleString('pt-BR') + ' km em ' + r.otimizadas + ' paradas.'
+        : 'Poucas paradas com localização para otimizar.', r.otimizadas > 1 ? 'success' : 'info');
+      setTimeout(() => location.reload(), 900);
     } catch (e) { App.alerta(e.message, 'danger'); }
+  },
+
+  _t: null,
+  buscar(termo) {
+    clearTimeout(Organizador._t);
+    const res = document.getElementById('resultadosBusca');
+    const sug = document.getElementById('listaSugestoes');
+    if (!termo || termo.trim().length < 2) {
+      res.classList.add('d-none'); res.innerHTML = ''; sug.classList.remove('d-none');
+      return;
+    }
+    Organizador._t = setTimeout(async () => {
+      try {
+        const d = await App.json('index.php?r=agenda/buscar-produtor&q=' + encodeURIComponent(termo) + '&data=' + Organizador.data,
+          { headers: { 'X-Requested-With': 'fetch' } });
+        sug.classList.add('d-none');
+        res.classList.remove('d-none');
+        if (!d.resultados.length) {
+          res.innerHTML = '<div class="list-group-item text-muted small">Nenhum produtor encontrado (ou já está no roteiro).</div>';
+          return;
+        }
+        res.innerHTML = d.resultados.map(c => `
+          <div class="list-group-item d-flex align-items-center gap-2">
+            <div class="flex-grow-1">
+              <div class="fw-semibold">${App.escapeHtml(c.nome)}</div>
+              <div class="small text-muted">${App.escapeHtml(c.municipio || '—')}</div>
+            </div>
+            <button class="btn btn-sm btn-success" title="Adicionar ao roteiro" onclick="Organizador.adicionar(${Number(c.id)})"><i class="bi bi-plus-lg"></i></button>
+          </div>`).join('');
+      } catch (e) { App.alerta(e.message, 'danger'); }
+    }, 300);
   },
   imprimir() { window.print(); },
 };

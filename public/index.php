@@ -141,6 +141,7 @@ $router->registrar('agenda/roteiro-adicionar', \App\Controllers\AgendaController
 $router->registrar('agenda/roteiro-remover', \App\Controllers\AgendaController::class, 'roteiroRemover');
 $router->registrar('agenda/roteiro-reordenar', \App\Controllers\AgendaController::class, 'roteiroReordenar');
 $router->registrar('agenda/roteiro-otimizar', \App\Controllers\AgendaController::class, 'roteiroOtimizar');
+$router->registrar('agenda/buscar-produtor', \App\Controllers\AgendaController::class, 'buscarProdutor');
 
 // Notificações (Fase 4)
 $router->registrar('notificacoes/listar', \App\Controllers\NotificacoesController::class, 'listar');

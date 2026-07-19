@@ -201,8 +201,12 @@ class AgendaService
         Database::executar('UPDATE agenda_eventos SET ordem = ? WHERE id = ?', [(int) $ev['ordem'], (int) $vizinho['id']]);
     }
 
-    /** Otimiza a rota do dia por proximidade (vizinho mais próximo a partir da 1ª parada). */
-    public static function otimizarRota(string $data, int $usuarioId): int
+    /**
+     * Otimiza a rota do dia para a MENOR quilometragem total percorrida.
+     * Heurística: vizinho-mais-próximo a partir de cada início (pega a melhor)
+     * + refinamento 2-opt. Retorna [otimizadas, km_total].
+     */
+    public static function otimizarRota(string $data, int $usuarioId): array
     {
         $paradas = Database::todos(
             "SELECT e.id, c.latitude AS lat, c.longitude AS lng
@@ -213,34 +217,138 @@ class AgendaService
         );
         $comGeo = array_values(array_filter($paradas, fn ($p) => $p['lat'] !== null && $p['lng'] !== null));
         $semGeo = array_values(array_filter($paradas, fn ($p) => $p['lat'] === null || $p['lng'] === null));
-        if (count($comGeo) < 2) {
-            return 0; // nada a otimizar
+        $n = count($comGeo);
+        if ($n < 2) {
+            return ['otimizadas' => 0, 'km' => 0.0];
         }
-        // Vizinho mais próximo, começando pela primeira parada atual
-        $ordenados = [];
-        $restantes = $comGeo;
-        $atual = array_shift($restantes);
-        $ordenados[] = $atual;
-        while ($restantes) {
-            $melhor = null;
-            $melhorDist = INF;
-            foreach ($restantes as $i => $p) {
-                $d = self::distancia((float) $atual['lat'], (float) $atual['lng'], (float) $p['lat'], (float) $p['lng']);
-                if ($d < $melhorDist) {
-                    $melhorDist = $d;
-                    $melhor = $i;
-                }
+
+        // Matriz de distâncias entre as paradas com coordenadas
+        $d = [];
+        for ($i = 0; $i < $n; $i++) {
+            for ($j = 0; $j < $n; $j++) {
+                $d[$i][$j] = self::distancia(
+                    (float) $comGeo[$i]['lat'], (float) $comGeo[$i]['lng'],
+                    (float) $comGeo[$j]['lat'], (float) $comGeo[$j]['lng']
+                );
             }
-            $atual = $restantes[$melhor];
-            $ordenados[] = $atual;
-            array_splice($restantes, $melhor, 1);
         }
-        // Grava a nova ordem (geo primeiro, sem-coordenada ao final)
+
+        // Vizinho-mais-próximo a partir de cada início; guarda a rota de menor custo
+        $melhorRota = range(0, $n - 1);
+        $melhorCusto = self::custoRota($melhorRota, $d);
+        for ($ini = 0; $ini < $n; $ini++) {
+            $usado = array_fill(0, $n, false);
+            $rota = [$ini];
+            $usado[$ini] = true;
+            $atual = $ini;
+            for ($k = 1; $k < $n; $k++) {
+                $best = -1;
+                $bd = INF;
+                for ($j = 0; $j < $n; $j++) {
+                    if (!$usado[$j] && $d[$atual][$j] < $bd) {
+                        $bd = $d[$atual][$j];
+                        $best = $j;
+                    }
+                }
+                $usado[$best] = true;
+                $rota[] = $best;
+                $atual = $best;
+            }
+            $custo = self::custoRota($rota, $d);
+            if ($custo < $melhorCusto) {
+                $melhorCusto = $custo;
+                $melhorRota = $rota;
+            }
+        }
+
+        // Refinamento 2-opt (reduz cruzamentos → menor distância)
+        [$melhorRota, $melhorCusto] = self::doisOpt($melhorRota, $d);
+
+        // Grava a nova ordem (paradas com coordenada primeiro; sem-coordenada ao final)
         $ordem = 1;
-        foreach (array_merge($ordenados, $semGeo) as $p) {
+        foreach ($melhorRota as $idx) {
+            Database::executar('UPDATE agenda_eventos SET ordem = ? WHERE id = ?', [$ordem++, (int) $comGeo[$idx]['id']]);
+        }
+        foreach ($semGeo as $p) {
             Database::executar('UPDATE agenda_eventos SET ordem = ? WHERE id = ?', [$ordem++, (int) $p['id']]);
         }
-        return count($comGeo);
+        return ['otimizadas' => $n, 'km' => round($melhorCusto, 1)];
+    }
+
+    /** Distância total (km) de uma rota (caminho aberto: soma dos trechos consecutivos). */
+    private static function custoRota(array $rota, array $d): float
+    {
+        $total = 0.0;
+        for ($i = 0; $i < count($rota) - 1; $i++) {
+            $total += $d[$rota[$i]][$rota[$i + 1]];
+        }
+        return $total;
+    }
+
+    /** Refinamento 2-opt para caminho aberto. */
+    private static function doisOpt(array $rota, array $d): array
+    {
+        $n = count($rota);
+        $melhorou = true;
+        while ($melhorou) {
+            $melhorou = false;
+            $custoAtual = self::custoRota($rota, $d);
+            for ($i = 0; $i < $n - 1; $i++) {
+                for ($k = $i + 1; $k < $n; $k++) {
+                    $nova = array_merge(
+                        array_slice($rota, 0, $i),
+                        array_reverse(array_slice($rota, $i, $k - $i + 1)),
+                        array_slice($rota, $k + 1)
+                    );
+                    $c = self::custoRota($nova, $d);
+                    if ($c < $custoAtual - 1e-9) {
+                        $rota = $nova;
+                        $custoAtual = $c;
+                        $melhorou = true;
+                    }
+                }
+            }
+        }
+        return [$rota, self::custoRota($rota, $d)];
+    }
+
+    /** Distância total (km) do roteiro na ordem atual. */
+    public static function distanciaRoteiro(string $data, int $usuarioId): float
+    {
+        $paradas = Database::todos(
+            "SELECT c.latitude AS lat, c.longitude AS lng
+               FROM agenda_eventos e LEFT JOIN clientes c ON c.id = e.cliente_id
+              WHERE e.usuario_id = ? AND e.data = ? AND e.status <> 'Cancelado'
+                AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL
+              ORDER BY e.ordem, e.id",
+            [$usuarioId, $data]
+        );
+        $total = 0.0;
+        for ($i = 0; $i < count($paradas) - 1; $i++) {
+            $total += self::distancia(
+                (float) $paradas[$i]['lat'], (float) $paradas[$i]['lng'],
+                (float) $paradas[$i + 1]['lat'], (float) $paradas[$i + 1]['lng']
+            );
+        }
+        return round($total, 1);
+    }
+
+    /** Busca produtores da carteira por nome para encaixar no roteiro (exclui os já incluídos). */
+    public static function buscarProdutorRoteiro(string $termo, string $data, int $usuarioId): array
+    {
+        $termo = trim($termo);
+        if (mb_strlen($termo) < 2) {
+            return [];
+        }
+        [$filtro, $params] = Permissoes::filtroCarteira();
+        $sql = "SELECT c.id, c.nome, c.municipio, c.telefone
+                  FROM clientes c
+                 WHERE c.ativo = 1 AND {$filtro} AND c.nome LIKE ?
+                   AND c.id NOT IN (
+                       SELECT cliente_id FROM agenda_eventos
+                        WHERE usuario_id = ? AND data = ? AND cliente_id IS NOT NULL AND status <> 'Cancelado')
+                 ORDER BY c.nome LIMIT 15";
+        return Database::todos($sql, array_merge($params, ['%' . $termo . '%', $usuarioId, $data]));
     }
 
     /** Distância aproximada (Haversine, km). */

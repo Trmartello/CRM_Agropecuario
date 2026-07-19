@@ -87,8 +87,21 @@ class AgendaController
             'data' => $data,
             'roteiro' => AgendaService::roteiro($data, Auth::id()),
             'sugestoes' => AgendaService::sugestoesVisita($data, Auth::id()),
+            'kmRoteiro' => AgendaService::distanciaRoteiro($data, Auth::id()),
             'titulo' => 'Organizador de Visitas',
         ]);
+    }
+
+    /** Busca produtores da carteira por nome (para encaixar no roteiro). */
+    public function buscarProdutor(): void
+    {
+        Permissoes::exigirInterno();
+        $resultados = AgendaService::buscarProdutorRoteiro(
+            $_GET['q'] ?? '',
+            $this->dataValida(),
+            Auth::id()
+        );
+        json_ok(['resultados' => $resultados]);
     }
 
     public function roteiroAdicionar(): void
@@ -127,8 +140,8 @@ class AgendaController
     public function roteiroOtimizar(): void
     {
         Permissoes::exigirInterno();
-        $n = AgendaService::otimizarRota($this->dataValida($_POST['data'] ?? null), Auth::id());
-        json_ok(['otimizadas' => $n]);
+        $r = AgendaService::otimizarRota($this->dataValida($_POST['data'] ?? null), Auth::id());
+        json_ok($r);
     }
 
     private function dataValida(?string $data = null): string
