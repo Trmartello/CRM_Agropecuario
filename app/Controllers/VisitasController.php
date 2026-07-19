@@ -10,21 +10,17 @@ use App\Services\PriorizacaoService;
 
 class VisitasController
 {
-    /** Campos de conteúdo do cadastro considerados no percentual de preenchimento. */
-    private const CAMPOS_COMPLETUDE = [
-        'propriedade_id', 'talhao_id', 'cultura_id', 'objetivo', 'estagio_cultura',
-        'desenvolvimento', 'pragas', 'doencas', 'plantas_daninhas', 'deficiencia_nutricional',
-        'condicoes_climaticas', 'observacoes', 'recomendacao',
-    ];
+    /** Campos obrigatórios para finalizar o cadastro da visita (base do percentual). */
+    private const CAMPOS_OBRIGATORIOS = ['cultura_id', 'objetivo', 'desenvolvimento', 'recomendacao'];
 
-    /** Percentual (0-100) de campos do cadastro preenchidos (fotos contam como 1 campo). */
-    private function calcularCompletude(array $post, bool $temFotos): int
+    /** Percentual (0-100) dos campos obrigatórios já preenchidos. */
+    private function calcularCompletude(array $post): int
     {
-        $total = count(self::CAMPOS_COMPLETUDE) + 1; // +1 = fotos
-        $preenchidos = $temFotos ? 1 : 0;
-        foreach (self::CAMPOS_COMPLETUDE as $campo) {
+        $total = count(self::CAMPOS_OBRIGATORIOS);
+        $preenchidos = 0;
+        foreach (self::CAMPOS_OBRIGATORIOS as $campo) {
             $valor = $post[$campo] ?? '';
-            if (in_array($campo, ['propriedade_id', 'talhao_id', 'cultura_id'], true)) {
+            if ($campo === 'cultura_id') {
                 if ((int) $valor > 0) {
                     $preenchidos++;
                 }
@@ -131,8 +127,7 @@ class VisitasController
             json_erro('Cliente não encontrado na sua carteira.', 404);
         }
         $data = $_POST['data_visita'] ?? date('Y-m-d');
-        $temFotos = !empty($_FILES['fotos']['name'][0] ?? null);
-        $completude = $this->calcularCompletude($_POST, $temFotos);
+        $completude = $this->calcularCompletude($_POST);
         $finalizada = $completude >= 100 ? 1 : 0;
 
         Database::executar(

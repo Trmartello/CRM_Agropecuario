@@ -510,35 +510,49 @@ const Visitas = {
     if (Visitas.etapa > 1) Visitas.irParaEtapa(Visitas.etapa - 1);
   },
 
-  // Campos de conteúdo contados no percentual de preenchimento (espelha o servidor).
-  CAMPOS_COMPLETUDE: ['propriedade_id', 'talhao_id', 'cultura_id', 'objetivo', 'estagio_cultura',
-    'desenvolvimento', 'pragas', 'doencas', 'plantas_daninhas', 'deficiencia_nutricional',
-    'condicoes_climaticas', 'observacoes', 'recomendacao'],
+  // Campos obrigatórios para finalizar o cadastro (espelha o servidor).
+  CAMPOS_OBRIGATORIOS: [
+    { name: 'cultura_id', label: 'Cultura' },
+    { name: 'objetivo', label: 'Objetivo' },
+    { name: 'desenvolvimento', label: 'Desenvolvimento' },
+    { name: 'recomendacao', label: 'Recomendação' },
+  ],
 
-  /** Percentual (0-100) de campos do cadastro preenchidos (fotos contam como 1). */
-  completude() {
+  /** Rótulos dos campos obrigatórios ainda vazios. */
+  camposFaltando() {
     const form = document.getElementById('formVisita');
-    if (!form) return 0;
-    const total = Visitas.CAMPOS_COMPLETUDE.length + 1; // +1 = fotos
-    let n = 0;
-    for (const c of Visitas.CAMPOS_COMPLETUDE) {
-      const el = form.querySelector(`[name="${c}"]`);
-      if (el && String(el.value).trim() !== '') n++;
-    }
-    const fotos = document.getElementById('visitaFotos');
-    if (fotos && fotos.files && fotos.files.length) n++;
-    return Math.round(n / total * 100);
+    if (!form) return [];
+    return Visitas.CAMPOS_OBRIGATORIOS.filter(c => {
+      const el = form.querySelector(`[name="${c.name}"]`);
+      return !el || String(el.value).trim() === '';
+    }).map(c => c.label);
+  },
+
+  /** Percentual (0-100) dos campos obrigatórios já preenchidos. */
+  completude() {
+    const total = Visitas.CAMPOS_OBRIGATORIOS.length;
+    const faltam = Visitas.camposFaltando().length;
+    return Math.round((total - faltam) / total * 100);
   },
 
   atualizarCompletude() {
     const pct = Visitas.completude();
+    const falta = 100 - pct;
     const bar = document.getElementById('visitaCompletudeBar');
-    const lbl = document.getElementById('visitaCompletudePct');
+    const lbl = document.getElementById('visitaCompletudeLbl');
+    const det = document.getElementById('visitaCompletudeFalta');
     if (bar) {
       bar.style.width = pct + '%';
-      bar.className = 'progress-bar bg-' + (pct >= 80 ? 'success' : pct >= 40 ? 'warning' : 'danger');
+      bar.className = 'progress-bar bg-' + (pct >= 100 ? 'success' : pct >= 50 ? 'warning' : 'danger');
     }
-    if (lbl) lbl.textContent = pct;
+    if (lbl) {
+      lbl.textContent = pct >= 100 ? 'Cadastro completo' : `Falta ${falta}%`;
+      lbl.className = 'small text-nowrap fw-semibold ' + (pct >= 100 ? 'text-success' : 'text-muted');
+    }
+    if (det) {
+      const faltando = Visitas.camposFaltando();
+      det.textContent = faltando.length ? 'Falta preencher: ' + faltando.join(', ') : '';
+    }
   },
 
   previewFotos() {
@@ -562,10 +576,12 @@ const Visitas = {
       return false;
     }
     const pct = Visitas.completude();
-    if (pct < 100 && !confirm(
-        `Você preencheu ${pct}% do cadastro da visita.\n\n` +
-        'Deseja finalizar assim mesmo? A visita ficará marcada como NÃO FINALIZADA e poderá ser completada depois.')) {
-      return false;
+    if (pct < 100) {
+      const faltando = Visitas.camposFaltando();
+      const msg = `Falta ${100 - pct}% do cadastro para finalizar` +
+        (faltando.length ? ` (${faltando.join(', ')})` : '') + '.\n\n' +
+        'Deseja finalizar assim mesmo? A visita ficará marcada como NÃO FINALIZADA e poderá ser completada depois.';
+      if (!confirm(msg)) return false;
     }
     try {
       if (!navigator.onLine) {

@@ -20,12 +20,15 @@
           <li class="nav-item"><button type="button" class="nav-link" data-etapa="5" onclick="Visitas.irParaEtapa(5)"><i class="bi bi-cart me-1"></i>Comercial</button></li>
         </ul>
 
-        <!-- Progresso de preenchimento do cadastro -->
-        <div class="d-flex align-items-center gap-2 mb-3">
-          <div class="progress flex-grow-1" style="height:8px" title="Percentual de campos preenchidos">
-            <div class="progress-bar bg-danger" id="visitaCompletudeBar" role="progressbar" style="width:0%"></div>
+        <!-- Progresso dos campos obrigatórios para finalizar -->
+        <div class="mb-3">
+          <div class="d-flex align-items-center gap-2">
+            <div class="progress flex-grow-1" style="height:8px" title="Campos obrigatórios preenchidos">
+              <div class="progress-bar bg-danger" id="visitaCompletudeBar" role="progressbar" style="width:0%"></div>
+            </div>
+            <span class="small text-nowrap fw-semibold text-muted" id="visitaCompletudeLbl">Falta 100%</span>
           </div>
-          <span class="small text-muted text-nowrap"><i class="bi bi-clipboard-check me-1"></i><span id="visitaCompletudePct">0</span>% preenchido</span>
+          <div class="small text-muted mt-1" id="visitaCompletudeFalta"></div>
         </div>
 
         <!-- ETAPA 1: Identificação -->
@@ -49,7 +52,7 @@
               <select name="talhao_id" class="form-select" id="visitaTalhao" onchange="Visitas.aoEscolherTalhao()"></select>
             </div>
             <div class="col-md-3">
-              <label class="form-label">Cultura</label>
+              <label class="form-label">Cultura <span class="text-danger" title="Obrigatório para finalizar">*</span></label>
               <select name="cultura_id" class="form-select" id="visitaCultura" onchange="Visitas.carregarModelos()">
                 <option value="">—</option>
                 <?php foreach ($culturas as $cu): ?>
@@ -64,7 +67,7 @@
               <input type="hidden" name="hora" value="<?= date('H:i') ?>">
             </div>
             <div class="col-md-8">
-              <label class="form-label">Objetivo</label>
+              <label class="form-label">Objetivo <span class="text-danger" title="Obrigatório para finalizar">*</span></label>
               <input name="objetivo" class="form-control" placeholder="Ex.: acompanhamento fitossanitário">
             </div>
           </div>
@@ -78,7 +81,7 @@
               <input name="estagio_cultura" class="form-control" placeholder="Ex.: V4, R1, florescimento…">
             </div>
             <div class="col-md-8">
-              <label class="form-label">Desenvolvimento</label>
+              <label class="form-label">Desenvolvimento <span class="text-danger" title="Obrigatório para finalizar">*</span></label>
               <div class="campo-voz"><input name="desenvolvimento" class="form-control" placeholder="Condição geral da lavoura…"><button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
             </div>
             <div class="col-md-6">
@@ -116,7 +119,7 @@
               <span class="text-muted small">Escolha a cultura na etapa 1 para listar os modelos.</span>
             </div>
           </div>
-          <label class="form-label">Recomendação técnica <span class="text-muted small">(texto livre — pode ditar pelo microfone)</span></label>
+          <label class="form-label">Recomendação técnica <span class="text-danger" title="Obrigatório para finalizar">*</span> <span class="text-muted small">(texto livre — pode ditar pelo microfone)</span></label>
           <div class="campo-voz">
             <textarea name="recomendacao" class="form-control" rows="8" placeholder="Escreva ou carregue um modelo padrão…"></textarea>
             <button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button>
