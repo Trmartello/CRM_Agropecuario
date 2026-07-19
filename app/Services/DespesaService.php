@@ -146,11 +146,18 @@ class DespesaService
         return ['id' => $kmId, 'valor' => $valor, 'aviso' => $aviso, 'vinculada_visita' => $vinculada];
     }
 
-    /** Vincula um lançamento de KM à visita do mesmo técnico/produtor/data, se houver. */
+    /**
+     * Amarra um lançamento de KM à visita do mesmo técnico/produtor/data.
+     * Casa 1:1: escolhe a primeira visita do dia que ainda NÃO tem KM amarrada,
+     * para que duas visitas no mesmo dia (deslocamentos distintos) não colidam.
+     */
     public static function vincularVisitaKm(int $kmId, int $usuarioId, int $clienteId, string $data): bool
     {
         $visitaId = Database::valor(
-            'SELECT id FROM visitas WHERE usuario_id = ? AND cliente_id = ? AND data_visita = ? ORDER BY id DESC LIMIT 1',
+            'SELECT v.id FROM visitas v
+              WHERE v.usuario_id = ? AND v.cliente_id = ? AND v.data_visita = ?
+                AND NOT EXISTS (SELECT 1 FROM quilometragem q WHERE q.visita_id = v.id)
+              ORDER BY v.id ASC LIMIT 1',
             [$usuarioId, $clienteId, $data]
         );
         if ($visitaId) {
@@ -160,12 +167,16 @@ class DespesaService
         return false;
     }
 
-    /** Vincula KMs órfãos de um técnico/produtor/data a uma visita recém-criada. */
+    /**
+     * Ao registrar uma visita, amarra UM deslocamento órfão do dia (o mais antigo)
+     * a ela — cada visita corresponde a um deslocamento, mesmo com várias no dia.
+     */
     public static function vincularVisitaPorEvento(int $visitaId, int $usuarioId, int $clienteId, string $data): int
     {
         $stmt = Database::executar(
             "UPDATE quilometragem SET visita_id = ?
-              WHERE usuario_id = ? AND cliente_id = ? AND data = ? AND tipo_destino = 'Produtor' AND visita_id IS NULL",
+              WHERE usuario_id = ? AND cliente_id = ? AND data = ? AND tipo_destino = 'Produtor' AND visita_id IS NULL
+              ORDER BY id ASC LIMIT 1",
             [$visitaId, $usuarioId, $clienteId, $data]
         );
         return $stmt->rowCount();
