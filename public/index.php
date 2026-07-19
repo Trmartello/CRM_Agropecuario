@@ -108,6 +108,12 @@ $router->registrar('despesas/enviar-prestacao', \App\Controllers\DespesasControl
 $router->registrar('despesas/avaliar-prestacao', \App\Controllers\DespesasController::class, 'avaliarPrestacao');
 $router->registrar('despesas/detalhe-prestacao', \App\Controllers\DespesasController::class, 'detalhePrestacao');
 
+// Reclamações / laudos (Fase 3)
+$router->registrar('reclamacoes', \App\Controllers\ReclamacoesController::class, 'index');
+$router->registrar('reclamacoes/salvar', \App\Controllers\ReclamacoesController::class, 'salvar');
+$router->registrar('reclamacoes/mover', \App\Controllers\ReclamacoesController::class, 'mover');
+$router->registrar('reclamacoes/detalhe', \App\Controllers\ReclamacoesController::class, 'detalhe');
+
 // Pacotes Agrícolas (Fase 2)
 $router->registrar('pacotes', \App\Controllers\PacotesController::class, 'index');
 $router->registrar('pacotes/obter', \App\Controllers\PacotesController::class, 'obter');
