@@ -11,9 +11,10 @@ $meses = [1=>'janeiro',2=>'fevereiro',3=>'março',4=>'abril',5=>'maio',6=>'junho
 </div>
 
 <div class="row text-center g-2 mb-3">
-  <div class="col-4"><div class="border rounded p-2"><div class="small text-muted">KM (valor)</div><div class="fw-bold"><?= moeda($prestacao['total_km_valor']) ?></div></div></div>
-  <div class="col-4"><div class="border rounded p-2"><div class="small text-muted">Refeições</div><div class="fw-bold"><?= moeda($prestacao['total_refeicoes']) ?></div></div></div>
-  <div class="col-4"><div class="border rounded p-2 bg-light"><div class="small text-muted">Total</div><div class="fw-bold text-success"><?= moeda($prestacao['total_geral']) ?></div></div></div>
+  <div class="col"><div class="border rounded p-2"><div class="small text-muted">KM (valor)</div><div class="fw-bold"><?= moeda($prestacao['total_km_valor']) ?></div></div></div>
+  <div class="col"><div class="border rounded p-2"><div class="small text-muted">Refeições gastas</div><div class="fw-bold"><?= moeda($prestacao['total_refeicoes_gasto'] ?? 0) ?></div></div></div>
+  <div class="col"><div class="border rounded p-2"><div class="small text-muted">Refeições reembolso</div><div class="fw-bold"><?= moeda($prestacao['total_refeicoes']) ?></div></div></div>
+  <div class="col"><div class="border rounded p-2 bg-light"><div class="small text-muted">Total a receber</div><div class="fw-bold text-success"><?= moeda($prestacao['total_geral']) ?></div></div></div>
 </div>
 
 <?php if ($prestacao['parecer']): ?>
@@ -36,11 +37,12 @@ $meses = [1=>'janeiro',2=>'fevereiro',3=>'março',4=>'abril',5=>'maio',6=>'junho
 
 <h6 class="mt-3"><i class="bi bi-cup-hot me-1"></i>Refeições (<?= count($refeicoes) ?>)</h6>
 <div class="table-responsive"><table class="table table-sm align-middle">
-  <thead class="table-light"><tr><th>Data</th><th>Estabelecimento</th><th class="text-end">Valor</th></tr></thead>
+  <thead class="table-light"><tr><th>Data</th><th>Tipo</th><th>Estabelecimento</th><th class="text-end">Gasto</th><th class="text-end">Reembolso</th></tr></thead>
   <tbody>
-    <?php if (!$refeicoes): ?><tr><td colspan="3" class="text-muted small">Sem lançamentos.</td></tr><?php endif; ?>
+    <?php if (!$refeicoes): ?><tr><td colspan="5" class="text-muted small">Sem lançamentos.</td></tr><?php endif; ?>
     <?php foreach ($refeicoes as $l): ?>
-    <tr><td><?= data_br($l['data']) ?></td><td class="small"><?= e($l['estabelecimento'] ?? '—') ?></td><td class="text-end"><?= moeda($l['valor']) ?></td></tr>
+    <tr><td><?= data_br($l['data']) ?></td><td class="small"><?= e($l['tipo'] ?? 'Almoço') ?></td><td class="small"><?= e($l['estabelecimento'] ?? '—') ?></td>
+      <td class="text-end"><?= moeda($l['valor']) ?></td><td class="text-end fw-semibold"><?= moeda($l['valor_reembolso']) ?></td></tr>
     <?php endforeach; ?>
   </tbody>
 </table></div>

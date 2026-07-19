@@ -92,18 +92,24 @@ $statusCor = ['Aberta'=>'secondary','Enviada'=>'info','Aprovada'=>'success','Rej
       <table class="table table-hover align-middle mb-0">
         <thead class="table-light"><tr>
           <th>Data</th><?php if ($ehGestor): ?><th>Usuário</th><?php endif; ?>
-          <th class="d-none d-md-table-cell">Estabelecimento</th><th class="d-none d-md-table-cell">Justificativa</th>
-          <th class="text-end">Valor</th><th></th>
+          <th>Tipo</th><th class="d-none d-md-table-cell">Estabelecimento</th>
+          <th class="text-end">Gasto</th><th class="text-end">Reembolso</th><th class="d-none d-md-table-cell"></th><th></th>
         </tr></thead>
         <tbody>
-          <?php if (!$refeicoes): ?><tr><td colspan="6" class="text-center text-muted py-4">Nenhuma refeição no período.</td></tr><?php endif; ?>
+          <?php if (!$refeicoes): ?><tr><td colspan="8" class="text-center text-muted py-4">Nenhuma refeição no período.</td></tr><?php endif; ?>
           <?php foreach ($refeicoes as $l): ?>
           <tr>
-            <td><?= data_br($l['data']) ?></td>
+            <td class="text-nowrap"><?= data_br($l['data']) ?><?= $l['hora'] ? ' <span class="text-muted small">' . substr($l['hora'],0,5) . '</span>' : '' ?></td>
             <?php if ($ehGestor): ?><td class="small"><?= e($l['usuario']) ?></td><?php endif; ?>
+            <td><span class="badge text-bg-light border text-dark"><?= e($l['tipo'] ?? 'Almoço') ?></span></td>
             <td class="d-none d-md-table-cell small"><?= e($l['estabelecimento'] ?? '—') ?></td>
-            <td class="d-none d-md-table-cell small text-muted"><?= e($l['justificativa'] ?? '—') ?></td>
-            <td class="text-end fw-semibold"><?= moeda($l['valor']) ?></td>
+            <td class="text-end"><?= moeda($l['valor']) ?></td>
+            <td class="text-end fw-semibold text-success"><?= moeda($l['valor_reembolso']) ?>
+              <?php if ((float)$l['valor_reembolso'] < (float)$l['valor']): ?><i class="bi bi-info-circle text-warning ms-1" title="Limitado ao teto da categoria"></i><?php endif; ?>
+            </td>
+            <td class="d-none d-md-table-cell text-center">
+              <?php if (!empty($l['comprovante'])): ?><a href="uploads/<?= e($l['comprovante']) ?>" target="_blank" title="Ver comprovante"><i class="bi bi-paperclip"></i></a><?php endif; ?>
+            </td>
             <td class="text-end">
               <?php if (!$l['prestacao_id'] && ($ehGestor || (int)$l['usuario_id'] === Auth::id())): ?>
               <button class="btn btn-sm btn-outline-danger" title="Excluir" onclick="Despesas.excluir('refeicao', <?= $l['id'] ?>)"><i class="bi bi-trash"></i></button>
@@ -124,8 +130,8 @@ $statusCor = ['Aberta'=>'secondary','Enviada'=>'info','Aprovada'=>'success','Rej
           <h6 class="mb-1"><i class="bi bi-calendar-check me-1 text-success"></i>Prestação do mês corrente (<?= $mesLabel(date('Y-m')) ?>)</h6>
           <div class="small text-muted">
             KM: <strong><?= numero($previa['total_km'], 1) ?></strong> (<?= moeda($previa['total_km_valor']) ?>) ·
-            Refeições: <strong><?= moeda($previa['total_refeicoes']) ?></strong> ·
-            <span class="text-dark">Total a consolidar: <strong><?= moeda($previa['total_geral']) ?></strong></span>
+            Refeições: gasto <strong><?= moeda($previa['total_refeicoes_gasto']) ?></strong> · reembolso <strong><?= moeda($previa['total_refeicoes']) ?></strong> ·
+            <span class="text-dark">Total a receber: <strong><?= moeda($previa['total_geral']) ?></strong></span>
           </div>
         </div>
         <button class="btn btn-success" onclick="Despesas.gerarPrestacao(<?= $previa['ano'] ?>, <?= $previa['mes'] ?>)"
@@ -276,23 +282,37 @@ $statusCor = ['Aberta'=>'secondary','Enviada'=>'info','Aprovada'=>'success','Rej
 <!-- Modal: Refeição -->
 <div class="modal fade" id="modalRefeicao" tabindex="-1">
   <div class="modal-dialog modal-fullscreen-sm-down">
-    <form class="modal-content" id="formRefeicao" onsubmit="return Despesas.salvarRefeicao(event)">
+    <form class="modal-content" id="formRefeicao" onsubmit="return Despesas.salvarRefeicao(event)" enctype="multipart/form-data"
+          data-valores='<?= json_encode($valoresRefeicao, JSON_UNESCAPED_UNICODE) ?>'>
       <div class="modal-header"><h5 class="modal-title"><i class="bi bi-cup-hot me-2 text-success"></i>Lançar Refeição</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
         <div class="row g-3">
-          <div class="col-md-6"><label class="form-label">Data *</label><input type="date" name="data" class="form-control" value="<?= date('Y-m-d') ?>" required></div>
-          <div class="col-md-6"><label class="form-label">Valor *</label><input type="number" step="0.01" min="0" name="valor" class="form-control" required></div>
+          <div class="col-6"><label class="form-label">Data *</label><input type="date" name="data" class="form-control" value="<?= date('Y-m-d') ?>" required></div>
+          <div class="col-6"><label class="form-label">Horário</label><input type="time" name="hora" class="form-control" value="<?= date('H:i') ?>"></div>
+          <div class="col-12">
+            <label class="form-label d-block">Tipo *</label>
+            <div class="btn-group w-100 flex-wrap" role="group">
+              <?php foreach ($tiposRefeicao as $i => $t): ?>
+                <input type="radio" class="btn-check" name="tipo" id="ref_<?= $i ?>" value="<?= e($t) ?>" <?= $i === 1 ? 'checked' : '' ?> onchange="Despesas.tipoRefeicao()">
+                <label class="btn btn-outline-success" for="ref_<?= $i ?>"><?= e($t) ?></label>
+              <?php endforeach; ?>
+            </div>
+          </div>
+          <div class="col-md-6"><label class="form-label">Valor gasto (nota) *</label><input type="number" step="0.01" min="0" name="valor" class="form-control" required oninput="Despesas.previewRefeicao()"></div>
           <div class="col-md-6"><label class="form-label">Estabelecimento</label><input name="estabelecimento" class="form-control"></div>
+          <div class="col-12"><div class="alert alert-light border mb-0 py-2 small" id="refeicaoPreview">Selecione o tipo e informe o valor.</div></div>
           <div class="col-md-6"><label class="form-label">Cliente (opcional)</label>
             <select name="cliente_id" class="form-select"><option value="0">—</option>
               <?php foreach ($clientes as $c): ?><option value="<?= $c['id'] ?>"><?= e($c['nome']) ?></option><?php endforeach; ?>
             </select>
           </div>
-          <div class="col-12"><label class="form-label">Justificativa</label><input name="justificativa" class="form-control" placeholder="Ex.: almoço durante visita a produtor"></div>
-          <?php if ($categoria && (float)$categoria['teto_refeicao'] > 0): ?>
-          <div class="col-12"><div class="alert alert-light border mb-0 py-2 small">Teto da sua categoria: <?= moeda($categoria['teto_refeicao']) ?> por refeição.</div></div>
-          <?php endif; ?>
+          <div class="col-md-6"><label class="form-label"><i class="bi bi-paperclip me-1"></i>Comprovante (foto/PDF)</label>
+            <input type="file" name="comprovante" class="form-control" accept="image/*,.pdf" capture="environment"></div>
+          <div class="col-12"><label class="form-label">Justificativa</label>
+            <div class="campo-voz"><input name="justificativa" class="form-control" placeholder="Ex.: almoço durante visita a produtor">
+              <button type="button" class="btn-voz" title="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
+          </div>
         </div>
       </div>
       <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>

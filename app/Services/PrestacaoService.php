@@ -23,19 +23,21 @@ class PrestacaoService
             [$usuarioId, $competencia]
         );
         $ref = Database::um(
-            "SELECT COALESCE(SUM(valor),0) AS valor, COUNT(*) AS qtd
+            "SELECT COALESCE(SUM(valor),0) AS gasto, COALESCE(SUM(valor_reembolso),0) AS reembolso, COUNT(*) AS qtd
                FROM refeicoes
               WHERE usuario_id = ? AND prestacao_id IS NULL AND DATE_FORMAT(data,'%Y-%m') = ?",
             [$usuarioId, $competencia]
         );
         $totalKmValor = (float) $km['valor'];
-        $totalRef = (float) $ref['valor'];
+        $totalRefGasto = (float) $ref['gasto'];
+        $totalRef = (float) $ref['reembolso'];
         return [
             'ano' => $ano,
             'mes' => $mes,
             'total_km' => (float) $km['km'],
             'qtd_km' => (int) $km['qtd'],
             'total_km_valor' => $totalKmValor,
+            'total_refeicoes_gasto' => $totalRefGasto,
             'total_refeicoes' => $totalRef,
             'qtd_refeicoes' => (int) $ref['qtd'],
             'total_geral' => $totalKmValor + $totalRef,
@@ -106,12 +108,19 @@ class PrestacaoService
                FROM quilometragem WHERE prestacao_id = ?',
             [$prestacaoId]
         );
-        $ref = Database::valor('SELECT COALESCE(SUM(valor),0) FROM refeicoes WHERE prestacao_id = ?', [$prestacaoId]);
+        $ref = Database::um(
+            'SELECT COALESCE(SUM(valor),0) AS gasto, COALESCE(SUM(valor_reembolso),0) AS reembolso
+               FROM refeicoes WHERE prestacao_id = ?',
+            [$prestacaoId]
+        );
         $totalKmValor = (float) $km['valor'];
-        $totalRef = (float) $ref;
+        $totalRefGasto = (float) $ref['gasto'];
+        $totalRef = (float) $ref['reembolso'];
         Database::executar(
-            'UPDATE prestacao_contas SET total_km = ?, total_km_valor = ?, total_refeicoes = ?, total_geral = ? WHERE id = ?',
-            [(float) $km['km'], $totalKmValor, $totalRef, $totalKmValor + $totalRef, $prestacaoId]
+            'UPDATE prestacao_contas
+                SET total_km = ?, total_km_valor = ?, total_refeicoes_gasto = ?, total_refeicoes = ?, total_geral = ?
+              WHERE id = ?',
+            [(float) $km['km'], $totalKmValor, $totalRefGasto, $totalRef, $totalKmValor + $totalRef, $prestacaoId]
         );
     }
 

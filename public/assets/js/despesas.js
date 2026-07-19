@@ -71,8 +71,40 @@ const Despesas = {
   novaRefeicao() {
     const form = document.getElementById('formRefeicao');
     form.reset();
-    form.querySelector('[name=data]').value = new Date().toISOString().slice(0, 10);
+    const agora = new Date();
+    form.querySelector('[name=data]').value = agora.toISOString().slice(0, 10);
+    form.querySelector('[name=hora]').value = agora.toTimeString().slice(0, 5);
+    Despesas.previewRefeicao();
     new bootstrap.Modal('#modalRefeicao').show();
+  },
+
+  tipoRefeicao() { Despesas.previewRefeicao(); },
+
+  /** Mostra quanto a Copérdia vai reembolsar para o tipo/valor informado. */
+  previewRefeicao() {
+    const form = document.getElementById('formRefeicao');
+    const alvo = document.getElementById('refeicaoPreview');
+    const valores = JSON.parse(form.dataset.valores || '{}');
+    const tipo = (form.querySelector('[name=tipo]:checked') || {}).value;
+    const gasto = parseFloat(form.querySelector('[name=valor]').value);
+    if (!tipo) { alvo.textContent = 'Selecione o tipo da refeição.'; return; }
+    const teto = valores[tipo];
+    if (teto === undefined) {
+      alvo.innerHTML = `Sua categoria não tem valor definido para <strong>${tipo}</strong> — reembolso integral do gasto.`;
+      return;
+    }
+    if (isNaN(gasto)) {
+      alvo.innerHTML = `Reembolso de <strong>${tipo}</strong> na sua categoria: até <strong>${App.moeda(teto)}</strong>.`;
+      return;
+    }
+    const reembolso = Math.min(gasto, teto);
+    if (gasto > teto) {
+      alvo.className = 'alert alert-warning border mb-0 py-2 small';
+      alvo.innerHTML = `Gasto ${App.moeda(gasto)} acima do teto de ${tipo} (${App.moeda(teto)}). A Copérdia reembolsa <strong>${App.moeda(reembolso)}</strong>.`;
+    } else {
+      alvo.className = 'alert alert-light border mb-0 py-2 small';
+      alvo.innerHTML = `A Copérdia reembolsa <strong>${App.moeda(reembolso)}</strong> (dentro do teto de ${App.moeda(teto)}).`;
+    }
   },
 
   /** Prévia local do valor (o cálculo oficial é feito no servidor pela categoria do usuário). */
@@ -105,7 +137,7 @@ const Despesas = {
     try {
       const r = await App.enviarForm(ev.target, 'index.php?r=despesas/salvar-refeicao');
       bootstrap.Modal.getInstance('#modalRefeicao').hide();
-      App.alerta('Refeição lançada.');
+      App.alerta('Refeição lançada. Reembolso: ' + App.moeda(r.valor_reembolso));
       if (r.aviso) App.alerta(r.aviso, 'warning');
       setTimeout(() => location.reload(), 700);
     } catch (e) { App.alerta(e.message, 'danger'); }

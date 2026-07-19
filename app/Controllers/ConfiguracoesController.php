@@ -21,10 +21,8 @@ class ConfiguracoesController
         Permissoes::exigir(['Administrador']);
         render('configuracoes', [
             'titulo' => 'Configurações',
-            'categoriasReembolso' => Database::todos(
-                'SELECT cr.*, (SELECT COUNT(*) FROM usuarios u WHERE u.categoria_reembolso_id = cr.id) AS qtd_usuarios
-                   FROM categorias_reembolso cr ORDER BY cr.nome'
-            ),
+            'categoriasReembolso' => $this->categoriasComValores(),
+            'tiposRefeicao' => \App\Services\DespesaService::TIPOS_REFEICAO,
             'logoAtual' => ConfigService::logoAplicacao(),
             'faviconAtual' => ConfigService::faviconAplicacao(),
             'logoPersonalizada' => ConfigService::logoPersonalizada(),
@@ -121,6 +119,43 @@ class ConfiguracoesController
             );
             $id = Database::ultimoId();
         }
+
+        // Valores de reembolso por tipo de refeição (Café, Almoço, Lanche, Janta)
+        foreach (\App\Services\DespesaService::TIPOS_REFEICAO as $tipo) {
+            $campo = 'ref_' . self::slugTipo($tipo);
+            if (!array_key_exists($campo, $_POST)) {
+                continue;
+            }
+            $valorTipo = max(0, (float) str_replace(',', '.', $_POST[$campo]));
+            Database::executar(
+                'INSERT INTO reembolso_refeicoes (categoria_reembolso_id, tipo, valor) VALUES (?,?,?)
+                 ON DUPLICATE KEY UPDATE valor = VALUES(valor)',
+                [$id, $tipo, $valorTipo]
+            );
+        }
         json_ok(['id' => $id]);
+    }
+
+    /** Categorias com os valores de reembolso por tipo agrupados (para a tela). */
+    private function categoriasComValores(): array
+    {
+        $categorias = Database::todos(
+            'SELECT cr.*, (SELECT COUNT(*) FROM usuarios u WHERE u.categoria_reembolso_id = cr.id) AS qtd_usuarios
+               FROM categorias_reembolso cr ORDER BY cr.nome'
+        );
+        foreach ($categorias as &$c) {
+            $c['refeicoes'] = [];
+            $linhas = Database::todos('SELECT tipo, valor FROM reembolso_refeicoes WHERE categoria_reembolso_id = ?', [(int) $c['id']]);
+            foreach ($linhas as $l) {
+                $c['refeicoes'][$l['tipo']] = (float) $l['valor'];
+            }
+        }
+        unset($c);
+        return $categorias;
+    }
+
+    private static function slugTipo(string $tipo): string
+    {
+        return strtr(mb_strtolower($tipo), ['á' => 'a', 'ç' => 'c', 'ã' => 'a', 'ó' => 'o', 'é' => 'e']);
     }
 }

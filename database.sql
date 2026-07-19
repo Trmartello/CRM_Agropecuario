@@ -11,7 +11,7 @@ USE crm_agropecuario;
 
 SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS sessoes_persistentes, configuracoes, auditoria,
-  documentos, prestacao_contas, reclamacao_fotos, refeicoes, quilometragem, veiculos, reclamacoes, categorias_reembolso,
+  documentos, prestacao_contas, reclamacao_fotos, reembolso_refeicoes, refeicoes, quilometragem, veiculos, reclamacoes, categorias_reembolso,
   pacote_obrigatorios, pacote_categorias, pacotes_agricolas,
   entregas_futuras, promocoes, pedidos_itens, pedidos,
   propostas_itens, propostas, oportunidades,
@@ -495,7 +495,8 @@ CREATE TABLE prestacao_contas (
   mes TINYINT NOT NULL,
   total_km DECIMAL(10,1) NOT NULL DEFAULT 0,
   total_km_valor DECIMAL(12,2) NOT NULL DEFAULT 0,
-  total_refeicoes DECIMAL(12,2) NOT NULL DEFAULT 0,
+  total_refeicoes_gasto DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT 'total gasto em refeições (notas)',
+  total_refeicoes DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT 'total de refeições reembolsado pela Copérdia',
   total_geral DECIMAL(12,2) NOT NULL DEFAULT 0,
   status ENUM('Aberta','Enviada','Aprovada','Rejeitada') NOT NULL DEFAULT 'Aberta',
   observacao VARCHAR(255),
@@ -568,14 +569,28 @@ CREATE TABLE refeicoes (
   usuario_id INT NOT NULL,
   prestacao_id INT NULL,
   data DATE NOT NULL,
+  hora TIME NULL,
+  tipo ENUM('Café','Almoço','Lanche','Janta') NOT NULL DEFAULT 'Almoço',
   cliente_id INT,
   estabelecimento VARCHAR(160),
-  valor DECIMAL(10,2) NOT NULL,
+  valor DECIMAL(10,2) NOT NULL COMMENT 'valor gasto (nota)',
+  valor_reembolso DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT 'valor que a Copérdia paga (limitado ao teto da categoria/tipo)',
+  comprovante VARCHAR(255) NULL COMMENT 'foto/arquivo do comprovante',
   justificativa VARCHAR(255),
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
   FOREIGN KEY (prestacao_id) REFERENCES prestacao_contas(id) ON DELETE SET NULL,
   FOREIGN KEY (cliente_id) REFERENCES clientes(id)
+) ENGINE=InnoDB;
+
+-- Valores de reembolso de refeição por categoria e tipo (definidos pelo Administrador)
+CREATE TABLE reembolso_refeicoes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  categoria_reembolso_id INT NOT NULL,
+  tipo ENUM('Café','Almoço','Lanche','Janta') NOT NULL,
+  valor DECIMAL(8,2) NOT NULL DEFAULT 0,
+  UNIQUE KEY uk_reembolso_ref (categoria_reembolso_id, tipo),
+  FOREIGN KEY (categoria_reembolso_id) REFERENCES categorias_reembolso(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- Gestão documental: anexos por produtor (fotos, PDFs, laudos, receitas, contratos)
@@ -1003,10 +1018,17 @@ INSERT INTO quilometragem (usuario_id, veiculo_id, veiculo, data, km_inicial, km
 (5,1,'Fiat Strada — ABC1D23','2026-07-10',45298.0,45362.0,96.00,'Produtor',2,'Seara','Acompanhamento de lavoura'),
 (4,2,'VW Saveiro — EFG4H56','2026-07-08',88110.0,88190.0,144.00,'Produtor',7,'Chapecó','Assistência técnica');
 
--- Refeições de exemplo
-INSERT INTO refeicoes (usuario_id, data, cliente_id, estabelecimento, valor, justificativa) VALUES
-(5,'2026-07-06',1,'Restaurante Sabor da Roça',38.00,'Almoço em visita a produtor'),
-(4,'2026-07-08',7,'Cantina Central',42.00,'Almoço durante assistência técnica');
+-- Valores de reembolso de refeição por categoria e tipo (Café, Almoço, Lanche, Janta)
+INSERT INTO reembolso_refeicoes (categoria_reembolso_id, tipo, valor) VALUES
+(1,'Café',15.00),(1,'Almoço',40.00),(1,'Lanche',15.00),(1,'Janta',35.00),   -- Agrônomo
+(2,'Café',12.00),(2,'Almoço',35.00),(2,'Lanche',12.00),(2,'Janta',30.00),   -- Extensionista
+(3,'Café',10.00),(3,'Almoço',30.00),(3,'Lanche',10.00),(3,'Janta',28.00),   -- Vendedor
+(4,'Café',18.00),(4,'Almoço',50.00),(4,'Lanche',18.00),(4,'Janta',45.00);   -- Gestor
+
+-- Refeições de exemplo (valor_reembolso = min(gasto, teto da categoria/tipo))
+INSERT INTO refeicoes (usuario_id, data, hora, tipo, cliente_id, estabelecimento, valor, valor_reembolso, justificativa) VALUES
+(5,'2026-07-06','12:15','Almoço',1,'Restaurante Sabor da Roça',38.00,30.00,'Almoço em visita a produtor'),
+(4,'2026-07-08','12:40','Almoço',7,'Cantina Central',42.00,40.00,'Almoço durante assistência técnica');
 
 -- Reclamações de exemplo (fluxo de laudo)
 INSERT INTO reclamacoes (cliente_id, usuario_id, produto_id, tipo, lote, nota_fiscal, cultura_id, problema, descricao, status) VALUES
@@ -1014,5 +1036,5 @@ INSERT INTO reclamacoes (cliente_id, usuario_id, produto_id, tipo, lote, nota_fi
 (6,5,7,'Defensivos','FG-7781','NF-88410',1,'Fitotoxidez','Sintoma de fitotoxidez após aplicação de fungicida.','Registrada');
 
 -- schema_versao: instalações novas já nascem na versão atual (não re-executam migrações)
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','4')
-  ON DUPLICATE KEY UPDATE valor = '4';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','5')
+  ON DUPLICATE KEY UPDATE valor = '5';

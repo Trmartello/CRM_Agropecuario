@@ -140,32 +140,62 @@ class DespesaService
         return ['id' => Database::ultimoId(), 'valor' => $valor, 'aviso' => $aviso];
     }
 
-    /** Registra uma refeição; retorna [id, aviso] (aviso se acima do teto da categoria). */
+    public const TIPOS_REFEICAO = ['Café', 'Almoço', 'Lanche', 'Janta'];
+
+    /** Valores de reembolso por tipo de refeição da categoria do usuário (tipo => valor). */
+    public static function valoresRefeicaoUsuario(int $usuarioId): array
+    {
+        $categoria = self::categoriaUsuario($usuarioId);
+        if (!$categoria) {
+            return [];
+        }
+        $linhas = Database::todos(
+            'SELECT tipo, valor FROM reembolso_refeicoes WHERE categoria_reembolso_id = ?',
+            [(int) $categoria['id']]
+        );
+        $mapa = [];
+        foreach ($linhas as $l) {
+            $mapa[$l['tipo']] = (float) $l['valor'];
+        }
+        return $mapa;
+    }
+
+    /** Registra uma refeição; retorna [id, valor_reembolso, aviso]. */
     public static function registrarRefeicao(int $usuarioId, array $dados): array
     {
-        $valor = (float) $dados['valor'];
+        $valor = (float) str_replace(',', '.', (string) ($dados['valor'] ?? ''));
         if ($valor <= 0) {
             throw new \InvalidArgumentException('Informe o valor da refeição.');
         }
-        $categoria = self::categoriaUsuario($usuarioId);
+        $tipo = in_array($dados['tipo'] ?? '', self::TIPOS_REFEICAO, true) ? $dados['tipo'] : 'Almoço';
+
+        // Reembolso = min(gasto, teto da categoria/tipo). Sem teto configurado, reembolsa o gasto.
+        $valores = self::valoresRefeicaoUsuario($usuarioId);
+        $teto = $valores[$tipo] ?? null;
+        $reembolso = ($teto !== null && $teto > 0) ? min($valor, $teto) : $valor;
         $aviso = null;
-        if ($categoria && (float) $categoria['teto_refeicao'] > 0 && $valor > (float) $categoria['teto_refeicao']) {
-            $aviso = 'Valor acima do teto da categoria (' . moeda($categoria['teto_refeicao']) . ') — registrado, sujeito à aprovação do gestor.';
+        if ($teto !== null && $teto > 0 && $valor > $teto) {
+            $aviso = 'Nota de ' . moeda($valor) . ' acima do teto de ' . $tipo . ' (' . moeda($teto)
+                . ') — a Copérdia reembolsa ' . moeda($reembolso) . '.';
         }
 
         Database::executar(
-            'INSERT INTO refeicoes (usuario_id, data, cliente_id, estabelecimento, valor, justificativa)
-             VALUES (?,?,?,?,?,?)',
+            'INSERT INTO refeicoes (usuario_id, data, hora, tipo, cliente_id, estabelecimento, valor, valor_reembolso, comprovante, justificativa)
+             VALUES (?,?,?,?,?,?,?,?,?,?)',
             [
                 $usuarioId,
                 $dados['data'] ?: date('Y-m-d'),
+                trim($dados['hora'] ?? '') ?: null,
+                $tipo,
                 (int) ($dados['cliente_id'] ?? 0) ?: null,
                 trim($dados['estabelecimento'] ?? '') ?: null,
                 $valor,
+                $reembolso,
+                $dados['comprovante'] ?? null,
                 trim($dados['justificativa'] ?? '') ?: null,
             ]
         );
-        return ['id' => Database::ultimoId(), 'aviso' => $aviso];
+        return ['id' => Database::ultimoId(), 'valor_reembolso' => $reembolso, 'aviso' => $aviso];
     }
 
     /**

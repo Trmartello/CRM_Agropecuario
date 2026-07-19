@@ -113,6 +113,59 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '4'"
             );
         }
+        if ($versao < 5) {
+            self::migrarParaV5();
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '5')
+                 ON DUPLICATE KEY UPDATE valor = '5'"
+            );
+        }
+    }
+
+    /** Fase 3 (ajuste): refeições por tipo com reembolso por categoria/tipo e comprovante. */
+    private static function migrarParaV5(): void
+    {
+        self::adicionarColuna('refeicoes', 'hora', 'hora TIME NULL AFTER data');
+        self::adicionarColuna('refeicoes', 'tipo',
+            "tipo ENUM('Café','Almoço','Lanche','Janta') NOT NULL DEFAULT 'Almoço' AFTER hora");
+        self::adicionarColuna('refeicoes', 'valor_reembolso', 'valor_reembolso DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER valor');
+        self::adicionarColuna('refeicoes', 'comprovante', 'comprovante VARCHAR(255) NULL AFTER valor_reembolso');
+        self::adicionarColuna('prestacao_contas', 'total_refeicoes_gasto',
+            'total_refeicoes_gasto DECIMAL(12,2) NOT NULL DEFAULT 0 AFTER total_km_valor');
+
+        if (!self::temTabela('reembolso_refeicoes')) {
+            Database::executar(
+                'CREATE TABLE reembolso_refeicoes (
+                   id INT AUTO_INCREMENT PRIMARY KEY,
+                   categoria_reembolso_id INT NOT NULL,
+                   tipo ENUM("Café","Almoço","Lanche","Janta") NOT NULL,
+                   valor DECIMAL(8,2) NOT NULL DEFAULT 0,
+                   UNIQUE KEY uk_reembolso_ref (categoria_reembolso_id, tipo),
+                   FOREIGN KEY (categoria_reembolso_id) REFERENCES categorias_reembolso(id) ON DELETE CASCADE
+                 ) ENGINE=InnoDB'
+            );
+        }
+
+        // Semente dos valores por tipo a partir do teto_refeicao existente (só se vazio)
+        if ((int) Database::valor('SELECT COUNT(*) FROM reembolso_refeicoes') === 0) {
+            $categorias = Database::todos('SELECT id, teto_refeicao FROM categorias_reembolso');
+            foreach ($categorias as $c) {
+                $teto = (float) $c['teto_refeicao'];
+                // Distribui um valor razoável por tipo com base no teto (almoço/janta cheios, café/lanche parciais)
+                $valores = [
+                    'Café' => round($teto * 0.35, 2),
+                    'Almoço' => $teto,
+                    'Lanche' => round($teto * 0.35, 2),
+                    'Janta' => round($teto * 0.85, 2),
+                ];
+                foreach ($valores as $tipo => $valor) {
+                    Database::executar(
+                        'INSERT IGNORE INTO reembolso_refeicoes (categoria_reembolso_id, tipo, valor) VALUES (?,?,?)',
+                        [(int) $c['id'], $tipo, $valor]
+                    );
+                }
+            }
+        }
     }
 
     /** Fase 3 (ajuste): veículos por usuário e destino estruturado na quilometragem. */

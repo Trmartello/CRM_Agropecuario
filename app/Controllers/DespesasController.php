@@ -45,6 +45,8 @@ class DespesasController
             'refeicoes' => $refeicoes,
             'prestacoes' => $prestacoes,
             'categoria' => $categoria,
+            'valoresRefeicao' => DespesaService::valoresRefeicaoUsuario(Auth::id()),
+            'tiposRefeicao' => DespesaService::TIPOS_REFEICAO,
             'previa' => $previa,
             'clientes' => $clientes,
             'veiculos' => $veiculos,
@@ -91,12 +93,32 @@ class DespesasController
     public function salvarRefeicao(): void
     {
         Permissoes::exigirInterno();
+        $dados = $_POST;
+        $dados['comprovante'] = $this->salvarComprovante();
         try {
-            $r = DespesaService::registrarRefeicao(Auth::id(), $_POST);
+            $r = DespesaService::registrarRefeicao(Auth::id(), $dados);
         } catch (\InvalidArgumentException $e) {
             json_erro($e->getMessage());
         }
         json_ok($r);
+    }
+
+    /** Salva a foto/arquivo do comprovante da refeição e retorna o nome do arquivo. */
+    private function salvarComprovante(): ?string
+    {
+        if (empty($_FILES['comprovante']['name'] ?? null) || !is_uploaded_file($_FILES['comprovante']['tmp_name'] ?? '')) {
+            return null;
+        }
+        $ext = strtolower(pathinfo($_FILES['comprovante']['name'], PATHINFO_EXTENSION));
+        if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'heic', 'pdf'], true)) {
+            return null;
+        }
+        $dir = dirname(__DIR__, 2) . '/public/uploads/comprovantes';
+        if (!is_dir($dir)) {
+            mkdir($dir, 0775, true);
+        }
+        $arquivo = sprintf('ref_%d_%s.%s', Auth::id(), bin2hex(random_bytes(6)), $ext);
+        return move_uploaded_file($_FILES['comprovante']['tmp_name'], $dir . '/' . $arquivo) ? 'comprovantes/' . $arquivo : null;
     }
 
     public function excluirKm(): void
