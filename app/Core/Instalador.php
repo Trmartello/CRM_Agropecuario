@@ -187,6 +187,28 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '13'"
             );
         }
+        if ($versao < 14) {
+            // Segurança de produção: troca obrigatória de senha + bloqueio de tentativas
+            self::adicionarColuna('usuarios', 'trocar_senha',
+                "trocar_senha TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = deve definir nova senha no próximo acesso' AFTER ativo");
+            if (!self::temTabela('login_tentativas')) {
+                Database::executar(
+                    'CREATE TABLE login_tentativas (
+                        chave VARCHAR(190) NOT NULL PRIMARY KEY,
+                        tentativas INT NOT NULL DEFAULT 0,
+                        bloqueado_ate DATETIME NULL,
+                        atualizado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                     ) ENGINE=InnoDB'
+                );
+            }
+            // Instalações existentes (ex.: Railway) ainda usam as senhas do seed:
+            // obriga todo mundo a definir uma senha própria no próximo acesso.
+            Database::executar('UPDATE usuarios SET trocar_senha = 1');
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '14')
+                 ON DUPLICATE KEY UPDATE valor = '14'"
+            );
+        }
     }
 
     /** Fase 5: log de integração (ERP/CAPE). */

@@ -49,9 +49,12 @@ class UsuariosController
                 [$nome, $email, $perfil, trim($_POST['telefone'] ?? '') ?: null, $categoriaId, (int) ($_POST['ativo'] ?? 1), $id]
             );
             if ($senha !== '') {
+                // Senha definida pelo admin é temporária: o usuário cria a própria no
+                // primeiro acesso (exceto quando o admin troca a própria senha).
+                $trocar = $id !== \App\Core\Auth::id() ? 1 : 0;
                 Database::executar(
-                    'UPDATE usuarios SET senha_hash=? WHERE id=?',
-                    [password_hash($senha, PASSWORD_DEFAULT), $id]
+                    'UPDATE usuarios SET senha_hash=?, trocar_senha=? WHERE id=?',
+                    [password_hash($senha, PASSWORD_DEFAULT), $trocar, $id]
                 );
             }
         } else {
@@ -59,7 +62,7 @@ class UsuariosController
                 json_erro('Informe a senha do novo usuário.');
             }
             Database::executar(
-                'INSERT INTO usuarios (nome, email, perfil, telefone, categoria_reembolso_id, senha_hash, ativo) VALUES (?,?,?,?,?,?,1)',
+                'INSERT INTO usuarios (nome, email, perfil, telefone, categoria_reembolso_id, senha_hash, ativo, trocar_senha) VALUES (?,?,?,?,?,?,1,1)',
                 [$nome, $email, $perfil, trim($_POST['telefone'] ?? '') ?: null, $categoriaId, password_hash($senha, PASSWORD_DEFAULT)]
             );
             $id = Database::ultimoId();

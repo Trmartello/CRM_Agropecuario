@@ -66,6 +66,19 @@ $router->registrar('arquivo/favicon', \App\Controllers\ArquivoController::class,
 $router->registrar('login', LoginController::class, 'form');
 $router->registrar('login/entrar', LoginController::class, 'entrar');
 $router->registrar('login/sair', LoginController::class, 'sair');
+$router->registrar('login/trocar-senha', LoginController::class, 'trocarSenhaForm');
+$router->registrar('login/salvar-senha', LoginController::class, 'salvarSenha');
+
+// Primeiro acesso / senha temporária: obriga a definir a própria senha antes de usar o sistema
+$rotaPedida = $_GET['r'] ?? '';
+if (Auth::logado() && !empty(Auth::usuario()['trocar_senha'])
+    && !in_array($rotaPedida, ['login/trocar-senha', 'login/salvar-senha', 'login/sair', 'arquivo/logo', 'arquivo/favicon'], true)) {
+    if (Auth::ehAjax()) {
+        json_erro('Defina sua nova senha para continuar.', 403);
+    }
+    header('Location: ' . url('login/trocar-senha'));
+    exit;
+}
 
 // Dashboard
 $router->registrar('dashboard', DashboardController::class, 'index');

@@ -1,0 +1,62 @@
+# Checklist de Produção — CRM AGRO (Railway)
+
+Itens de segurança/confiabilidade para rodar o sistema com dados reais.
+Os passos 1 e 2 são **configuração no painel do Railway** (não dá para
+resolver por código). Os demais já estão implementados no app.
+
+## 1. Volume para as fotos (`public/uploads`) — OBRIGATÓRIO
+
+Sem volume, **as fotos são apagadas a cada redeploy** (o banco guarda o
+registro, mas o arquivo some — a miniatura aparece como "abrir foto").
+
+1. No Railway, abra o serviço da **aplicação** (não o MySQL).
+2. Aba **Settings → Volumes → Add Volume** (ou botão direito no serviço → *Attach volume*).
+3. **Mount path**: `/app/public/uploads`
+4. Salve — o Railway reinicia o serviço com o volume montado.
+5. Teste: envie uma foto numa visita, faça um redeploy e confira que a foto continua abrindo.
+
+> Fotos enviadas ANTES do volume foram perdidas nos redeploys — os registros
+> antigos mostrarão o cartão "abrir foto". Só as novas ficam persistidas.
+
+## 2. Backup do banco (MySQL) — OBRIGATÓRIO
+
+O banco guarda visitas, despesas, reclamações e clientes. Sem backup, um
+acidente (delete errado, corrupção, exclusão do serviço) perde tudo.
+
+**Opção A — Backups do próprio Railway (mais simples):**
+1. Abra o serviço **MySQL** → aba **Backups**.
+2. Ative os backups agendados (diário) — disponíveis nos planos pagos.
+3. Faça um backup manual agora para ter o primeiro ponto de restauração.
+
+**Opção B — Dump manual periódico (gratuito, manual):**
+```bash
+# Com o Railway CLI logado no projeto (as variáveis vêm do serviço MySQL):
+railway run --service MySQL bash -c 'mysqldump -h $MYSQLHOST -P $MYSQLPORT -u $MYSQLUSER -p$MYSQLPASSWORD $MYSQLDATABASE' > backup_$(date +%Y%m%d).sql
+```
+Guarde o arquivo fora do Railway (Drive, S3 etc.). Repita ao menos semanalmente.
+
+## 3. Senhas do seed — resolvido no app (v14)
+
+- Na primeira visita após o deploy da versão 14, a migração marca **todos os
+  usuários existentes** para **troca obrigatória de senha**: no próximo login,
+  cada um define a própria senha (mínimo 8 caracteres, letras e números)
+  antes de acessar qualquer tela. As senhas de demonstração deixam de valer.
+- Usuários novos (ou com senha redefinida pelo admin) também entram com senha
+  temporária e trocam no primeiro acesso.
+- Instalação **nova** direto do `database.sql` (ex.: ambiente de testes) não
+  força a troca; para produção nova, rode uma vez:
+  `UPDATE usuarios SET trocar_senha = 1;`
+
+## 4. Proteção do login — resolvido no app (v14)
+
+- 5 tentativas falhas em 30 min bloqueiam o e-mail por 15 min.
+- Resposta de falha propositalmente lenta (dificulta robôs).
+
+## 5. Conferências rápidas finais
+
+- [ ] HTTPS ativo (Railway já fornece; cookies `Secure` são automáticos).
+- [ ] Volume montado (item 1) e backup agendado (item 2).
+- [ ] Todos os usuários reais criados no módulo Usuários (perfil correto,
+      categoria de reembolso atribuída) — cada um troca a senha no 1º acesso.
+- [ ] Usuários seed que não serão usados: desativar no módulo Usuários.
+- [ ] `docs/DEPLOY_RAILWAY.md` para detalhes gerais do deploy.

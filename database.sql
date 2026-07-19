@@ -37,7 +37,17 @@ CREATE TABLE usuarios (
   categoria_reembolso_id INT NULL COMMENT 'categoria de reembolso de despesas (KM/refeições)',
   cliente_id INT NULL COMMENT 'produtor vinculado (perfil Produtor — portal)',
   ativo TINYINT(1) NOT NULL DEFAULT 1,
+  trocar_senha TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = deve definir nova senha no próximo acesso',
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+-- Proteção do login: contagem de tentativas falhas e bloqueio temporário por e-mail
+DROP TABLE IF EXISTS login_tentativas;
+CREATE TABLE login_tentativas (
+  chave VARCHAR(190) NOT NULL PRIMARY KEY,
+  tentativas INT NOT NULL DEFAULT 0,
+  bloqueado_ate DATETIME NULL,
+  atualizado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
 CREATE TABLE filiais (
@@ -1139,5 +1149,5 @@ CREATE TABLE sync_processados (
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','13')
-  ON DUPLICATE KEY UPDATE valor = '13';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','14')
+  ON DUPLICATE KEY UPDATE valor = '14';

@@ -11,6 +11,11 @@ class Auth
     private const DIAS_LEMBRAR = 30;
     private const COOKIE_LEMBRAR = 'crm_lembrar';
 
+    /** Proteção contra força bruta no login. */
+    private const MAX_TENTATIVAS = 5;
+    private const MINUTOS_BLOQUEIO = 15;
+    private const MINUTOS_JANELA = 30; // falhas mais antigas que isso reiniciam a contagem
+
     public static function iniciarSessao(): void
     {
         if (session_status() === PHP_SESSION_NONE) {
@@ -37,10 +42,72 @@ class Auth
         if (!$usuario || !password_verify($senha, $usuario['senha_hash'])) {
             return false;
         }
+        self::limparTentativas($email);
         session_regenerate_id(true);
         self::gravarSessao($usuario);
         self::criarTokenPersistente((int) $usuario['id']);
         return true;
+    }
+
+    /** Minutos restantes de bloqueio do e-mail (0 = liberado). */
+    public static function minutosBloqueado(string $email): int
+    {
+        try {
+            $b = Database::um('SELECT bloqueado_ate FROM login_tentativas WHERE chave = ?', [mb_strtolower(trim($email))]);
+        } catch (\PDOException $e) {
+            return 0; // tabela ainda não migrada
+        }
+        if ($b && $b['bloqueado_ate'] && strtotime($b['bloqueado_ate']) > time()) {
+            return (int) ceil((strtotime($b['bloqueado_ate']) - time()) / 60);
+        }
+        return 0;
+    }
+
+    /** Registra uma falha de login; ao atingir o limite, bloqueia temporariamente. */
+    public static function registrarFalha(string $email): void
+    {
+        $chave = mb_strtolower(trim($email));
+        if ($chave === '') {
+            return;
+        }
+        try {
+            $atual = Database::um('SELECT tentativas, atualizado_em FROM login_tentativas WHERE chave = ?', [$chave]);
+            $dentroJanela = $atual && strtotime($atual['atualizado_em']) > time() - self::MINUTOS_JANELA * 60;
+            $tentativas = ($dentroJanela ? (int) $atual['tentativas'] : 0) + 1;
+            $bloqueio = null;
+            if ($tentativas >= self::MAX_TENTATIVAS) {
+                $bloqueio = date('Y-m-d H:i:s', time() + self::MINUTOS_BLOQUEIO * 60);
+                $tentativas = 0;
+            }
+            Database::executar(
+                'INSERT INTO login_tentativas (chave, tentativas, bloqueado_ate) VALUES (?,?,?)
+                 ON DUPLICATE KEY UPDATE tentativas = VALUES(tentativas), bloqueado_ate = VALUES(bloqueado_ate)',
+                [$chave, $tentativas, $bloqueio]
+            );
+        } catch (\PDOException $e) { /* tabela ainda não migrada */ }
+    }
+
+    private static function limparTentativas(string $email): void
+    {
+        try {
+            Database::executar('DELETE FROM login_tentativas WHERE chave = ?', [mb_strtolower(trim($email))]);
+        } catch (\PDOException $e) { /* tabela ainda não migrada */ }
+    }
+
+    /**
+     * Define a nova senha do usuário logado (fluxo de primeiro acesso/troca):
+     * atualiza o hash, limpa a obrigação de troca e invalida os logins
+     * persistentes antigos (outros aparelhos precisam logar de novo).
+     */
+    public static function definirNovaSenha(string $nova): void
+    {
+        Database::executar(
+            'UPDATE usuarios SET senha_hash = ?, trocar_senha = 0 WHERE id = ?',
+            [password_hash($nova, PASSWORD_DEFAULT), self::id()]
+        );
+        Database::executar('DELETE FROM sessoes_persistentes WHERE usuario_id = ?', [self::id()]);
+        self::criarTokenPersistente(self::id());
+        $_SESSION['usuario']['trocar_senha'] = 0;
     }
 
     public static function sair(): void
@@ -63,6 +130,7 @@ class Auth
             'nome' => $usuario['nome'],
             'email' => $usuario['email'],
             'perfil' => $usuario['perfil'],
+            'trocar_senha' => (int) ($usuario['trocar_senha'] ?? 0),
         ];
     }
 
