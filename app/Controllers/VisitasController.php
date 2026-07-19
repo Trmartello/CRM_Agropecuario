@@ -184,7 +184,7 @@ class VisitasController
                         latitude=?, longitude=?, finalizada=?, completude=? WHERE id=?',
                 array_merge([$clienteId], $campos, [$finalizada, $completude, $visitaId])
             );
-            $this->salvarFotos($visitaId);
+            $fotosIgnoradas = $this->salvarFotos($visitaId);
             $this->salvarConcorrencia($visitaId, $clienteId);
             // Notifica o produtor só se a recomendação surgiu agora (não repete aviso)
             $notificar = trim($_POST['recomendacao'] ?? '') !== '' && trim((string) $anterior['recomendacao']) === '';
@@ -205,7 +205,7 @@ class VisitasController
             );
             $visitaId = Database::ultimoId();
 
-            $this->salvarFotos($visitaId);
+            $fotosIgnoradas = $this->salvarFotos($visitaId);
             $this->salvarConcorrencia($visitaId, $clienteId);
 
             // Amarra automaticamente a quilometragem do dia (mesmo técnico/produtor) a esta visita
@@ -226,25 +226,37 @@ class VisitasController
 
         // Confirma a transação idempotente: uuid + visita + fotos/vínculos juntos.
         sync_confirmar($_POST['uuid_offline'] ?? null);
-        json_ok(['id' => $visitaId, 'finalizada' => $finalizada, 'completude' => $completude]);
+        json_ok([
+            'id' => $visitaId,
+            'finalizada' => $finalizada,
+            'completude' => $completude,
+            'aviso' => $fotosIgnoradas > 0
+                ? "{$fotosIgnoradas} foto(s) em formato não suportado (ex.: HEIC) não foram salvas — envie em JPEG/PNG."
+                : null,
+        ]);
     }
 
-    private function salvarFotos(int $visitaId): void
+    /** Salva as fotos e retorna quantos arquivos foram ignorados (formato não exibível no navegador). */
+    private function salvarFotos(int $visitaId): int
     {
         if (empty($_FILES['fotos']['name'][0] ?? null)) {
-            return;
+            return 0;
         }
         $dir = dirname(__DIR__, 2) . '/public/uploads';
         if (!is_dir($dir)) {
             mkdir($dir, 0775, true);
         }
-        $permitidas = ['jpg', 'jpeg', 'png', 'webp', 'heic'];
+        // Sem HEIC: navegadores não exibem HEIC (thumbnail quebraria); o iPhone converte
+        // para JPEG quando o accept do input não inclui HEIC.
+        $permitidas = ['jpg', 'jpeg', 'png', 'webp'];
+        $ignoradas = 0;
         foreach ($_FILES['fotos']['tmp_name'] as $i => $tmp) {
             if (!is_uploaded_file($tmp)) {
                 continue;
             }
             $ext = strtolower(pathinfo($_FILES['fotos']['name'][$i], PATHINFO_EXTENSION));
             if (!in_array($ext, $permitidas, true)) {
+                $ignoradas++;
                 continue;
             }
             $arquivo = sprintf('visita_%d_%s.%s', $visitaId, bin2hex(random_bytes(6)), $ext);
@@ -255,6 +267,7 @@ class VisitasController
                 );
             }
         }
+        return $ignoradas;
     }
 
     private function salvarConcorrencia(int $visitaId, int $clienteId): void

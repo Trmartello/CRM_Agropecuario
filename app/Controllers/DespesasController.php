@@ -122,7 +122,7 @@ class DespesasController
             return null;
         }
         $ext = strtolower(pathinfo($_FILES['comprovante']['name'], PATHINFO_EXTENSION));
-        if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'heic', 'pdf'], true)) {
+        if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'pdf'], true)) { // sem HEIC: navegador não exibe
             return null;
         }
         $dir = dirname(__DIR__, 2) . '/public/uploads/comprovantes';

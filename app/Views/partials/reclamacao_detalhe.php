@@ -35,7 +35,7 @@ $r = $reclamacao;
 <?php if ($fotos): ?>
 <div class="d-flex flex-wrap gap-2 mb-3">
   <?php foreach ($fotos as $f): ?>
-    <a href="uploads/<?= e($f['arquivo']) ?>" target="_blank"><img src="uploads/<?= e($f['arquivo']) ?>" style="height:90px;border-radius:.4rem;object-fit:cover"></a>
+    <a href="uploads/<?= e($f['arquivo']) ?>" target="_blank"><img src="uploads/<?= e($f['arquivo']) ?>" class="foto-miniatura" alt="Foto" loading="lazy" style="height:90px" onerror="App.fotoIndisponivel(this)"></a>
   <?php endforeach; ?>
 </div>
 <?php endif; ?>

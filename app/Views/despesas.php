@@ -337,7 +337,7 @@ $statusCor = ['Aberta'=>'secondary','Enviada'=>'info','Aprovada'=>'success','Rej
           <div class="col-12"><div class="alert alert-light border mb-0 py-2 small" id="refeicaoPreview">Selecione o tipo e informe o valor.</div></div>
           <div class="col-12">
             <label class="form-label">Comprovante</label>
-            <input type="file" name="comprovante" id="refComprovante" class="d-none" accept="image/*,.pdf" capture="environment" onchange="Despesas.previewComprovante(this)">
+            <input type="file" name="comprovante" id="refComprovante" class="d-none" accept="image/jpeg,image/png,image/webp,.pdf" capture="environment" onchange="Despesas.previewComprovante(this)">
             <div id="refDropzone" class="dropzone-foto" onclick="document.getElementById('refComprovante').click()">
               <div id="refDropVazio" class="text-center py-4">
                 <i class="bi bi-camera fs-2 text-success d-block mb-1"></i>

@@ -70,6 +70,17 @@ const App = {
     return (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   },
 
+  /** Miniatura que não carregou (formato não exibível ou arquivo ausente): vira um cartão-link. */
+  fotoIndisponivel(img) {
+    const link = img.closest('a');
+    const alvo = document.createElement('span');
+    alvo.className = 'foto-miniatura d-inline-flex flex-column align-items-center justify-content-center bg-light border text-muted text-center';
+    alvo.style.fontSize = '.7rem';
+    alvo.innerHTML = '<i class="bi bi-file-earmark-image fs-4 d-block"></i>abrir foto';
+    img.replaceWith(alvo);
+    if (link) link.title = 'Prévia indisponível (formato não suportado ou arquivo ausente) — toque para abrir.';
+  },
+
   /** Cresce um textarea para caber todo o texto; respeita o aumento manual (alça). */
   autoCrescer(el) {
     if (!el || el.tagName !== 'TEXTAREA') return;
@@ -740,7 +751,8 @@ const Visitas = {
         App.alerta(editando
           ? (r.finalizada ? 'Cadastro da visita completado (100%).' : 'Visita atualizada — cadastro ainda incompleto.')
           : 'Visita registrada com sucesso.');
-        setTimeout(() => location.href = 'index.php?r=visitas', 700);
+        if (r.aviso) App.alerta(r.aviso, 'warning');
+        setTimeout(() => location.href = 'index.php?r=visitas', r.aviso ? 2500 : 700);
       }
     } catch (e) { App.alerta(e.message, 'danger'); }
     return false;

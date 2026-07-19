@@ -101,7 +101,7 @@ class ReclamacoesController
         if (!is_dir($dir)) {
             mkdir($dir, 0775, true);
         }
-        $permitidas = ['jpg', 'jpeg', 'png', 'webp', 'heic'];
+        $permitidas = ['jpg', 'jpeg', 'png', 'webp']; // sem HEIC: navegador não exibe
         foreach ($_FILES['fotos']['tmp_name'] as $i => $tmp) {
             if (!is_uploaded_file($tmp)) {
                 continue;
