@@ -89,6 +89,7 @@ class AgendaController
             'roteiro' => AgendaService::roteiro($data, Auth::id()),
             'sugestoes' => AgendaService::sugestoesVisita($data, Auth::id()),
             'kmRoteiro' => AgendaService::distanciaRoteiro($data, Auth::id()),
+            'estimativa' => AgendaService::estimativaDia($data, Auth::id()),
             'municipios' => $locais['municipios'],
             'linhas' => $locais['linhas'],
             'linhasPorMunicipio' => $locais['porMunicipio'],

@@ -7,6 +7,11 @@ $wa = function (?string $tel, string $texto): ?string {
     return 'https://wa.me/' . $num . '?text=' . rawurlencode($texto);
 };
 $mapa = fn ($la, $lo) => ($la && $lo) ? 'https://www.google.com/maps/search/?api=1&query=' . $la . ',' . $lo : null;
+$dur = function (int $min): string {
+    if ($min <= 0) return '0 min';
+    $h = intdiv($min, 60); $m = $min % 60;
+    return $h > 0 ? ($m > 0 ? "{$h}h {$m}min" : "{$h}h") : "{$m}min";
+};
 $diaBr = data_br($data);
 ?>
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
@@ -29,15 +34,18 @@ $diaBr = data_br($data);
         <i class="bi bi-signpost-split me-2 text-success"></i><strong>Roteiro de <?= $diaBr ?></strong>
         <span class="ms-auto badge text-bg-success"><?= count($roteiro) ?> parada(s)</span>
         <?php if ($kmRoteiro > 0): ?><span class="badge text-bg-light border text-dark" title="Distância total do roteiro na ordem atual"><i class="bi bi-signpost me-1"></i>≈ <?= numero($kmRoteiro, 1) ?> km</span><?php endif; ?>
+        <?php if ($estimativa['min_total'] > 0): ?><span class="badge text-bg-light border text-dark" title="Estimativa do dia: ~<?= $dur($estimativa['min_viagem']) ?> de viagem + <?= $estimativa['paradas'] ?> visita(s) (~<?= $dur($estimativa['min_visitas']) ?>)"><i class="bi bi-clock me-1"></i>~<?= $dur($estimativa['min_total']) ?> no dia</span><?php endif; ?>
       </div>
       <ol class="list-group list-group-flush list-group-numbered" id="listaRoteiro">
         <?php if (!$roteiro): ?><li class="list-group-item text-muted">Nenhuma parada. Adicione produtores das sugestões ao lado.</li><?php endif; ?>
         <?php foreach ($roteiro as $i => $r): $link = $wa($r['cliente_telefone'] ?? null, 'Olá! Podemos agendar uma visita para ' . $diaBr . '? (' . str_replace('Visita — ', '', $r['titulo']) . ')'); $lmap = $mapa($r['latitude'], $r['longitude']); ?>
-        <li class="list-group-item d-flex align-items-center gap-2 <?= $r['status'] === 'Concluído' ? 'opacity-50' : '' ?>">
+        <?php $vencida = !empty($r['visita_vencida']) && $r['status'] === 'Pendente'; $diasTxt = isset($r['dias_sem_visita']) ? ($r['dias_sem_visita'] >= 120 ? '+120' : $r['dias_sem_visita']) . 'd s/ visita' : null; ?>
+        <li class="list-group-item d-flex align-items-center gap-2 <?= $r['status'] === 'Concluído' ? 'opacity-50' : ($vencida ? 'border-start border-warning border-3' : '') ?>">
           <div class="flex-grow-1">
             <div class="fw-semibold"><?= e($r['cliente'] ?? str_replace('Visita — ', '', $r['titulo'])) ?>
-              <?php if ($r['status'] === 'Concluído'): ?><span class="badge text-bg-success ms-1">Visitado</span><?php endif; ?></div>
-            <div class="small text-muted"><?= e($r['municipio'] ?? '—') ?><?= $r['hora'] ? ' · ' . substr($r['hora'],0,5) : '' ?></div>
+              <?php if ($r['status'] === 'Concluído'): ?><span class="badge text-bg-success ms-1">Visitado</span><?php endif; ?>
+              <?php if ($vencida): ?><span class="badge text-bg-warning text-dark ms-1" title="Sem visita há <?= $diasTxt ?>"><i class="bi bi-exclamation-triangle me-1"></i>Visita vencida</span><?php endif; ?></div>
+            <div class="small text-muted"><?= e($r['municipio'] ?? '—') ?><?= $r['hora'] ? ' · ' . substr($r['hora'],0,5) : '' ?><?= $diasTxt ? ' · ' . $diasTxt : '' ?></div>
           </div>
           <div class="btn-group-vertical btn-group-sm me-1">
             <button class="btn btn-outline-secondary py-0" title="Subir" onclick="Organizador.reordenar(<?= $r['id'] ?>,'cima')" <?= $i === 0 ? 'disabled' : '' ?>><i class="bi bi-chevron-up"></i></button>
@@ -142,7 +150,7 @@ const Organizador = {
       const fd = new FormData(); fd.append('data', Organizador.data);
       const r = await App.json('index.php?r=agenda/roteiro-otimizar', { method: 'POST', body: fd });
       App.alerta(r.otimizadas > 1
-        ? 'Rota otimizada para a menor distância: ≈ ' + r.km.toLocaleString('pt-BR') + ' km em ' + r.otimizadas + ' paradas.'
+        ? 'Rota otimizada para a menor distância: ≈ ' + r.km.toLocaleString('pt-BR') + ' km · ~' + Organizador.fmtDur(r.min_total) + ' no dia (' + r.otimizadas + ' paradas).'
         : 'Poucas paradas com localização para otimizar.', r.otimizadas > 1 ? 'success' : 'info');
       setTimeout(() => location.reload(), 900);
     } catch (e) { App.alerta(e.message, 'danger'); }
@@ -194,6 +202,11 @@ const Organizador = {
           </div>`).join('');
       } catch (e) { App.alerta(e.message, 'danger'); }
     }, 300);
+  },
+  fmtDur(min) {
+    min = Math.max(0, Math.round(min || 0));
+    const h = Math.floor(min / 60), m = min % 60;
+    return h > 0 ? (m > 0 ? h + 'h ' + m + 'min' : h + 'h') : m + 'min';
   },
   imprimir() { window.print(); },
 };

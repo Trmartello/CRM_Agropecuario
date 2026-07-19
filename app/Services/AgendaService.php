@@ -11,6 +11,15 @@ class AgendaService
 {
     public const TIPOS = ['Visita', 'Reunião', 'Tarefa', 'Entrega', 'Cobrança', 'Outro'];
 
+    /** Dias sem visita a partir dos quais a parada é considerada "visita vencida". */
+    public const DIAS_VISITA_VENCIDA = 90;
+    /** Teto de dias exibido (produtor nunca visitado usa este valor). */
+    private const DIAS_TETO = 120;
+    /** Velocidade média assumida em estrada rural (km/h) para estimar o tempo de viagem. */
+    private const VELOCIDADE_KMH = 45.0;
+    /** Duração média estimada de uma visita/parada (minutos). */
+    private const MIN_POR_PARADA = 40;
+
     /** Eventos de um período. Gestor vê a equipe; campo vê os próprios. */
     public static function listar(?string $de = null, ?string $ate = null, int $usuarioFiltro = 0): array
     {
@@ -96,15 +105,30 @@ class AgendaService
     /** Roteiro do dia ordenado (para o organizador de visitas). */
     public static function roteiro(string $data, int $usuarioId): array
     {
-        return Database::todos(
+        $rows = Database::todos(
             "SELECT e.*, c.nome AS cliente, c.telefone AS cliente_telefone, c.municipio,
-                    c.latitude, c.longitude
+                    c.latitude, c.longitude,
+                    (SELECT MAX(v.data_visita) FROM visitas v WHERE v.cliente_id = e.cliente_id) AS ultima_visita
                FROM agenda_eventos e
                LEFT JOIN clientes c ON c.id = e.cliente_id
               WHERE e.usuario_id = ? AND e.data = ? AND e.status <> 'Cancelado'
               ORDER BY e.ordem, e.hora IS NULL, e.hora",
             [$usuarioId, $data]
         );
+        foreach ($rows as &$r) {
+            if ($r['cliente_id']) {
+                $dias = $r['ultima_visita']
+                    ? (int) floor((time() - strtotime($r['ultima_visita'])) / 86400)
+                    : self::DIAS_TETO; // nunca visitado
+                $r['dias_sem_visita'] = $dias;
+                $r['visita_vencida'] = $dias >= self::DIAS_VISITA_VENCIDA;
+            } else {
+                $r['dias_sem_visita'] = null;
+                $r['visita_vencida'] = false;
+            }
+        }
+        unset($r);
+        return $rows;
     }
 
     /** Sugestões priorizadas de quem visitar num dia (exclui quem já está no roteiro). */
@@ -272,7 +296,32 @@ class AgendaService
         foreach ($semGeo as $p) {
             Database::executar('UPDATE agenda_eventos SET ordem = ? WHERE id = ?', [$ordem++, (int) $p['id']]);
         }
-        return ['otimizadas' => $n, 'km' => round($melhorCusto, 1)];
+        $km = round($melhorCusto, 1);
+        $minViagem = (int) round($km / self::VELOCIDADE_KMH * 60);
+        $minTotal = $minViagem + count($paradas) * self::MIN_POR_PARADA;
+        return ['otimizadas' => $n, 'km' => $km, 'min_total' => $minTotal];
+    }
+
+    /**
+     * Estimativa do dia: distância total, tempo de viagem (pela velocidade média),
+     * tempo de visitas (paradas × duração média) e tempo total, em minutos.
+     */
+    public static function estimativaDia(string $data, int $usuarioId): array
+    {
+        $km = self::distanciaRoteiro($data, $usuarioId);
+        $paradas = (int) Database::valor(
+            "SELECT COUNT(*) FROM agenda_eventos WHERE usuario_id = ? AND data = ? AND status <> 'Cancelado'",
+            [$usuarioId, $data]
+        );
+        $minViagem = $km > 0 ? (int) round($km / self::VELOCIDADE_KMH * 60) : 0;
+        $minVisitas = $paradas * self::MIN_POR_PARADA;
+        return [
+            'km' => $km,
+            'paradas' => $paradas,
+            'min_viagem' => $minViagem,
+            'min_visitas' => $minVisitas,
+            'min_total' => $minViagem + $minVisitas,
+        ];
     }
 
     /** Distância total (km) de uma rota (caminho aberto: soma dos trechos consecutivos). */
