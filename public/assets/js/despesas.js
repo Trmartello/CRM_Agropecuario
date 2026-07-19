@@ -101,13 +101,44 @@ const Despesas = {
     const form = document.getElementById('formRefeicao');
     form.reset();
     const agora = new Date();
-    form.querySelector('[name=data]').value = agora.toISOString().slice(0, 10);
-    form.querySelector('[name=hora]').value = agora.toTimeString().slice(0, 5);
+    // datetime-local no fuso local (evita o deslocamento do toISOString)
+    const local = new Date(agora.getTime() - agora.getTimezoneOffset() * 60000);
+    form.querySelector('[name=datahora]').value = local.toISOString().slice(0, 16);
+    Despesas.limparComprovante();
     Despesas.previewRefeicao();
     new bootstrap.Modal('#modalRefeicao').show();
   },
 
   tipoRefeicao() { Despesas.previewRefeicao(); },
+
+  /** Mostra a prévia da foto/PDF do comprovante escolhido. */
+  previewComprovante(input) {
+    const arq = input.files && input.files[0];
+    const vazio = document.getElementById('refDropVazio');
+    const previa = document.getElementById('refDropPreview');
+    const img = document.getElementById('refDropImg');
+    const pdf = document.getElementById('refDropPdf');
+    if (!arq) { Despesas.limparComprovante(); return; }
+    vazio.classList.add('d-none');
+    previa.classList.remove('d-none');
+    if (arq.type === 'application/pdf') {
+      img.classList.add('d-none');
+      pdf.classList.remove('d-none');
+      document.getElementById('refDropNome').textContent = arq.name;
+    } else {
+      pdf.classList.add('d-none');
+      img.classList.remove('d-none');
+      img.src = URL.createObjectURL(arq);
+    }
+  },
+
+  limparComprovante(ev) {
+    if (ev) ev.stopPropagation();
+    const input = document.getElementById('refComprovante');
+    if (input) input.value = '';
+    document.getElementById('refDropVazio')?.classList.remove('d-none');
+    document.getElementById('refDropPreview')?.classList.add('d-none');
+  },
 
   /** Mostra quanto a Copérdia vai reembolsar para o tipo/valor informado. */
   previewRefeicao() {

@@ -211,6 +211,17 @@ class DespesaService
         }
         $tipo = in_array($dados['tipo'] ?? '', self::TIPOS_REFEICAO, true) ? $dados['tipo'] : 'Almoço';
 
+        // Data e horário: aceita "datahora" (datetime-local) ou data/hora separados
+        $data = $dados['data'] ?? '';
+        $hora = $dados['hora'] ?? '';
+        if (!empty($dados['datahora'])) {
+            $dt = str_replace('T', ' ', trim($dados['datahora']));
+            $data = substr($dt, 0, 10);
+            $hora = substr($dt, 11, 5);
+        }
+        $data = $data ?: date('Y-m-d');
+        $hora = $hora ?: null;
+
         // Reembolso = min(gasto, teto da categoria/tipo). Sem teto configurado, reembolsa o gasto.
         $valores = self::valoresRefeicaoUsuario($usuarioId);
         $teto = $valores[$tipo] ?? null;
@@ -226,8 +237,8 @@ class DespesaService
              VALUES (?,?,?,?,?,?,?,?,?,?)',
             [
                 $usuarioId,
-                $dados['data'] ?: date('Y-m-d'),
-                trim($dados['hora'] ?? '') ?: null,
+                $data,
+                $hora,
                 $tipo,
                 (int) ($dados['cliente_id'] ?? 0) ?: null,
                 trim($dados['estabelecimento'] ?? '') ?: null,

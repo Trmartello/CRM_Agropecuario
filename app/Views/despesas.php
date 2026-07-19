@@ -93,7 +93,7 @@ $statusCor = ['Aberta'=>'secondary','Enviada'=>'info','Aprovada'=>'success','Rej
       <table class="table table-hover align-middle mb-0">
         <thead class="table-light"><tr>
           <th>Data</th><?php if ($ehGestor): ?><th>Usuário</th><?php endif; ?>
-          <th>Tipo</th><th class="d-none d-md-table-cell">Estabelecimento</th>
+          <th>Tipo</th><th class="d-none d-md-table-cell">Justificativa</th>
           <th class="text-end">Gasto</th><th class="text-end">Reembolso</th><th class="d-none d-md-table-cell"></th><th></th>
         </tr></thead>
         <tbody>
@@ -103,7 +103,7 @@ $statusCor = ['Aberta'=>'secondary','Enviada'=>'info','Aprovada'=>'success','Rej
             <td class="text-nowrap"><?= data_br($l['data']) ?><?= $l['hora'] ? ' <span class="text-muted small">' . substr($l['hora'],0,5) . '</span>' : '' ?></td>
             <?php if ($ehGestor): ?><td class="small"><?= e($l['usuario']) ?></td><?php endif; ?>
             <td><span class="badge text-bg-light border text-dark"><?= e($l['tipo'] ?? 'Almoço') ?></span></td>
-            <td class="d-none d-md-table-cell small"><?= e($l['estabelecimento'] ?? '—') ?></td>
+            <td class="d-none d-md-table-cell small text-muted"><?= e($l['justificativa'] ?? '—') ?></td>
             <td class="text-end"><?= moeda($l['valor']) ?></td>
             <td class="text-end fw-semibold text-success"><?= moeda($l['valor_reembolso']) ?>
               <?php if ((float)$l['valor_reembolso'] < (float)$l['valor']): ?><i class="bi bi-info-circle text-warning ms-1" title="Limitado ao teto da categoria"></i><?php endif; ?>
@@ -320,8 +320,8 @@ $statusCor = ['Aberta'=>'secondary','Enviada'=>'info','Aprovada'=>'success','Rej
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
         <div class="row g-3">
-          <div class="col-6"><label class="form-label">Data *</label><input type="date" name="data" class="form-control" value="<?= date('Y-m-d') ?>" required></div>
-          <div class="col-6"><label class="form-label">Horário</label><input type="time" name="hora" class="form-control" value="<?= date('H:i') ?>"></div>
+          <div class="col-12"><label class="form-label">Data e horário *</label>
+            <input type="datetime-local" name="datahora" class="form-control" value="<?= date('Y-m-d\TH:i') ?>" required></div>
           <div class="col-12">
             <label class="form-label d-block">Tipo *</label>
             <div class="btn-group w-100 flex-wrap" role="group">
@@ -331,16 +331,24 @@ $statusCor = ['Aberta'=>'secondary','Enviada'=>'info','Aprovada'=>'success','Rej
               <?php endforeach; ?>
             </div>
           </div>
-          <div class="col-md-6"><label class="form-label">Valor gasto (nota) *</label><input type="number" step="0.01" min="0" name="valor" class="form-control" required oninput="Despesas.previewRefeicao()"></div>
-          <div class="col-md-6"><label class="form-label">Estabelecimento</label><input name="estabelecimento" class="form-control"></div>
+          <div class="col-12"><label class="form-label">Valor gasto (nota) *</label><input type="number" step="0.01" min="0" name="valor" class="form-control" required oninput="Despesas.previewRefeicao()"></div>
           <div class="col-12"><div class="alert alert-light border mb-0 py-2 small" id="refeicaoPreview">Selecione o tipo e informe o valor.</div></div>
-          <div class="col-md-6"><label class="form-label">Cliente (opcional)</label>
-            <select name="cliente_id" class="form-select"><option value="0">—</option>
-              <?php foreach ($clientes as $c): ?><option value="<?= $c['id'] ?>"><?= e($c['nome']) ?></option><?php endforeach; ?>
-            </select>
+          <div class="col-12">
+            <label class="form-label">Comprovante</label>
+            <input type="file" name="comprovante" id="refComprovante" class="d-none" accept="image/*,.pdf" capture="environment" onchange="Despesas.previewComprovante(this)">
+            <div id="refDropzone" class="dropzone-foto" onclick="document.getElementById('refComprovante').click()">
+              <div id="refDropVazio" class="text-center py-4">
+                <i class="bi bi-camera fs-2 text-success d-block mb-1"></i>
+                <span class="fw-semibold text-success">Tirar foto ou anexar</span>
+                <div class="small text-muted">toque para usar a câmera ou escolher um arquivo (foto/PDF)</div>
+              </div>
+              <div id="refDropPreview" class="d-none position-relative text-center">
+                <img id="refDropImg" alt="Comprovante" class="dropzone-previa">
+                <div id="refDropPdf" class="d-none py-4"><i class="bi bi-file-earmark-pdf fs-1 text-danger"></i><div class="small" id="refDropNome"></div></div>
+                <button type="button" class="btn btn-sm btn-light border position-absolute top-0 end-0 m-1" onclick="Despesas.limparComprovante(event)"><i class="bi bi-x-lg"></i></button>
+              </div>
+            </div>
           </div>
-          <div class="col-md-6"><label class="form-label"><i class="bi bi-paperclip me-1"></i>Comprovante (foto/PDF)</label>
-            <input type="file" name="comprovante" class="form-control" accept="image/*,.pdf" capture="environment"></div>
           <div class="col-12"><label class="form-label">Justificativa</label>
             <div class="campo-voz"><input name="justificativa" class="form-control" placeholder="Ex.: almoço durante visita a produtor">
               <button type="button" class="btn-voz" title="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
