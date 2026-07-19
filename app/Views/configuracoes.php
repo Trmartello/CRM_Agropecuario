@@ -3,7 +3,7 @@
     <div class="card h-100">
       <div class="card-header"><i class="bi bi-image me-2 text-success"></i><strong>Logo do aplicativo</strong></div>
       <div class="card-body">
-        <p class="text-muted small">Exibida na barra lateral e na tela de login. Envie a logo oficial da Copérdia (PNG, JPG, WEBP ou SVG — fundo transparente fica melhor; máx. 2 MB).</p>
+        <p class="text-muted small">Exibida na barra lateral e na tela de login. Envie a logo oficial da Copérdia (PNG, JPG, WEBP ou SVG — fundo transparente fica melhor; máx. 2 MB). A imagem enviada é guardada no banco de dados e vira o padrão do sistema — permanece mesmo após atualizações.</p>
         <div class="text-center mb-3 p-3 bg-light rounded">
           <img src="<?= e($logoAtual) ?>" alt="Logo atual" style="max-height:110px;max-width:100%">
           <div class="small text-muted mt-1"><?= $logoPersonalizada ? 'Logo personalizada' : 'Logo padrão do sistema' ?></div>

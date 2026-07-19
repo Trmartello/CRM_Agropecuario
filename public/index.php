@@ -51,6 +51,10 @@ Auth::iniciarSessao();
 
 $router = new Router();
 
+// Imagens personalizadas (logo/favicon do banco) — públicas, o login usa
+$router->registrar('arquivo/logo', \App\Controllers\ArquivoController::class, 'logo');
+$router->registrar('arquivo/favicon', \App\Controllers\ArquivoController::class, 'favicon');
+
 // Autenticação
 $router->registrar('login', LoginController::class, 'form');
 $router->registrar('login/entrar', LoginController::class, 'entrar');

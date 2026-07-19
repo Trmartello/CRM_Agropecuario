@@ -66,9 +66,17 @@ class Instalador
         Database::executar(
             'CREATE TABLE IF NOT EXISTS configuracoes (
                chave VARCHAR(60) PRIMARY KEY,
-               valor TEXT NOT NULL,
+               valor MEDIUMTEXT NOT NULL,
                atualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
              ) ENGINE=InnoDB'
         );
+        // Amplia a coluna em bancos criados antes (imagens em base64 exigem MEDIUMTEXT)
+        $tipo = Database::valor(
+            "SELECT DATA_TYPE FROM information_schema.COLUMNS
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'configuracoes' AND COLUMN_NAME = 'valor'"
+        );
+        if ($tipo === 'text') {
+            Database::executar('ALTER TABLE configuracoes MODIFY valor MEDIUMTEXT NOT NULL');
+        }
     }
 }

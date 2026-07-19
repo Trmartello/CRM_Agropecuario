@@ -22,8 +22,8 @@ class ConfiguracoesController
             'titulo' => 'Configurações',
             'logoAtual' => ConfigService::logoAplicacao(),
             'faviconAtual' => ConfigService::faviconAplicacao(),
-            'logoPersonalizada' => ConfigService::obter('logo_aplicacao') !== null,
-            'faviconPersonalizado' => ConfigService::obter('favicon_aplicacao') !== null,
+            'logoPersonalizada' => ConfigService::logoPersonalizada(),
+            'faviconPersonalizado' => ConfigService::faviconPersonalizado(),
             'ajustes' => [
                 'sidebar_largura' => (int) ConfigService::obter('logo_sidebar_largura', '180'),
                 'login_largura' => (int) ConfigService::obter('logo_login_largura', '170'),
@@ -64,27 +64,16 @@ class ConfiguracoesController
             json_erro('Arquivo muito grande (máximo 2 MB).');
         }
 
-        $dir = dirname(__DIR__, 2) . '/public/uploads/config';
-        if (!is_dir($dir)) {
-            mkdir($dir, 0775, true);
-        }
-        // Nome novo a cada envio para furar o cache do navegador
-        $arquivo = $chave . '_' . time() . '.' . $ext;
-
-        // Remove o arquivo anterior desta chave
-        $anterior = ConfigService::obter($chave);
-        if ($anterior && str_starts_with($anterior, 'uploads/config/')) {
-            @unlink(dirname(__DIR__, 2) . '/public/' . $anterior);
-        }
-
-        if (!move_uploaded_file($_FILES['imagem']['tmp_name'], $dir . '/' . $arquivo)) {
-            json_erro('Falha ao salvar o arquivo.');
-        }
-        ConfigService::definir($chave, 'uploads/config/' . $arquivo);
-        json_ok(['url' => 'uploads/config/' . $arquivo]);
+        $mimes = [
+            'png' => 'image/png', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg',
+            'webp' => 'image/webp', 'svg' => 'image/svg+xml', 'ico' => 'image/x-icon',
+        ];
+        // Imagem vira o padrão do sistema: gravada no banco, sobrevive a deploys
+        ConfigService::definirImagem($chave, $_FILES['imagem']['tmp_name'], $mimes[$ext]);
+        json_ok();
     }
 
-    /** Restaura a imagem padrão. */
+    /** Restaura a imagem padrão original do sistema. */
     public function restaurarPadrao(): void
     {
         Permissoes::exigir(['Administrador']);
@@ -92,11 +81,7 @@ class ConfiguracoesController
         if (!isset(self::CHAVES_IMAGEM[$chave])) {
             json_erro('Configuração inválida.');
         }
-        $anterior = ConfigService::obter($chave);
-        if ($anterior && str_starts_with($anterior, 'uploads/config/')) {
-            @unlink(dirname(__DIR__, 2) . '/public/' . $anterior);
-        }
-        ConfigService::remover($chave);
+        ConfigService::removerImagem($chave);
         json_ok();
     }
 }

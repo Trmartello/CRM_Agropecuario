@@ -29,34 +29,62 @@ class ConfigService
         Database::executar('DELETE FROM configuracoes WHERE chave = ?', [$chave]);
     }
 
-    /** URL da logo do aplicativo (personalizada ou padrão). */
+    /**
+     * Guarda uma imagem no banco (base64) — torna-se o padrão do sistema,
+     * sobrevivendo a deploys sem depender de volume de arquivos.
+     */
+    public static function definirImagem(string $chave, string $caminhoArquivo, string $mime): void
+    {
+        self::definir($chave . '_dados', $mime . ';base64,' . base64_encode(file_get_contents($caminhoArquivo)));
+    }
+
+    /** Conteúdo da imagem armazenada: [mime, binário] ou null. */
+    public static function obterImagem(string $chave): ?array
+    {
+        $valor = self::obter($chave . '_dados');
+        if (!$valor || !str_contains($valor, ';base64,')) {
+            return null;
+        }
+        [$mime, $b64] = explode(';base64,', $valor, 2);
+        $binario = base64_decode($b64, true);
+        return $binario === false ? null : [$mime, $binario];
+    }
+
+    public static function removerImagem(string $chave): void
+    {
+        self::remover($chave . '_dados');
+    }
+
+    /** Carimbo para furar cache do navegador quando a imagem muda. */
+    private static function versaoImagem(string $chave): string
+    {
+        return (string) (Database::valor(
+            'SELECT UNIX_TIMESTAMP(atualizado_em) FROM configuracoes WHERE chave = ?',
+            [$chave . '_dados']
+        ) ?: '');
+    }
+
+    /** URL da logo do aplicativo (personalizada no banco ou padrão). */
     public static function logoAplicacao(): string
     {
-        return self::imagemValida('logo_aplicacao', 'assets/img/logo-coperdia.svg');
+        $v = self::versaoImagem('logo_aplicacao');
+        return $v !== '' ? 'index.php?r=arquivo/logo&v=' . $v : 'assets/img/logo-coperdia.svg';
     }
 
-    /** URL do ícone da aba do navegador (personalizado ou padrão). */
+    /** URL do ícone da aba do navegador (personalizado no banco ou padrão). */
     public static function faviconAplicacao(): string
     {
-        return self::imagemValida('favicon_aplicacao', 'assets/icons/favicon-32.png');
+        $v = self::versaoImagem('favicon_aplicacao');
+        return $v !== '' ? 'index.php?r=arquivo/favicon&v=' . $v : 'assets/icons/favicon-32.png';
     }
 
-    /**
-     * Retorna a imagem configurada somente se o arquivo ainda existir no disco
-     * (uploads somem quando o volume não está montado no deploy); caso
-     * contrário, limpa a configuração órfã e volta ao padrão.
-     */
-    private static function imagemValida(string $chave, string $padrao): string
+    public static function logoPersonalizada(): bool
     {
-        $valor = self::obter($chave);
-        if ($valor === null) {
-            return $padrao;
-        }
-        $arquivo = dirname(__DIR__, 2) . '/public/' . $valor;
-        if (str_starts_with($valor, 'uploads/') && !is_file($arquivo)) {
-            self::remover($chave);
-            return $padrao;
-        }
-        return $valor;
+        return self::obter('logo_aplicacao_dados') !== null;
+    }
+
+    public static function faviconPersonalizado(): bool
+    {
+        return self::obter('favicon_aplicacao_dados') !== null;
     }
 }
