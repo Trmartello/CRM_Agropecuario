@@ -1117,7 +1117,7 @@ const OfflineView = {
         <td class="d-none d-md-table-cell">${App.escapeHtml(c.municipio || '—')}</td>
         <td class="d-none d-md-table-cell">${c.situacao ? `<span class="badge text-bg-${c.situacao === 'Associado' ? 'success' : 'secondary'}">${App.escapeHtml(c.situacao)}</span>` : '—'}</td>
         <td class="d-none d-lg-table-cell">${App.escapeHtml(c.nivel_tecnologico || '')}</td>
-        <td class="d-none d-lg-table-cell">${c.ultima_visita ? String(c.ultima_visita).split('-').reverse().join('/') : '—'}</td>
+        <td class="d-none d-lg-table-cell">${c.ultima_visita ? App.escapeHtml(String(c.ultima_visita).split('-').reverse().join('/')) : '—'}</td>
         <td class="text-end text-nowrap"><button class="btn btn-sm btn-success" onclick="Visitas.nova(${Number(c.id)})" title="Nova visita"><i class="bi bi-clipboard2-plus"></i></button></td>
       </tr>`).join('');
     OfflineView.banner('Modo offline — carteira salva de ' + quando + '. A ficha completa e a busca do servidor exigem conexão.');

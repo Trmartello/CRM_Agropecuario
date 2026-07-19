@@ -34,9 +34,10 @@ const Offline = {
           const destino = tx.objectStore('fila_sync');
           antigo.getAll().onsuccess = (e) => {
             for (const r of (e.target.result || [])) {
+              const uuid = Offline._uuid();
               destino.add({
-                rota: 'visitas/salvar', modulo: 'visitas', rotulo: 'Visita técnica',
-                campos: r.campos || {},
+                rota: 'visitas/salvar', modulo: 'visitas', rotulo: 'Visita técnica', uuid,
+                campos: Object.assign({}, r.campos || {}, { uuid_offline: uuid }),
                 arquivos: (r.fotos || []).map(f => ({ campo: 'fotos[]', nome: f.nome, tipo: f.tipo, blob: f.blob })),
                 criado_em: r.criado_em || new Date().toISOString(),
               });
@@ -169,7 +170,15 @@ const Offline = {
     if (!navigator.onLine || Offline._sincronizando) return;
     Offline._sincronizando = true;
     try {
-      await Offline._sincronizar(incluirFalhados);
+      // Trava entre abas: só uma aba/janela sincroniza a fila por vez (evita reenvio duplo).
+      if (navigator.locks && navigator.locks.request) {
+        await navigator.locks.request('crm-sync-fila', { ifAvailable: true }, async lock => {
+          if (!lock) return; // outra aba já está sincronizando
+          await Offline._sincronizar(incluirFalhados);
+        });
+      } else {
+        await Offline._sincronizar(incluirFalhados);
+      }
     } finally {
       Offline._sincronizando = false;
     }

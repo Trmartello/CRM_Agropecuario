@@ -83,11 +83,16 @@ uma com o usuário.
 - **Conflitos**: quase tudo é *insert* (risco baixo); para edições offline,
   "última escrita vence" com aviso.
 
-## 4. Mudanças de schema (migração leve)
+## 4. Mudanças de schema (migração leve) — implementado
 
-- Coluna `uuid_offline VARCHAR(36) NULL UNIQUE` em `visitas`, `quilometragem`,
-  `refeicoes`, `agenda_eventos`, `reclamacoes`. Incrementar `schema_versao` e
-  adicionar os passos idempotentes em `Instalador::migracoesLeves()`.
+- **Tabela central `sync_processados` (uuid PK)** em vez de uma coluna por tabela
+  (schema v13, `Instalador` V13 + `database.sql`). Cada `salvar` offline checa o
+  `uuid` no início (retorna `duplicado`) e o registra **por último**, após todos os
+  efeitos colaterais (fotos/vínculos) — assim um reenvio com resposta perdida
+  reprocessa tudo em vez de perder anexos. Concorrência entre abas é travada com
+  `navigator.locks` no cliente. `agenda/status` dispensa `uuid` por ser um UPDATE
+  naturalmente idempotente. Pendência menor: limpeza periódica de `sync_processados`
+  (ex.: `criado_em < NOW() - INTERVAL 90 DAY`).
 
 ## 5. Cache (service worker)
 

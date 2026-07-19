@@ -39,5 +39,21 @@
     </form>
   </div>
 </div>
+<?php if (isset($_GET['saiu'])): ?>
+<script>
+  // Logout: limpa o snapshot da carteira do aparelho (não vaza dados para o próximo
+  // usuário em aparelho compartilhado). A fila de pendências (fila_sync) é preservada.
+  try {
+    const req = indexedDB.open('crm_coperdia');
+    req.onsuccess = () => {
+      const db = req.result;
+      if (db.objectStoreNames.contains('snapshot')) {
+        db.transaction('snapshot', 'readwrite').objectStore('snapshot').clear();
+      }
+      db.close();
+    };
+  } catch (e) { /* ignora */ }
+</script>
+<?php endif; ?>
 </body>
 </html>

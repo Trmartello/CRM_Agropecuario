@@ -166,7 +166,6 @@ class VisitasController
         );
         $visitaId = Database::ultimoId();
 
-        sync_registrar_uuid($_POST['uuid_offline'] ?? null);
         $this->salvarFotos($visitaId);
         $this->salvarConcorrencia($visitaId, $clienteId);
 
@@ -184,6 +183,9 @@ class VisitasController
             }
         }
 
+        // Registra o uuid só depois de gravar fotos/concorrência/vínculos, para que
+        // um reenvio (resposta perdida) reprocesse tudo em vez de perder anexos.
+        sync_registrar_uuid($_POST['uuid_offline'] ?? null);
         json_ok(['id' => $visitaId]);
     }
 

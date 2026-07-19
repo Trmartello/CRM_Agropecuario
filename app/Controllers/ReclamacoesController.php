@@ -60,8 +60,8 @@ class ReclamacoesController
         } catch (\InvalidArgumentException $e) {
             json_erro($e->getMessage());
         }
-        sync_registrar_uuid($_POST['uuid_offline'] ?? null);
         $this->salvarFotos($id);
+        sync_registrar_uuid($_POST['uuid_offline'] ?? null); // após as fotos (não perde anexos no reenvio)
         json_ok(['id' => $id]);
     }
 

@@ -64,6 +64,8 @@ class AgendaController
 
     public function status(): void
     {
+        // Enfileirável offline, mas dispensa dedup por uuid: mudarStatus é um UPDATE
+        // naturalmente idempotente (reaplicar o mesmo status não causa efeito colateral).
         Permissoes::exigirInterno();
         try {
             AgendaService::mudarStatus((int) ($_POST['id'] ?? 0), $_POST['status'] ?? '');

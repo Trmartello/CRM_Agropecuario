@@ -29,7 +29,7 @@ class LoginController
     public function sair(): void
     {
         Auth::sair();
-        header('Location: ' . url('login'));
+        header('Location: ' . url('login') . '&saiu=1');
         exit;
     }
 }
