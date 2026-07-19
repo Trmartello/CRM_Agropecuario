@@ -30,14 +30,20 @@ $logoPosicao = ConfigService::obter('logo_posicao', 'acima');
     <?php if ($logoPosicao === 'lado'): ?>
     <a href="<?= url('dashboard') ?>" class="sidebar-marca text-decoration-none d-flex align-items-center gap-2">
       <span class="logo-cartao <?= $logoFundo === 'transparente' ? 'logo-transparente' : '' ?> flex-shrink-0"
-            style="max-width:<?= min(110, $logoLargura) ?>px"><img src="<?= e($logoApp) ?>" alt="Copérdia" class="w-100"></span>
-      <strong class="rotulo-marca">CRM AGRO</strong>
+            style="max-width:<?= min(110, $logoLargura) ?>px"><img src="<?= e($logoApp) ?>" alt="Copérdia"></span>
+      <span class="rotulo-marca">
+        <strong class="d-block">CRM AGRO</strong>
+        <span class="small opacity-75">Copérdia</span>
+      </span>
     </a>
     <?php else: ?>
     <a href="<?= url('dashboard') ?>" class="sidebar-marca text-decoration-none text-center d-block">
       <span class="logo-cartao <?= $logoFundo === 'transparente' ? 'logo-transparente' : '' ?> d-block mx-auto mb-1"
-            style="max-width:<?= $logoLargura ?>px"><img src="<?= e($logoApp) ?>" alt="Copérdia" class="w-100"></span>
-      <strong class="rotulo-marca">CRM AGRO</strong>
+            style="max-width:<?= $logoLargura ?>px"><img src="<?= e($logoApp) ?>" alt="Copérdia"></span>
+      <span class="rotulo-marca">
+        <strong class="d-block">CRM AGRO</strong>
+        <span class="small opacity-75">Copérdia</span>
+      </span>
     </a>
     <?php endif; ?>
     <hr class="text-white-50 my-2">
