@@ -121,7 +121,7 @@ $logoRaio = (int) ConfigService::obter('logo_borda_raio', '10');
           <i class="bi <?= $gIcone ?> me-2"></i><span class="rotulo flex-grow-1 text-start"><?= $gLabel ?></span>
           <i class="bi bi-chevron-down chevron rotulo"></i>
         </button>
-        <ul class="nav nav-pills flex-column grupo-itens collapse <?= $grupoAtivo ? 'show' : '' ?>" id="<?= $collId ?>">
+        <ul class="nav nav-pills flex-column grupo-itens collapse <?= $grupoAtivo ? 'show' : '' ?>" id="<?= $collId ?>" data-bs-parent="#menuPrincipal">
           <?php foreach ($itens as [$rota, $icone, $rotulo]): ?>
           <li class="nav-item">
             <a href="<?= url($rota) ?>" title="<?= e($rotulo) ?>" class="nav-link ps-4 <?= $ativo($rota) ? 'active' : 'text-white' ?>">
