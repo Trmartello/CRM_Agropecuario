@@ -28,6 +28,7 @@ class ConfiguracoesController
                 'sidebar_largura' => (int) ConfigService::obter('logo_sidebar_largura', '180'),
                 'login_largura' => (int) ConfigService::obter('logo_login_largura', '170'),
                 'fundo' => ConfigService::obter('logo_fundo', 'branco'),
+                'posicao' => ConfigService::obter('logo_posicao', 'acima'),
             ],
         ]);
     }
@@ -39,9 +40,11 @@ class ConfiguracoesController
         $sidebar = max(60, min(240, (int) ($_POST['sidebar_largura'] ?? 180)));
         $login = max(100, min(340, (int) ($_POST['login_largura'] ?? 170)));
         $fundo = ($_POST['fundo'] ?? 'branco') === 'transparente' ? 'transparente' : 'branco';
+        $posicao = ($_POST['posicao'] ?? 'acima') === 'lado' ? 'lado' : 'acima';
         ConfigService::definir('logo_sidebar_largura', (string) $sidebar);
         ConfigService::definir('logo_login_largura', (string) $login);
         ConfigService::definir('logo_fundo', $fundo);
+        ConfigService::definir('logo_posicao', $posicao);
         json_ok();
     }
 

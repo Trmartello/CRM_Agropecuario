@@ -36,11 +36,21 @@
             </select>
           </div>
           <div class="mb-3">
+            <label class="form-label">Posição da logo no menu</label>
+            <select name="posicao" class="form-select" onchange="Config.previa()">
+              <option value="acima" <?= $ajustes['posicao'] === 'acima' ? 'selected' : '' ?>>Acima do título CRM AGRO (empilhada)</option>
+              <option value="lado" <?= $ajustes['posicao'] === 'lado' ? 'selected' : '' ?>>Ao lado do título CRM AGRO</option>
+            </select>
+          </div>
+          <div class="mb-3">
             <label class="form-label small text-muted">Prévia no menu lateral</label>
             <div class="p-3 rounded" style="background:linear-gradient(180deg,#1b5e20,#123d15)">
-              <span id="previaCartao" class="d-inline-block rounded" style="background:#fff;padding:.4rem .6rem;max-width:<?= $ajustes['sidebar_largura'] ?>px">
-                <img src="<?= e($logoAtual) ?>" style="width:100%" alt="Prévia">
-              </span>
+              <div id="previaMarca" class="d-flex flex-column align-items-center gap-2 text-center">
+                <span id="previaCartao" class="d-inline-block rounded" style="background:#fff;padding:.4rem .6rem;max-width:<?= $ajustes['sidebar_largura'] ?>px">
+                  <img src="<?= e($logoAtual) ?>" style="width:100%" alt="Prévia">
+                </span>
+                <strong class="text-white">CRM AGRO</strong>
+              </div>
             </div>
           </div>
           <button class="btn btn-success"><i class="bi bi-check-lg me-1"></i>Salvar ajustes</button>
@@ -95,11 +105,17 @@ const Config = {
   },
   previa() {
     const cartao = document.getElementById('previaCartao');
-    const largura = document.querySelector('[name=sidebar_largura]').value;
+    const marca = document.getElementById('previaMarca');
+    const largura = Number(document.querySelector('[name=sidebar_largura]').value);
     const fundo = document.querySelector('[name=fundo]').value;
-    cartao.style.maxWidth = largura + 'px';
+    const posicao = document.querySelector('[name=posicao]').value;
+    const lado = posicao === 'lado';
+    cartao.style.maxWidth = (lado ? Math.min(110, largura) : largura) + 'px';
     cartao.style.background = fundo === 'transparente' ? 'transparent' : '#fff';
     cartao.style.padding = fundo === 'transparente' ? '0' : '.4rem .6rem';
+    marca.classList.toggle('flex-column', !lado);
+    marca.classList.toggle('flex-row', lado);
+    marca.classList.toggle('justify-content-center', lado);
   },
   async salvarAjustes(ev) {
     ev.preventDefault();

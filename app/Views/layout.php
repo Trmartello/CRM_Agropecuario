@@ -7,6 +7,7 @@ $logoApp = ConfigService::logoAplicacao();
 $faviconApp = ConfigService::faviconAplicacao();
 $logoLargura = (int) ConfigService::obter('logo_sidebar_largura', '180');
 $logoFundo = ConfigService::obter('logo_fundo', 'branco');
+$logoPosicao = ConfigService::obter('logo_posicao', 'acima');
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -26,11 +27,19 @@ $logoFundo = ConfigService::obter('logo_fundo', 'branco');
 <div class="d-flex" id="app">
   <!-- Sidebar -->
   <nav class="sidebar d-flex flex-column flex-shrink-0" id="sidebar">
+    <?php if ($logoPosicao === 'lado'): ?>
+    <a href="<?= url('dashboard') ?>" class="sidebar-marca text-decoration-none d-flex align-items-center gap-2">
+      <span class="logo-cartao <?= $logoFundo === 'transparente' ? 'logo-transparente' : '' ?> flex-shrink-0"
+            style="max-width:<?= min(110, $logoLargura) ?>px"><img src="<?= e($logoApp) ?>" alt="Copérdia" class="w-100"></span>
+      <strong class="rotulo-marca">CRM AGRO</strong>
+    </a>
+    <?php else: ?>
     <a href="<?= url('dashboard') ?>" class="sidebar-marca text-decoration-none text-center d-block">
       <span class="logo-cartao <?= $logoFundo === 'transparente' ? 'logo-transparente' : '' ?> d-block mx-auto mb-1"
             style="max-width:<?= $logoLargura ?>px"><img src="<?= e($logoApp) ?>" alt="Copérdia" class="w-100"></span>
       <strong class="rotulo-marca">CRM AGRO</strong>
     </a>
+    <?php endif; ?>
     <hr class="text-white-50 my-2">
     <ul class="nav nav-pills flex-column mb-auto">
       <?php
