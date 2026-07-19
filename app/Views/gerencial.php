@@ -68,11 +68,13 @@
   const cv = document.getElementById('chartFamilia');
   if (cv && typeof Chart !== 'undefined') {
     const dados = JSON.parse(cv.dataset.familia || '[]');
-    new Chart(cv, {
+    const chart = new Chart(cv, {
       type: 'bar',
       data: { labels: dados.map(d => d.familia), datasets: [{ data: dados.map(d => Number(d.total)), backgroundColor: '#2e7d32', borderRadius: 6 }] },
-      options: { indexAxis: 'y', plugins: { legend: { display: false }, rotuloDados: { formatter: v => 'R$ ' + Math.round(v/1000) + 'k', color: '#1b5e20' }, tooltip: { callbacks: { label: c => App.moeda(c.raw) } } }, scales: { x: { ticks: { callback: v => 'R$ ' + (v/1000) + 'k' } } } },
+      options: { indexAxis: 'y', plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => App.moeda(c.raw) } } }, scales: { x: { ticks: { callback: v => 'R$ ' + (v/1000) + 'k' } } } },
     });
+    chart.$rotulo = { formatter: v => 'R$ ' + Math.round(v/1000) + 'k', color: '#1b5e20' };
+    chart.update();
   }
 })();
 </script>

@@ -82,7 +82,7 @@ const App = {
     if (!canvas || typeof Chart === 'undefined') return;
     const dados = JSON.parse(canvas.dataset.potencial || '[]');
     if (!dados.length) return;
-    new Chart(canvas, {
+    const c = new Chart(canvas, {
       type: 'bar',
       data: {
         labels: dados.map(d => d.familia),
@@ -97,7 +97,6 @@ const App = {
         indexAxis: 'y',
         plugins: {
           legend: { display: false },
-          rotuloDados: { formatter: v => v + '%', color: '#1b5e20' },
           tooltip: { callbacks: { label: ctx => {
             const d = dados[ctx.dataIndex];
             return `${d.percentual}% — ${App.moeda(d.realizado)} de ${App.moeda(d.valor_potencial)}`;
@@ -106,6 +105,8 @@ const App = {
         scales: { x: { max: 120, ticks: { callback: v => v + '%' } } },
       },
     });
+    c.$rotulo = { formatter: v => v + '%', color: '#1b5e20' };
+    c.update();
   },
 };
 
@@ -716,10 +717,12 @@ const Potencial = {
       },
       options: {
         indexAxis: 'y',
-        plugins: { legend: { display: false }, rotuloDados: { formatter: v => v + '%', color: '#1b5e20' } },
+        plugins: { legend: { display: false } },
         scales: { x: { ticks: { callback: v => v + '%' } } },
       },
     });
+    Potencial.grafico.$rotulo = { formatter: v => v + '%', color: '#1b5e20' };
+    Potencial.grafico.update();
   },
 };
 
@@ -762,13 +765,15 @@ const Usuarios = {
 /* ============================== INICIALIZAÇÃO ============================== */
 
 // Plugin global de rótulos de dados: mostra o valor em barras e pontos de todos os gráficos.
+// A configuração fica em chart.$rotulo (propriedade da instância) — NÃO em options,
+// para o Chart.js não tratar o formatter como "scriptable option" e invocá-lo com o contexto interno.
 if (typeof Chart !== 'undefined') {
   Chart.register({
     id: 'rotuloDados',
     afterDatasetsDraw(chart) {
-      const cfg = chart.options.plugins && chart.options.plugins.rotuloDados;
+      const cfg = chart.$rotulo;
       if (cfg === false) return;
-      const fmt = (cfg && cfg.formatter) || (v => (typeof v === 'number' ? v.toLocaleString('pt-BR') : v));
+      const fmt = (cfg && cfg.formatter) || (v => (typeof v === 'number' ? v.toLocaleString('pt-BR') : String(v)));
       const ctx = chart.ctx;
       ctx.save();
       ctx.font = '600 11px sans-serif';
