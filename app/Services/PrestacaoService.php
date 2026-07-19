@@ -180,9 +180,16 @@ class PrestacaoService
             throw new \RuntimeException('Prestação não encontrada.');
         }
         $km = Database::todos(
-            'SELECT q.*, (q.km_final - q.km_inicial) AS km_rodados, c.nome AS cliente
-               FROM quilometragem q LEFT JOIN clientes c ON c.id = q.cliente_id
-              WHERE q.prestacao_id = ? ORDER BY q.data',
+            "SELECT q.*, (q.km_final - q.km_inicial) AS km_rodados, c.nome AS cliente,
+                    CASE q.tipo_destino
+                      WHEN 'Produtor' THEN COALESCE(c.nome, q.prospecto)
+                      WHEN 'Filial' THEN f.nome
+                      ELSE q.destino
+                    END AS destino_desc
+               FROM quilometragem q
+               LEFT JOIN clientes c ON c.id = q.cliente_id
+               LEFT JOIN filiais f ON f.id = q.filial_id
+              WHERE q.prestacao_id = ? ORDER BY q.data",
             [$prestacaoId]
         );
         $refeicoes = Database::todos(

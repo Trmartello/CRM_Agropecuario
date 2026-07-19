@@ -10,7 +10,62 @@ const Despesas = {
     form.reset();
     form.querySelector('[name=data]').value = new Date().toISOString().slice(0, 10);
     document.getElementById('kmPreview').textContent = 'Informe os KM para calcular o valor.';
+    Despesas.tipoDestino('Produtor');
+    Despesas.toggleProspecto(false);
     new bootstrap.Modal('#modalKm').show();
+  },
+
+  /** Alterna os blocos de destino (Produtor / Filial / Lugar). */
+  tipoDestino(tipo) {
+    document.querySelectorAll('#formKm .destino-bloco').forEach(b => {
+      b.classList.toggle('d-none', b.dataset.destino !== tipo);
+    });
+  },
+
+  toggleProspecto(ehProspecto) {
+    document.getElementById('blocoProdutor').classList.toggle('d-none', ehProspecto);
+    document.getElementById('blocoProspecto').classList.toggle('d-none', !ehProspecto);
+    const chk = document.getElementById('chkProspecto');
+    if (chk && chk.checked !== ehProspecto) chk.checked = ehProspecto;
+  },
+
+  novoVeiculo() {
+    const form = document.getElementById('formVeiculo');
+    form.reset();
+    new bootstrap.Modal('#modalVeiculo').show();
+  },
+
+  async salvarVeiculo(ev) {
+    ev.preventDefault();
+    try {
+      const r = await App.enviarForm(ev.target, 'index.php?r=despesas/salvar-veiculo');
+      const sel = document.querySelector('#formKm [name=veiculo_id]');
+      const opt = new Option(r.veiculo.descricao + (r.veiculo.placa ? ' — ' + r.veiculo.placa : ''), r.veiculo.id, true, true);
+      sel.add(opt);
+      bootstrap.Modal.getInstance('#modalVeiculo').hide();
+      App.alerta('Veículo cadastrado.');
+    } catch (e) { App.alerta(e.message, 'danger'); }
+    return false;
+  },
+
+  veiculoMudou() {
+    // Ao trocar de veículo, oferece a KM final do último lançamento daquele veículo
+    Despesas.pegarUltimoKm(true);
+  },
+
+  async pegarUltimoKm(silencioso = false) {
+    const form = document.getElementById('formKm');
+    const veiculoId = form.querySelector('[name=veiculo_id]').value || 0;
+    try {
+      const r = await App.json('index.php?r=despesas/ultimo-km&veiculo_id=' + veiculoId, { headers: { 'X-Requested-With': 'fetch' } });
+      if (r.km === null || r.km === undefined) {
+        if (!silencioso) App.alerta('Nenhum lançamento anterior encontrado.', 'info');
+        return;
+      }
+      form.querySelector('[name=km_inicial]').value = r.km;
+      Despesas.previewKm();
+      if (!silencioso) App.alerta('KM inicial preenchida com o último lançamento (' + r.km + ').');
+    } catch (e) { if (!silencioso) App.alerta(e.message, 'danger'); }
   },
 
   novaRefeicao() {

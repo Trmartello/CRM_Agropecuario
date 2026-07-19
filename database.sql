@@ -11,7 +11,7 @@ USE crm_agropecuario;
 
 SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS sessoes_persistentes, configuracoes, auditoria,
-  documentos, prestacao_contas, reclamacao_fotos, refeicoes, quilometragem, reclamacoes, categorias_reembolso,
+  documentos, prestacao_contas, reclamacao_fotos, refeicoes, quilometragem, veiculos, reclamacoes, categorias_reembolso,
   pacote_obrigatorios, pacote_categorias, pacotes_agricolas,
   entregas_futuras, promocoes, pedidos_itens, pedidos,
   propostas_itens, propostas, oportunidades,
@@ -476,6 +476,17 @@ CREATE TABLE categorias_reembolso (
 
 ALTER TABLE usuarios ADD FOREIGN KEY (categoria_reembolso_id) REFERENCES categorias_reembolso(id);
 
+-- Veículos cadastrados por usuário (usados no lançamento de quilometragem)
+CREATE TABLE veiculos (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  usuario_id INT NOT NULL,
+  descricao VARCHAR(120) NOT NULL COMMENT 'modelo/apelido do veículo',
+  placa VARCHAR(20),
+  ativo TINYINT(1) NOT NULL DEFAULT 1,
+  criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 -- Prestação de contas mensal (consolida KM + refeições do período)
 CREATE TABLE prestacao_contas (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -532,18 +543,24 @@ CREATE TABLE quilometragem (
   id INT AUTO_INCREMENT PRIMARY KEY,
   usuario_id INT NOT NULL,
   prestacao_id INT NULL,
+  veiculo_id INT NULL,
   veiculo VARCHAR(120),
   data DATE NOT NULL,
   km_inicial DECIMAL(10,1) NOT NULL,
   km_final DECIMAL(10,1) NOT NULL,
   valor DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT 'km rodados x valor_km da categoria (na data do lançamento)',
+  tipo_destino ENUM('Produtor','Filial','Lugar') NOT NULL DEFAULT 'Lugar',
   cliente_id INT,
+  filial_id INT,
+  prospecto VARCHAR(160) COMMENT 'nome do cliente prospecto quando não cadastrado',
   destino VARCHAR(160),
   motivo VARCHAR(200),
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
   FOREIGN KEY (prestacao_id) REFERENCES prestacao_contas(id) ON DELETE SET NULL,
-  FOREIGN KEY (cliente_id) REFERENCES clientes(id)
+  FOREIGN KEY (veiculo_id) REFERENCES veiculos(id) ON DELETE SET NULL,
+  FOREIGN KEY (cliente_id) REFERENCES clientes(id),
+  FOREIGN KEY (filial_id) REFERENCES filiais(id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE refeicoes (
@@ -975,11 +992,16 @@ UPDATE usuarios SET categoria_reembolso_id = 1 WHERE id = 3;        -- gestora t
 UPDATE usuarios SET categoria_reembolso_id = 1 WHERE id = 4;        -- consultor técnico → agrônomo
 UPDATE usuarios SET categoria_reembolso_id = 3 WHERE id = 5;        -- vendedora
 
+-- Veículos cadastrados por usuário
+INSERT INTO veiculos (id, usuario_id, descricao, placa) VALUES
+(1,5,'Fiat Strada','ABC1D23'),
+(2,4,'VW Saveiro','EFG4H56');
+
 -- Quilometragem de exemplo (valor = km rodados x valor_km da categoria)
-INSERT INTO quilometragem (usuario_id, veiculo, data, km_inicial, km_final, valor, cliente_id, destino, motivo) VALUES
-(5,'Fiat Strada — ABC1D23','2026-07-06',45210.0,45298.0,132.00,1,'Linha São Roque, Concórdia','Visita técnica e negociação'),
-(5,'Fiat Strada — ABC1D23','2026-07-10',45298.0,45362.0,96.00,2,'Seara','Acompanhamento de lavoura'),
-(4,'Saveiro — EFG4H56','2026-07-08',88110.0,88190.0,144.00,7,'Chapecó','Assistência técnica');
+INSERT INTO quilometragem (usuario_id, veiculo_id, veiculo, data, km_inicial, km_final, valor, tipo_destino, cliente_id, destino, motivo) VALUES
+(5,1,'Fiat Strada — ABC1D23','2026-07-06',45210.0,45298.0,132.00,'Produtor',1,'Linha São Roque, Concórdia','Visita técnica e negociação'),
+(5,1,'Fiat Strada — ABC1D23','2026-07-10',45298.0,45362.0,96.00,'Produtor',2,'Seara','Acompanhamento de lavoura'),
+(4,2,'VW Saveiro — EFG4H56','2026-07-08',88110.0,88190.0,144.00,'Produtor',7,'Chapecó','Assistência técnica');
 
 -- Refeições de exemplo
 INSERT INTO refeicoes (usuario_id, data, cliente_id, estabelecimento, valor, justificativa) VALUES
@@ -992,5 +1014,5 @@ INSERT INTO reclamacoes (cliente_id, usuario_id, produto_id, tipo, lote, nota_fi
 (6,5,7,'Defensivos','FG-7781','NF-88410',1,'Fitotoxidez','Sintoma de fitotoxidez após aplicação de fungicida.','Registrada');
 
 -- schema_versao: instalações novas já nascem na versão atual (não re-executam migrações)
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','3')
-  ON DUPLICATE KEY UPDATE valor = '3';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','4')
+  ON DUPLICATE KEY UPDATE valor = '4';

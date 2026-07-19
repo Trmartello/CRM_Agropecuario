@@ -68,7 +68,10 @@ $statusCor = ['Aberta'=>'secondary','Enviada'=>'info','Aprovada'=>'success','Rej
             <td><?= data_br($l['data']) ?></td>
             <?php if ($ehGestor): ?><td class="small"><?= e($l['usuario']) ?></td><?php endif; ?>
             <td class="d-none d-md-table-cell small"><?= e($l['veiculo'] ?? '—') ?></td>
-            <td class="d-none d-md-table-cell small"><?= e($l['destino'] ?? ($l['cliente'] ?? '—')) ?></td>
+            <td class="d-none d-md-table-cell small">
+              <span class="badge text-bg-light border text-dark me-1"><?= e($l['tipo_destino']) ?></span>
+              <?= e($l['destino_desc'] ?? '—') ?>
+            </td>
             <td class="text-end"><?= numero($l['km_rodados'], 1) ?></td>
             <td class="text-end fw-semibold"><?= moeda($l['valor']) ?></td>
             <td class="text-end">
@@ -175,23 +178,97 @@ $statusCor = ['Aberta'=>'secondary','Enviada'=>'info','Aprovada'=>'success','Rej
       <div class="modal-body">
         <div class="row g-3">
           <div class="col-md-6"><label class="form-label">Data *</label><input type="date" name="data" class="form-control" value="<?= date('Y-m-d') ?>" required></div>
-          <div class="col-md-6"><label class="form-label">Veículo</label><input name="veiculo" class="form-control" placeholder="Modelo — placa"></div>
-          <div class="col-6"><label class="form-label">KM inicial *</label><input type="number" step="0.1" name="km_inicial" class="form-control" required oninput="Despesas.previewKm()"></div>
+          <div class="col-md-6">
+            <label class="form-label">Veículo</label>
+            <div class="input-group">
+              <select name="veiculo_id" class="form-select" onchange="Despesas.veiculoMudou()">
+                <option value="0">— selecione —</option>
+                <?php foreach ($veiculos as $v): ?>
+                  <option value="<?= $v['id'] ?>"><?= e($v['descricao']) ?><?= $v['placa'] ? ' — ' . e($v['placa']) : '' ?></option>
+                <?php endforeach; ?>
+              </select>
+              <button type="button" class="btn btn-outline-success" title="Cadastrar veículo" onclick="Despesas.novoVeiculo()"><i class="bi bi-plus-lg"></i></button>
+            </div>
+          </div>
+          <div class="col-6">
+            <label class="form-label">KM inicial *</label>
+            <div class="input-group">
+              <input type="number" step="0.1" name="km_inicial" class="form-control" required oninput="Despesas.previewKm()">
+              <button type="button" class="btn btn-outline-secondary" id="btnUltimoKm" title="Pegar a KM final do último lançamento" onclick="Despesas.pegarUltimoKm()"><i class="bi bi-clock-history"></i></button>
+            </div>
+          </div>
           <div class="col-6"><label class="form-label">KM final *</label><input type="number" step="0.1" name="km_final" class="form-control" required oninput="Despesas.previewKm()"></div>
           <div class="col-12">
             <div class="alert alert-light border mb-0 py-2 small" id="kmPreview">Informe os KM para calcular o valor.</div>
           </div>
-          <div class="col-md-6"><label class="form-label">Cliente (opcional)</label>
-            <select name="cliente_id" class="form-select"><option value="0">—</option>
-              <?php foreach ($clientes as $c): ?><option value="<?= $c['id'] ?>"><?= e($c['nome']) ?></option><?php endforeach; ?>
+
+          <!-- Tipo de deslocamento -->
+          <div class="col-12">
+            <label class="form-label d-block">Destino do deslocamento *</label>
+            <div class="btn-group w-100" role="group">
+              <input type="radio" class="btn-check" name="tipo_destino" id="td_prod" value="Produtor" checked onchange="Despesas.tipoDestino('Produtor')">
+              <label class="btn btn-outline-success" for="td_prod"><i class="bi bi-person me-1"></i>Produtor</label>
+              <input type="radio" class="btn-check" name="tipo_destino" id="td_fil" value="Filial" onchange="Despesas.tipoDestino('Filial')">
+              <label class="btn btn-outline-success" for="td_fil"><i class="bi bi-building me-1"></i>Filial</label>
+              <input type="radio" class="btn-check" name="tipo_destino" id="td_lug" value="Lugar" onchange="Despesas.tipoDestino('Lugar')">
+              <label class="btn btn-outline-success" for="td_lug"><i class="bi bi-geo-alt me-1"></i>Lugar</label>
+            </div>
+          </div>
+
+          <!-- Produtor -->
+          <div class="col-12 destino-bloco" data-destino="Produtor">
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="checkbox" id="chkProspecto" onchange="Despesas.toggleProspecto(this.checked)">
+              <label class="form-check-label small" for="chkProspecto">É um cliente prospecto (ainda não cadastrado)</label>
+            </div>
+            <div id="blocoProdutor">
+              <select name="cliente_id" class="form-select">
+                <option value="0">Selecione o produtor…</option>
+                <?php foreach ($clientes as $c): ?><option value="<?= $c['id'] ?>"><?= e($c['nome']) ?></option><?php endforeach; ?>
+              </select>
+            </div>
+            <div id="blocoProspecto" class="d-none">
+              <input name="prospecto" class="form-control" placeholder="Nome do cliente prospecto">
+            </div>
+          </div>
+
+          <!-- Filial -->
+          <div class="col-12 destino-bloco d-none" data-destino="Filial">
+            <select name="filial_id" class="form-select">
+              <option value="0">Selecione a filial…</option>
+              <?php foreach ($filiais as $f): ?><option value="<?= $f['id'] ?>"><?= e($f['nome']) ?> — <?= e($f['municipio']) ?>/<?= e($f['estado']) ?></option><?php endforeach; ?>
             </select>
           </div>
-          <div class="col-md-6"><label class="form-label">Destino</label><input name="destino" class="form-control" placeholder="Localidade/município"></div>
-          <div class="col-12"><label class="form-label">Motivo</label><input name="motivo" class="form-control" placeholder="Ex.: visita técnica, entrega de proposta…"></div>
+
+          <!-- Lugar -->
+          <div class="col-12 destino-bloco d-none" data-destino="Lugar">
+            <input name="destino" class="form-control" placeholder="Informe aonde está indo (localidade/município)">
+          </div>
+
+          <div class="col-12"><label class="form-label">Motivo do deslocamento *</label>
+            <div class="campo-voz"><input name="motivo" class="form-control" placeholder="Ex.: visita técnica, entrega de proposta…">
+              <button type="button" class="btn-voz" title="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
+          </div>
         </div>
       </div>
       <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
         <button class="btn btn-success"><i class="bi bi-check-lg me-1"></i>Salvar</button></div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: novo veículo -->
+<div class="modal fade" id="modalVeiculo" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <form class="modal-content" id="formVeiculo" onsubmit="return Despesas.salvarVeiculo(event)">
+      <div class="modal-header"><h5 class="modal-title"><i class="bi bi-truck me-2 text-success"></i>Novo veículo</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="mb-2"><label class="form-label">Descrição *</label><input name="descricao" class="form-control" placeholder="Ex.: Fiat Strada" required></div>
+        <div><label class="form-label">Placa</label><input name="placa" class="form-control" placeholder="ABC1D23"></div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-success">Salvar</button></div>
     </form>
   </div>
 </div>

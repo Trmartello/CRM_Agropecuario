@@ -34,6 +34,8 @@ class DespesasController
         $previa = PrestacaoService::previa(Auth::id(), $anoAtual, $mesAtual);
 
         $clientes = $this->clientesCarteira();
+        $veiculos = DespesaService::veiculosUsuario(Auth::id());
+        $filiais = Database::todos('SELECT id, nome, municipio, estado FROM filiais ORDER BY nome');
         $equipe = $ehGestor
             ? Database::todos("SELECT id, nome FROM usuarios WHERE ativo = 1 AND perfil <> 'Produtor' ORDER BY nome")
             : [];
@@ -45,12 +47,34 @@ class DespesasController
             'categoria' => $categoria,
             'previa' => $previa,
             'clientes' => $clientes,
+            'veiculos' => $veiculos,
+            'filiais' => $filiais,
             'equipe' => $equipe,
             'ehGestor' => $ehGestor,
             'filtroUsuario' => $filtroUsuario,
             'mes' => $mes,
             'titulo' => 'Despesas',
         ]);
+    }
+
+    /** Cadastra um veículo do usuário (usado no lançamento de KM). */
+    public function salvarVeiculo(): void
+    {
+        Permissoes::exigirInterno();
+        try {
+            $v = DespesaService::criarVeiculo(Auth::id(), $_POST['descricao'] ?? '', $_POST['placa'] ?? '');
+        } catch (\InvalidArgumentException $e) {
+            json_erro($e->getMessage());
+        }
+        json_ok(['veiculo' => $v]);
+    }
+
+    /** Retorna a KM final do último lançamento (para pré-preencher a KM inicial). */
+    public function ultimoKm(): void
+    {
+        Permissoes::exigirInterno();
+        $km = DespesaService::ultimoKmFinal(Auth::id(), (int) ($_GET['veiculo_id'] ?? 0));
+        json_ok(['km' => $km]);
     }
 
     public function salvarKm(): void

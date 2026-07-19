@@ -28,7 +28,7 @@ $meses = [1=>'janeiro',2=>'fevereiro',3=>'março',4=>'abril',5=>'maio',6=>'junho
   <tbody>
     <?php if (!$km): ?><tr><td colspan="4" class="text-muted small">Sem lançamentos.</td></tr><?php endif; ?>
     <?php foreach ($km as $l): ?>
-    <tr><td><?= data_br($l['data']) ?></td><td class="small"><?= e($l['destino'] ?? ($l['cliente'] ?? '—')) ?></td>
+    <tr><td><?= data_br($l['data']) ?></td><td class="small"><?= e($l['destino_desc'] ?? ($l['cliente'] ?? '—')) ?></td>
       <td class="text-end"><?= numero($l['km_rodados'], 1) ?></td><td class="text-end"><?= moeda($l['valor']) ?></td></tr>
     <?php endforeach; ?>
   </tbody>

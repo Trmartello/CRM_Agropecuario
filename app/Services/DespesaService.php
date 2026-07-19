@@ -23,33 +23,117 @@ class DespesaService
         );
     }
 
+    public const TIPOS_DESTINO = ['Produtor', 'Filial', 'Lugar'];
+
+    /** Veículos ativos cadastrados pelo usuário. */
+    public static function veiculosUsuario(int $usuarioId): array
+    {
+        return Database::todos(
+            'SELECT id, descricao, placa FROM veiculos WHERE usuario_id = ? AND ativo = 1 ORDER BY descricao',
+            [$usuarioId]
+        );
+    }
+
+    /** Cadastra um veículo para o usuário; retorna o registro criado. */
+    public static function criarVeiculo(int $usuarioId, string $descricao, string $placa): array
+    {
+        $descricao = trim($descricao);
+        if ($descricao === '') {
+            throw new \InvalidArgumentException('Informe a descrição do veículo.');
+        }
+        Database::executar(
+            'INSERT INTO veiculos (usuario_id, descricao, placa) VALUES (?,?,?)',
+            [$usuarioId, mb_substr($descricao, 0, 120), trim($placa) ?: null]
+        );
+        $id = Database::ultimoId();
+        return ['id' => $id, 'descricao' => $descricao, 'placa' => trim($placa) ?: null];
+    }
+
+    /** KM final do último lançamento do usuário (opcionalmente do veículo informado). */
+    public static function ultimoKmFinal(int $usuarioId, int $veiculoId = 0): ?float
+    {
+        $sql = 'SELECT km_final FROM quilometragem WHERE usuario_id = ?';
+        $params = [$usuarioId];
+        if ($veiculoId > 0) {
+            $sql .= ' AND veiculo_id = ?';
+            $params[] = $veiculoId;
+        }
+        $sql .= ' ORDER BY data DESC, id DESC LIMIT 1';
+        $valor = Database::valor($sql, $params);
+        return $valor === false || $valor === null ? null : (float) $valor;
+    }
+
     /** Registra um lançamento de quilometragem; retorna [id, valor, aviso]. */
     public static function registrarKm(int $usuarioId, array $dados): array
     {
-        $kmInicial = (float) $dados['km_inicial'];
-        $kmFinal = (float) $dados['km_final'];
+        $kmInicial = (float) str_replace(',', '.', (string) ($dados['km_inicial'] ?? ''));
+        $kmFinal = (float) str_replace(',', '.', (string) ($dados['km_final'] ?? ''));
         if ($kmFinal <= $kmInicial) {
             throw new \InvalidArgumentException('O KM final deve ser maior que o KM inicial.');
         }
-        $rodados = $kmFinal - $kmInicial;
+        if (trim($dados['motivo'] ?? '') === '') {
+            throw new \InvalidArgumentException('Informe o motivo do deslocamento.');
+        }
 
+        // Veículo do próprio usuário
+        $veiculoId = (int) ($dados['veiculo_id'] ?? 0) ?: null;
+        $veiculoTexto = null;
+        if ($veiculoId) {
+            $v = Database::um('SELECT descricao, placa FROM veiculos WHERE id = ? AND usuario_id = ?', [$veiculoId, $usuarioId]);
+            if (!$v) {
+                throw new \InvalidArgumentException('Veículo não encontrado.');
+            }
+            $veiculoTexto = $v['descricao'] . ($v['placa'] ? ' — ' . $v['placa'] : '');
+        }
+
+        // Destino estruturado
+        $tipo = in_array($dados['tipo_destino'] ?? '', self::TIPOS_DESTINO, true) ? $dados['tipo_destino'] : 'Lugar';
+        $clienteId = null;
+        $filialId = null;
+        $prospecto = null;
+        $destino = null;
+        if ($tipo === 'Produtor') {
+            $prospecto = trim($dados['prospecto'] ?? '') ?: null;
+            // Prospecto informado tem prioridade; senão usa o produtor cadastrado
+            $clienteId = $prospecto ? null : ((int) ($dados['cliente_id'] ?? 0) ?: null);
+            if (!$clienteId && !$prospecto) {
+                throw new \InvalidArgumentException('Escolha o produtor ou informe um prospecto.');
+            }
+        } elseif ($tipo === 'Filial') {
+            $filialId = (int) ($dados['filial_id'] ?? 0) ?: null;
+            if (!$filialId) {
+                throw new \InvalidArgumentException('Selecione a filial de destino.');
+            }
+        } else { // Lugar
+            $destino = trim($dados['destino'] ?? '') ?: null;
+            if (!$destino) {
+                throw new \InvalidArgumentException('Informe o local de destino.');
+            }
+        }
+
+        $rodados = $kmFinal - $kmInicial;
         $categoria = self::categoriaUsuario($usuarioId);
         $valorKm = $categoria ? (float) $categoria['valor_km'] : 0.0;
         $valor = round($rodados * $valorKm, 2);
         $aviso = $categoria ? null : 'Usuário sem categoria de reembolso definida — valor calculado como R$ 0,00.';
 
         Database::executar(
-            'INSERT INTO quilometragem (usuario_id, veiculo, data, km_inicial, km_final, valor, cliente_id, destino, motivo)
-             VALUES (?,?,?,?,?,?,?,?,?)',
+            'INSERT INTO quilometragem
+                (usuario_id, veiculo_id, veiculo, data, km_inicial, km_final, valor, tipo_destino, cliente_id, filial_id, prospecto, destino, motivo)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
             [
                 $usuarioId,
-                trim($dados['veiculo'] ?? '') ?: null,
+                $veiculoId,
+                $veiculoTexto,
                 $dados['data'] ?: date('Y-m-d'),
                 $kmInicial,
                 $kmFinal,
                 $valor,
-                (int) ($dados['cliente_id'] ?? 0) ?: null,
-                trim($dados['destino'] ?? '') ?: null,
+                $tipo,
+                $clienteId,
+                $filialId,
+                $prospecto,
+                $destino,
                 trim($dados['motivo'] ?? '') ?: null,
             ]
         );
@@ -93,10 +177,16 @@ class DespesaService
         [$where, $params] = self::filtro($escopoUsuario, 'q', $mes);
         return Database::todos(
             "SELECT q.*, (q.km_final - q.km_inicial) AS km_rodados,
-                    u.nome AS usuario, c.nome AS cliente
+                    u.nome AS usuario, c.nome AS cliente, f.nome AS filial,
+                    CASE q.tipo_destino
+                      WHEN 'Produtor' THEN COALESCE(c.nome, q.prospecto)
+                      WHEN 'Filial' THEN f.nome
+                      ELSE q.destino
+                    END AS destino_desc
                FROM quilometragem q
                JOIN usuarios u ON u.id = q.usuario_id
                LEFT JOIN clientes c ON c.id = q.cliente_id
+               LEFT JOIN filiais f ON f.id = q.filial_id
               WHERE {$where}
               ORDER BY q.data DESC, q.id DESC
               LIMIT 500",

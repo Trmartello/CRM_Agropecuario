@@ -106,6 +106,36 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '3'"
             );
         }
+        if ($versao < 4) {
+            self::migrarParaV4();
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '4')
+                 ON DUPLICATE KEY UPDATE valor = '4'"
+            );
+        }
+    }
+
+    /** Fase 3 (ajuste): veículos por usuário e destino estruturado na quilometragem. */
+    private static function migrarParaV4(): void
+    {
+        if (!self::temTabela('veiculos')) {
+            Database::executar(
+                'CREATE TABLE veiculos (
+                   id INT AUTO_INCREMENT PRIMARY KEY,
+                   usuario_id INT NOT NULL,
+                   descricao VARCHAR(120) NOT NULL,
+                   placa VARCHAR(20),
+                   ativo TINYINT(1) NOT NULL DEFAULT 1,
+                   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                   FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
+                 ) ENGINE=InnoDB'
+            );
+        }
+        self::adicionarColuna('quilometragem', 'veiculo_id', 'veiculo_id INT NULL AFTER prestacao_id');
+        self::adicionarColuna('quilometragem', 'tipo_destino',
+            "tipo_destino ENUM('Produtor','Filial','Lugar') NOT NULL DEFAULT 'Lugar' AFTER valor");
+        self::adicionarColuna('quilometragem', 'filial_id', 'filial_id INT NULL AFTER cliente_id');
+        self::adicionarColuna('quilometragem', 'prospecto', 'prospecto VARCHAR(160) NULL AFTER filial_id');
     }
 
     /** Fase 3: reembolso por categoria, despesas (KM/refeições), prestação de contas, reclamações e documentos. */

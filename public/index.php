@@ -103,6 +103,8 @@ $router->registrar('pedidos/detalhe', \App\Controllers\PedidosController::class,
 // Despesas: quilometragem, refeições e prestação de contas (Fase 3)
 $router->registrar('despesas', \App\Controllers\DespesasController::class, 'index');
 $router->registrar('despesas/salvar-km', \App\Controllers\DespesasController::class, 'salvarKm');
+$router->registrar('despesas/salvar-veiculo', \App\Controllers\DespesasController::class, 'salvarVeiculo');
+$router->registrar('despesas/ultimo-km', \App\Controllers\DespesasController::class, 'ultimoKm');
 $router->registrar('despesas/salvar-refeicao', \App\Controllers\DespesasController::class, 'salvarRefeicao');
 $router->registrar('despesas/excluir-km', \App\Controllers\DespesasController::class, 'excluirKm');
 $router->registrar('despesas/excluir-refeicao', \App\Controllers\DespesasController::class, 'excluirRefeicao');
