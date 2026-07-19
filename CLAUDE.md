@@ -8,7 +8,7 @@ Guia para o Claude Code trabalhar neste repositório.
 
 A especificação completa está em `docs/ESCOPO_DO_PROJETO.md` (19 módulos + fases). **O desenvolvimento é feito por fases, uma a uma, sempre validando com o usuário antes de avançar.**
 
-**Status**: Fases 1 e 2 entregues (dashboard, clientes, visitas com voz/GPS/fotos, priorização, CAP, crédito, funil, potencial, pedidos, pacotes agrícolas, consulta comercial, configurações de identidade visual, PWA + offline básico, login persistente). Próxima: Fase 3 (KM, refeições, prestação de contas, reclamações, documentos). App em produção de teste no Railway: https://crmagropecuario-production.up.railway.app
+**Status**: Fases 1, 2 e 3 entregues. Fase 3 inclui: módulo **Despesas** (quilometragem com cálculo por categoria de reembolso, refeições com teto, prestação de contas mensal com fluxo Aberta→Enviada→Aprovada/Rejeitada), módulo **Reclamações** (laudos com máquina de estados Registrada→Em análise→Procedente/Improcedente→Jurídico→Indenização→Encerrada, fotos, parecer), **Gestão Documental** (aba Documentos na ficha do produtor, upload/download autenticado), **categorias de reembolso** configuráveis (valor/km e teto por categoria, atribuídas por usuário) e cartões de despesas/reclamações no dashboard. Próxima: Fase 4 (agenda, mapa, dashboards gerenciais, notificações, portal do produtor). App em produção de teste no Railway: https://crmagropecuario-production.up.railway.app
 
 ## Stack (padrão Copérdia — não alterar sem autorização)
 
