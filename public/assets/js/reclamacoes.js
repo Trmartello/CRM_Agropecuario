@@ -6,6 +6,7 @@ const Reclamacoes = {
   nova() {
     const form = document.getElementById('formReclamacao');
     form.reset();
+    document.getElementById('reclamacaoFotosPreview').innerHTML = '';
     new bootstrap.Modal('#modalReclamacao').show();
   },
 

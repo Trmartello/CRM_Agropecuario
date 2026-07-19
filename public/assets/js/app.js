@@ -47,6 +47,24 @@ const App = {
     return (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   },
 
+  /** Renderiza miniaturas das fotos/PDFs escolhidos em um input múltiplo. */
+  previewFotosGrid(input, gridId) {
+    const grid = document.getElementById(gridId);
+    if (!grid) return;
+    grid.innerHTML = '';
+    for (const arquivo of input.files || []) {
+      if (arquivo.type === 'application/pdf') {
+        grid.insertAdjacentHTML('beforeend',
+          '<div class="foto-miniatura d-flex align-items-center justify-content-center bg-light border"><i class="bi bi-file-earmark-pdf fs-3 text-danger"></i></div>');
+      } else {
+        const img = document.createElement('img');
+        img.className = 'foto-miniatura';
+        img.src = URL.createObjectURL(arquivo);
+        grid.appendChild(img);
+      }
+    }
+  },
+
   /** Gráfico Potencial x Realizado na ficha do cliente. */
   graficoPotencialCliente() {
     const canvas = document.getElementById('graficoPotencial');

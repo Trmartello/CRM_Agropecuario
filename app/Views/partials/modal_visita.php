@@ -120,7 +120,14 @@
         <!-- ETAPA 4: Fotos e concorrência -->
         <div class="etapa d-none" data-etapa="4">
           <label class="form-label"><i class="bi bi-camera me-1"></i>Fotos da lavoura</label>
-          <input type="file" name="fotos[]" id="visitaFotos" class="form-control mb-2" accept="image/*" capture="environment" multiple onchange="Visitas.previewFotos()">
+          <input type="file" name="fotos[]" id="visitaFotos" class="d-none" accept="image/*" capture="environment" multiple onchange="App.previewFotosGrid(this, 'visitaFotosPreview')">
+          <div class="dropzone-foto mb-2" onclick="document.getElementById('visitaFotos').click()">
+            <div class="text-center py-4">
+              <i class="bi bi-camera fs-2 text-success d-block mb-1"></i>
+              <span class="fw-semibold text-success">Tirar foto ou anexar</span>
+              <div class="small text-muted">toque para usar a câmera ou escolher (várias fotos)</div>
+            </div>
+          </div>
           <div id="visitaFotosPreview" class="d-flex flex-wrap gap-2 mb-4"></div>
 
           <div class="card border-secondary-subtle">

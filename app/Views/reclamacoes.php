@@ -81,7 +81,15 @@ $statusCor = [
               <button type="button" class="btn-voz" title="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
           </div>
           <div class="col-12"><label class="form-label"><i class="bi bi-camera me-1"></i>Fotos do problema</label>
-            <input type="file" name="fotos[]" class="form-control" accept="image/*" capture="environment" multiple>
+            <input type="file" name="fotos[]" id="reclamacaoFotos" class="d-none" accept="image/*" capture="environment" multiple onchange="App.previewFotosGrid(this, 'reclamacaoFotosPreview')">
+            <div class="dropzone-foto" onclick="document.getElementById('reclamacaoFotos').click()">
+              <div class="text-center py-4">
+                <i class="bi bi-camera fs-2 text-success d-block mb-1"></i>
+                <span class="fw-semibold text-success">Tirar foto ou anexar</span>
+                <div class="small text-muted">toque para usar a câmera ou escolher (várias fotos)</div>
+              </div>
+            </div>
+            <div id="reclamacaoFotosPreview" class="d-flex flex-wrap gap-2 mt-2"></div>
           </div>
         </div>
       </div>
