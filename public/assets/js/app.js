@@ -400,9 +400,9 @@ const Visitas = {
   etapa: 1,
   apoio: null,
 
-  nova(clienteId) {
+  /** Reseta e abre o modal (comum a nova visita e completar cadastro). */
+  _prepararModal(titulo) {
     const form = document.getElementById('formVisita');
-    if (!form) { location.href = 'index.php?r=visitas&nova=1' + (clienteId ? '&cliente_id=' + clienteId : ''); return; }
     form.reset();
     // Limpa o estado do cliente anterior (evita mostrar propriedades/talhões/painel de outro produtor)
     Visitas.apoio = null;
@@ -414,7 +414,15 @@ const Visitas = {
     Visitas.irParaEtapa(1);
     document.getElementById('visitaFotosPreview').innerHTML = '';
     Visitas.atualizarCompletude();
+    const t = document.getElementById('visitaModalTitulo');
+    if (t) t.textContent = titulo;
     new bootstrap.Modal('#modalVisita').show();
+    return form;
+  },
+
+  nova(clienteId) {
+    if (!document.getElementById('formVisita')) { location.href = 'index.php?r=visitas&nova=1' + (clienteId ? '&cliente_id=' + clienteId : ''); return; }
+    Visitas._prepararModal('Nova Visita Técnica');
 
     const status = document.getElementById('visitaGeoStatus');
     status.innerHTML = '<i class="bi bi-geo-alt me-1"></i>capturando GPS…';
@@ -428,6 +436,48 @@ const Visitas = {
       document.getElementById('visitaCliente').value = clienteId;
       Visitas.carregarApoio(clienteId);
     }
+  },
+
+  /** Abre uma visita não finalizada para completar o cadastro. */
+  async editar(id) {
+    if (!document.getElementById('formVisita')) { location.href = 'index.php?r=visitas&editar=' + Number(id); return; }
+    let visita;
+    try {
+      ({ visita } = await App.json('index.php?r=visitas/dados&id=' + Number(id)));
+    } catch (e) { App.alerta(e.message, 'danger'); return; }
+
+    const form = Visitas._prepararModal('Completar Visita Técnica');
+    // Mantém a localização registrada na visita original (não recaptura GPS)
+    document.getElementById('visitaGeoStatus').innerHTML = '<i class="bi bi-geo-alt-fill me-1 text-success"></i>local original mantido';
+    form.querySelector('[name=id]').value = visita.id;
+    form.querySelector('[name=latitude]').value = visita.latitude ?? '';
+    form.querySelector('[name=longitude]').value = visita.longitude ?? '';
+
+    document.getElementById('visitaCliente').value = visita.cliente_id;
+    await Visitas.carregarApoio(visita.cliente_id);
+    if (visita.propriedade_id) {
+      document.getElementById('visitaPropriedade').value = visita.propriedade_id;
+      Visitas.filtrarTalhoes();
+    }
+    if (visita.talhao_id) document.getElementById('visitaTalhao').value = visita.talhao_id;
+    if (visita.cultura_id) {
+      document.getElementById('visitaCultura').value = visita.cultura_id;
+      Visitas.carregarModelos();
+    }
+    const dh = document.getElementById('visitaDataHora');
+    if (dh && visita.data_visita) {
+      dh.value = visita.data_visita + 'T' + String(visita.hora || '08:00').substring(0, 5);
+      Visitas.sincronizarDataHora(dh);
+    }
+    ['objetivo', 'estagio_cultura', 'desenvolvimento', 'pragas', 'doencas', 'plantas_daninhas',
+      'deficiencia_nutricional', 'condicoes_climaticas', 'observacoes', 'recomendacao'].forEach(nome => {
+      const el = form.querySelector(`[name=${nome}]`);
+      if (el) {
+        el.value = visita[nome] || '';
+        if (el.tagName === 'TEXTAREA') App.autoCrescer(el);
+      }
+    });
+    Visitas.atualizarCompletude();
   },
 
   /** Divide o campo único de data+hora nos campos que o servidor espera. */
@@ -681,12 +731,15 @@ const Visitas = {
     try {
       const sel = document.getElementById('visitaCliente');
       const nome = sel && sel.selectedOptions[0] ? sel.selectedOptions[0].text : 'Visita';
-      const r = await App.enviarFormOffline(form, 'index.php?r=visitas/salvar', { modulo: 'Visitas', rotulo: 'Visita — ' + nome });
+      const editando = Number(form.querySelector('[name=id]').value) > 0;
+      const r = await App.enviarFormOffline(form, 'index.php?r=visitas/salvar', { modulo: 'Visitas', rotulo: (editando ? 'Completar visita — ' : 'Visita — ') + nome });
       bootstrap.Modal.getInstance('#modalVisita').hide();
       if (r.offline) {
         App.alerta('Sem conexão: visita guardada no aparelho. Será enviada quando a internet voltar.', 'info');
       } else {
-        App.alerta('Visita registrada com sucesso.');
+        App.alerta(editando
+          ? (r.finalizada ? 'Cadastro da visita completado (100%).' : 'Visita atualizada — cadastro ainda incompleto.')
+          : 'Visita registrada com sucesso.');
         setTimeout(() => location.href = 'index.php?r=visitas', 700);
       }
     } catch (e) { App.alerta(e.message, 'danger'); }

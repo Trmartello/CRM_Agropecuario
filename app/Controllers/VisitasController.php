@@ -113,7 +113,24 @@ class VisitasController
         json_ok(['modelos' => $modelos]);
     }
 
-    /** Salva a visita (modal AJAX, com fotos em multipart). */
+    /** Dados de uma visita para completar o cadastro (modal de edição). */
+    public function dados(): void
+    {
+        Permissoes::exigirInterno();
+        $id = (int) ($_GET['id'] ?? 0);
+        [$filtro, $params] = Permissoes::filtroCarteira();
+        $visita = Database::um(
+            "SELECT v.* FROM visitas v JOIN clientes c ON c.id = v.cliente_id
+              WHERE v.id = ? AND {$filtro}",
+            array_merge([$id], $params)
+        );
+        if (!$visita) {
+            json_erro('Visita não encontrada.', 404);
+        }
+        json_ok(['visita' => $visita]);
+    }
+
+    /** Salva a visita (modal AJAX, com fotos em multipart). id > 0 completa uma visita não finalizada. */
     public function salvar(): void
     {
         Permissoes::exigir(['Administrador', 'Gestor Técnico', 'Consultor Técnico', 'Vendedor', 'Gestor Comercial']);
@@ -130,48 +147,74 @@ class VisitasController
         $data = trim($_POST['data_visita'] ?? '') ?: date('Y-m-d');
         $completude = $this->calcularCompletude($_POST);
         $finalizada = $completude >= 100 ? 1 : 0;
+        $campos = [
+            (int) ($_POST['propriedade_id'] ?? 0) ?: null,
+            (int) ($_POST['talhao_id'] ?? 0) ?: null,
+            (int) ($_POST['cultura_id'] ?? 0) ?: null,
+            $data,
+            trim($_POST['hora'] ?? '') ?: date('H:i'),
+            trim($_POST['objetivo'] ?? '') ?: null,
+            trim($_POST['estagio_cultura'] ?? '') ?: null,
+            trim($_POST['desenvolvimento'] ?? '') ?: null,
+            trim($_POST['pragas'] ?? '') ?: null,
+            trim($_POST['doencas'] ?? '') ?: null,
+            trim($_POST['plantas_daninhas'] ?? '') ?: null,
+            trim($_POST['deficiencia_nutricional'] ?? '') ?: null,
+            trim($_POST['condicoes_climaticas'] ?? '') ?: null,
+            trim($_POST['observacoes'] ?? '') ?: null,
+            trim($_POST['recomendacao'] ?? '') ?: null,
+            $_POST['latitude'] !== '' ? (float) $_POST['latitude'] : null,
+            $_POST['longitude'] !== '' ? (float) $_POST['longitude'] : null,
+        ];
 
-        Database::executar(
-            'INSERT INTO visitas (cliente_id, propriedade_id, talhao_id, cultura_id, usuario_id, data_visita, hora,
-                    objetivo, estagio_cultura, desenvolvimento, pragas, doencas, plantas_daninhas,
-                    deficiencia_nutricional, condicoes_climaticas, observacoes, recomendacao,
-                    latitude, longitude, sincronizada_offline, finalizada, completude)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-            [
-                $clienteId,
-                (int) ($_POST['propriedade_id'] ?? 0) ?: null,
-                (int) ($_POST['talhao_id'] ?? 0) ?: null,
-                (int) ($_POST['cultura_id'] ?? 0) ?: null,
-                Auth::id(),
-                $data,
-                trim($_POST['hora'] ?? '') ?: date('H:i'),
-                trim($_POST['objetivo'] ?? '') ?: null,
-                trim($_POST['estagio_cultura'] ?? '') ?: null,
-                trim($_POST['desenvolvimento'] ?? '') ?: null,
-                trim($_POST['pragas'] ?? '') ?: null,
-                trim($_POST['doencas'] ?? '') ?: null,
-                trim($_POST['plantas_daninhas'] ?? '') ?: null,
-                trim($_POST['deficiencia_nutricional'] ?? '') ?: null,
-                trim($_POST['condicoes_climaticas'] ?? '') ?: null,
-                trim($_POST['observacoes'] ?? '') ?: null,
-                trim($_POST['recomendacao'] ?? '') ?: null,
-                $_POST['latitude'] !== '' ? (float) $_POST['latitude'] : null,
-                $_POST['longitude'] !== '' ? (float) $_POST['longitude'] : null,
-                (int) ($_POST['offline'] ?? 0),
-                $finalizada,
-                $completude,
-            ]
-        );
-        $visitaId = Database::ultimoId();
+        $visitaId = (int) ($_POST['id'] ?? 0);
+        if ($visitaId > 0) {
+            // Completar cadastro: só o dono (ou gestor), e só enquanto não finalizada
+            $anterior = Database::um('SELECT usuario_id, finalizada, recomendacao FROM visitas WHERE id = ?', [$visitaId]);
+            if (!$anterior || (!Permissoes::ehGestor() && (int) $anterior['usuario_id'] !== Auth::id())) {
+                json_erro('Visita não encontrada.', 404);
+            }
+            if ((int) $anterior['finalizada'] === 1) {
+                json_erro('Esta visita já está com o cadastro 100% preenchido — registre uma nova visita.');
+            }
+            Database::executar(
+                'UPDATE visitas SET cliente_id=?, propriedade_id=?, talhao_id=?, cultura_id=?, data_visita=?, hora=?,
+                        objetivo=?, estagio_cultura=?, desenvolvimento=?, pragas=?, doencas=?, plantas_daninhas=?,
+                        deficiencia_nutricional=?, condicoes_climaticas=?, observacoes=?, recomendacao=?,
+                        latitude=?, longitude=?, finalizada=?, completude=? WHERE id=?',
+                array_merge([$clienteId], $campos, [$finalizada, $completude, $visitaId])
+            );
+            $this->salvarFotos($visitaId);
+            $this->salvarConcorrencia($visitaId, $clienteId);
+            // Notifica o produtor só se a recomendação surgiu agora (não repete aviso)
+            $notificar = trim($_POST['recomendacao'] ?? '') !== '' && trim((string) $anterior['recomendacao']) === '';
+        } else {
+            Database::executar(
+                'INSERT INTO visitas (cliente_id, propriedade_id, talhao_id, cultura_id, usuario_id, data_visita, hora,
+                        objetivo, estagio_cultura, desenvolvimento, pragas, doencas, plantas_daninhas,
+                        deficiencia_nutricional, condicoes_climaticas, observacoes, recomendacao,
+                        latitude, longitude, sincronizada_offline, finalizada, completude)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                array_merge(
+                    [$clienteId],
+                    array_slice($campos, 0, 3),
+                    [Auth::id()],
+                    array_slice($campos, 3),
+                    [(int) ($_POST['offline'] ?? 0), $finalizada, $completude]
+                )
+            );
+            $visitaId = Database::ultimoId();
 
-        $this->salvarFotos($visitaId);
-        $this->salvarConcorrencia($visitaId, $clienteId);
+            $this->salvarFotos($visitaId);
+            $this->salvarConcorrencia($visitaId, $clienteId);
 
-        // Amarra automaticamente a quilometragem do dia (mesmo técnico/produtor) a esta visita
-        \App\Services\DespesaService::vincularVisitaPorEvento($visitaId, Auth::id(), $clienteId, $data);
+            // Amarra automaticamente a quilometragem do dia (mesmo técnico/produtor) a esta visita
+            \App\Services\DespesaService::vincularVisitaPorEvento($visitaId, Auth::id(), $clienteId, $data);
+            $notificar = trim($_POST['recomendacao'] ?? '') !== '';
+        }
 
         // Notifica o produtor (portal) quando há recomendação técnica nova
-        if (trim($_POST['recomendacao'] ?? '') !== '') {
+        if ($notificar) {
             $produtorUid = (int) Database::valor(
                 'SELECT id FROM usuarios WHERE cliente_id = ? AND perfil = "Produtor"', [$clienteId]
             );
@@ -183,7 +226,7 @@ class VisitasController
 
         // Confirma a transação idempotente: uuid + visita + fotos/vínculos juntos.
         sync_confirmar($_POST['uuid_offline'] ?? null);
-        json_ok(['id' => $visitaId]);
+        json_ok(['id' => $visitaId, 'finalizada' => $finalizada, 'completude' => $completude]);
     }
 
     private function salvarFotos(int $visitaId): void

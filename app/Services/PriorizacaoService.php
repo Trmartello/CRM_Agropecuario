@@ -40,7 +40,9 @@ class PriorizacaoService
                     (SELECT v2.completude FROM visitas v2 WHERE v2.cliente_id = c.id
                        ORDER BY v2.data_visita DESC, v2.id DESC LIMIT 1) AS ultima_completude,
                     (SELECT v2.finalizada FROM visitas v2 WHERE v2.cliente_id = c.id
-                       ORDER BY v2.data_visita DESC, v2.id DESC LIMIT 1) AS ultima_finalizada
+                       ORDER BY v2.data_visita DESC, v2.id DESC LIMIT 1) AS ultima_finalizada,
+                    (SELECT v2.id FROM visitas v2 WHERE v2.cliente_id = c.id
+                       ORDER BY v2.data_visita DESC, v2.id DESC LIMIT 1) AS ultima_visita_id
                FROM clientes c
               WHERE c.ativo = 1 AND {$filtroCarteira}",
             $params

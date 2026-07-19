@@ -3,12 +3,13 @@
   <div class="modal-dialog modal-xl modal-fullscreen-md-down">
     <form class="modal-content" id="formVisita" novalidate onsubmit="return Visitas.salvar(event)" oninput="Visitas.atualizarCompletude()" onchange="Visitas.atualizarCompletude()">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-clipboard2-plus me-2 text-success"></i>Nova Visita Técnica</h5>
+        <h5 class="modal-title"><i class="bi bi-clipboard2-plus me-2 text-success"></i><span id="visitaModalTitulo">Nova Visita Técnica</span></h5>
         <span class="badge text-bg-light border ms-2" id="visitaGeoStatus"><i class="bi bi-geo-alt me-1"></i>capturando GPS…</span>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
 
       <div class="modal-body">
+        <input type="hidden" name="id" value="0">
         <input type="hidden" name="latitude"><input type="hidden" name="longitude">
 
         <!-- Navegação das etapas (clique para preencher em qualquer ordem) -->

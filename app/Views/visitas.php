@@ -59,7 +59,11 @@
                 <span class="small text-muted"><?= $p['score'] ?></span>
               </td>
               <td class="text-end">
-                <button class="btn btn-sm btn-success" onclick="Visitas.nova(<?= $p['id'] ?>)"><i class="bi bi-clipboard2-plus"></i><span class="d-none d-md-inline ms-1">Visitar</span></button>
+                <?php if (($p['ultima_completude'] ?? null) !== null && !$p['ultima_finalizada']): ?>
+                  <button class="btn btn-sm btn-warning" onclick="Visitas.editar(<?= (int) $p['ultima_visita_id'] ?>)" title="Completar o cadastro da última visita (<?= (int) $p['ultima_completude'] ?>%)"><i class="bi bi-pencil-square"></i><span class="d-none d-md-inline ms-1">Completar</span></button>
+                <?php else: ?>
+                  <button class="btn btn-sm btn-success" onclick="Visitas.nova(<?= $p['id'] ?>)" title="Registrar nova visita"><i class="bi bi-clipboard2-plus"></i><span class="d-none d-md-inline ms-1">Visitar</span></button>
+                <?php endif; ?>
               </td>
             </tr>
             <?php endforeach; ?>
@@ -99,7 +103,12 @@
               <td class="d-none d-md-table-cell small"><?= e($v['propriedade'] ?? '—') ?><?= $v['talhao'] ? ' · ' . e($v['talhao']) : '' ?></td>
               <td class="d-none d-md-table-cell"><?= e($v['cultura'] ?? '—') ?></td>
               <td class="d-none d-lg-table-cell small"><?= e($v['tecnico']) ?></td>
-              <td class="text-end"><button class="btn btn-sm btn-outline-success" onclick="Visitas.detalhe(<?= $v['id'] ?>)"><i class="bi bi-eye"></i></button></td>
+              <td class="text-end text-nowrap">
+                <?php if (isset($v['finalizada']) && !$v['finalizada']): ?>
+                  <button class="btn btn-sm btn-warning" onclick="Visitas.editar(<?= $v['id'] ?>)" title="Completar cadastro"><i class="bi bi-pencil-square"></i></button>
+                <?php endif; ?>
+                <button class="btn btn-sm btn-outline-success" onclick="Visitas.detalhe(<?= $v['id'] ?>)" title="Ver detalhe"><i class="bi bi-eye"></i></button>
+              </td>
             </tr>
             <?php endforeach; ?>
           </tbody>
@@ -124,6 +133,8 @@
 document.addEventListener('DOMContentLoaded', () => {
   <?php if (isset($_GET['nova'])): ?>
     Visitas.nova(<?= (int) ($_GET['cliente_id'] ?? 0) ?: 'null' ?>);
+  <?php elseif (isset($_GET['editar'])): ?>
+    Visitas.editar(<?= (int) $_GET['editar'] ?>);
   <?php endif; ?>
 });
 </script>
