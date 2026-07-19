@@ -49,15 +49,13 @@
                 <?php endforeach; ?>
               </select>
             </div>
-            <div class="col-md-3">
-              <label class="form-label">Data *</label>
-              <input type="date" name="data_visita" class="form-control" value="<?= date('Y-m-d') ?>" required>
+            <div class="col-md-4">
+              <label class="form-label">Data e hora *</label>
+              <input type="datetime-local" id="visitaDataHora" class="form-control" value="<?= date('Y-m-d\TH:i') ?>" required oninput="Visitas.sincronizarDataHora(this)">
+              <input type="hidden" name="data_visita" value="<?= date('Y-m-d') ?>">
+              <input type="hidden" name="hora" value="<?= date('H:i') ?>">
             </div>
-            <div class="col-md-3">
-              <label class="form-label">Hora</label>
-              <input type="time" name="hora" class="form-control" value="<?= date('H:i') ?>">
-            </div>
-            <div class="col-md-3">
+            <div class="col-md-8">
               <label class="form-label">Objetivo</label>
               <input name="objetivo" class="form-control" placeholder="Ex.: acompanhamento fitossanitário">
             </div>

@@ -390,6 +390,14 @@ const Visitas = {
     }
   },
 
+  /** Divide o campo único de data+hora nos campos que o servidor espera. */
+  sincronizarDataHora(input) {
+    const form = input.closest('form');
+    const [d = '', h = ''] = (input.value || '').split('T');
+    form.querySelector('[name=data_visita]').value = d;
+    form.querySelector('[name=hora]').value = h;
+  },
+
   async carregarApoio(clienteId) {
     if (!clienteId) return;
     try {
