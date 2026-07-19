@@ -69,6 +69,7 @@ CREATE TABLE clientes (
   volume_compra_anual DECIMAL(14,2) NOT NULL DEFAULT 0,
   potencial_venda DECIMAL(14,2) NOT NULL DEFAULT 0,
   limite_credito DECIMAL(14,2) NOT NULL DEFAULT 0,
+  prospecto TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'pré-cadastro (cliente em prospecção)',
   ativo TINYINT(1) NOT NULL DEFAULT 1,
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (filial_id) REFERENCES filiais(id),
@@ -545,6 +546,7 @@ CREATE TABLE quilometragem (
   usuario_id INT NOT NULL,
   prestacao_id INT NULL,
   veiculo_id INT NULL,
+  visita_id INT NULL COMMENT 'amarração automática com a visita realizada',
   veiculo VARCHAR(120),
   data DATE NOT NULL,
   km_inicial DECIMAL(10,1) NOT NULL,
@@ -560,6 +562,7 @@ CREATE TABLE quilometragem (
   FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
   FOREIGN KEY (prestacao_id) REFERENCES prestacao_contas(id) ON DELETE SET NULL,
   FOREIGN KEY (veiculo_id) REFERENCES veiculos(id) ON DELETE SET NULL,
+  FOREIGN KEY (visita_id) REFERENCES visitas(id) ON DELETE SET NULL,
   FOREIGN KEY (cliente_id) REFERENCES clientes(id),
   FOREIGN KEY (filial_id) REFERENCES filiais(id)
 ) ENGINE=InnoDB;
@@ -1036,5 +1039,5 @@ INSERT INTO reclamacoes (cliente_id, usuario_id, produto_id, tipo, lote, nota_fi
 (6,5,7,'Defensivos','FG-7781','NF-88410',1,'Fitotoxidez','Sintoma de fitotoxidez após aplicação de fungicida.','Registrada');
 
 -- schema_versao: instalações novas já nascem na versão atual (não re-executam migrações)
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','5')
-  ON DUPLICATE KEY UPDATE valor = '5';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','6')
+  ON DUPLICATE KEY UPDATE valor = '6';

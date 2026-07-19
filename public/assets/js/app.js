@@ -158,8 +158,10 @@ const Clientes = {
       const { cliente } = await App.json(`index.php?r=clientes/obter&id=${id}`);
       for (const [chave, valor] of Object.entries(cliente)) {
         const campo = form.querySelector(`[name=${chave}]`);
-        if (campo && valor !== null) campo.value = valor;
+        if (campo && campo.type !== 'checkbox' && valor !== null) campo.value = valor;
       }
+      const chkProsp = form.querySelector('[name=prospecto]');
+      if (chkProsp) chkProsp.checked = Number(cliente.prospecto) === 1;
     } catch (e) { App.alerta(e.message, 'danger'); }
   },
 

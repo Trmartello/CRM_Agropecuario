@@ -141,6 +141,9 @@ class VisitasController
         $this->salvarFotos($visitaId);
         $this->salvarConcorrencia($visitaId, $clienteId);
 
+        // Amarra automaticamente a quilometragem do dia (mesmo técnico/produtor) a esta visita
+        \App\Services\DespesaService::vincularVisitaPorEvento($visitaId, Auth::id(), $clienteId, $data);
+
         json_ok(['id' => $visitaId]);
     }
 

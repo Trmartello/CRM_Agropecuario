@@ -34,7 +34,9 @@
         <?php foreach ($clientes as $c): ?>
         <tr>
           <td>
-            <div class="fw-semibold"><?= e($c['nome']) ?></div>
+            <div class="fw-semibold"><?= e($c['nome']) ?>
+              <?php if (!empty($c['prospecto'])): ?><span class="badge text-bg-warning ms-1"><i class="bi bi-star-half me-1"></i>Prospecto</span><?php endif; ?>
+            </div>
             <div class="small text-muted d-md-none"><?= e($c['municipio'] ?? '') ?></div>
           </td>
           <td class="d-none d-md-table-cell"><?= e($c['municipio'] ?? '—') ?></td>

@@ -93,11 +93,10 @@ class DespesaService
         $prospecto = null;
         $destino = null;
         if ($tipo === 'Produtor') {
-            $prospecto = trim($dados['prospecto'] ?? '') ?: null;
-            // Prospecto informado tem prioridade; senão usa o produtor cadastrado
-            $clienteId = $prospecto ? null : ((int) ($dados['cliente_id'] ?? 0) ?: null);
-            if (!$clienteId && !$prospecto) {
-                throw new \InvalidArgumentException('Escolha o produtor ou informe um prospecto.');
+            // Sempre um cliente cadastrado (produtor ou prospecto pré-cadastrado) — nunca texto livre
+            $clienteId = (int) ($dados['cliente_id'] ?? 0) ?: null;
+            if (!$clienteId) {
+                throw new \InvalidArgumentException('Selecione o produtor ou faça o pré-cadastro do prospecto.');
             }
         } elseif ($tipo === 'Filial') {
             $filialId = (int) ($dados['filial_id'] ?? 0) ?: null;
@@ -137,7 +136,39 @@ class DespesaService
                 trim($dados['motivo'] ?? '') ?: null,
             ]
         );
-        return ['id' => Database::ultimoId(), 'valor' => $valor, 'aviso' => $aviso];
+        $kmId = Database::ultimoId();
+
+        // Amarração automática com a visita realizada (mesmo técnico, produtor e data)
+        $vinculada = false;
+        if ($tipo === 'Produtor' && $clienteId) {
+            $vinculada = self::vincularVisitaKm($kmId, $usuarioId, $clienteId, $dados['data'] ?: date('Y-m-d'));
+        }
+        return ['id' => $kmId, 'valor' => $valor, 'aviso' => $aviso, 'vinculada_visita' => $vinculada];
+    }
+
+    /** Vincula um lançamento de KM à visita do mesmo técnico/produtor/data, se houver. */
+    public static function vincularVisitaKm(int $kmId, int $usuarioId, int $clienteId, string $data): bool
+    {
+        $visitaId = Database::valor(
+            'SELECT id FROM visitas WHERE usuario_id = ? AND cliente_id = ? AND data_visita = ? ORDER BY id DESC LIMIT 1',
+            [$usuarioId, $clienteId, $data]
+        );
+        if ($visitaId) {
+            Database::executar('UPDATE quilometragem SET visita_id = ? WHERE id = ?', [(int) $visitaId, $kmId]);
+            return true;
+        }
+        return false;
+    }
+
+    /** Vincula KMs órfãos de um técnico/produtor/data a uma visita recém-criada. */
+    public static function vincularVisitaPorEvento(int $visitaId, int $usuarioId, int $clienteId, string $data): int
+    {
+        $stmt = Database::executar(
+            "UPDATE quilometragem SET visita_id = ?
+              WHERE usuario_id = ? AND cliente_id = ? AND data = ? AND tipo_destino = 'Produtor' AND visita_id IS NULL",
+            [$visitaId, $usuarioId, $clienteId, $data]
+        );
+        return $stmt->rowCount();
     }
 
     public const TIPOS_REFEICAO = ['Café', 'Almoço', 'Lanche', 'Janta'];

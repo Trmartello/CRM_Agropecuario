@@ -33,7 +33,8 @@ class DespesasController
         [$anoAtual, $mesAtual] = array_map('intval', explode('-', date('Y-m')));
         $previa = PrestacaoService::previa(Auth::id(), $anoAtual, $mesAtual);
 
-        $clientes = $this->clientesCarteira();
+        $clientes = $this->clientesCarteira(false);
+        $prospectos = $this->clientesCarteira(true);
         $veiculos = DespesaService::veiculosUsuario(Auth::id());
         $filiais = Database::todos('SELECT id, nome, municipio, estado FROM filiais ORDER BY nome');
         $equipe = $ehGestor
@@ -49,6 +50,7 @@ class DespesasController
             'tiposRefeicao' => DespesaService::TIPOS_REFEICAO,
             'previa' => $previa,
             'clientes' => $clientes,
+            'prospectos' => $prospectos,
             'veiculos' => $veiculos,
             'filiais' => $filiais,
             'equipe' => $equipe,
@@ -200,12 +202,13 @@ class DespesasController
         render_parcial('partials/prestacao_detalhe', $dados);
     }
 
-    /** Clientes da carteira do usuário (para vincular a despesa a uma visita/cliente). */
-    private function clientesCarteira(): array
+    /** Clientes da carteira do usuário (para vincular a despesa a um produtor). */
+    private function clientesCarteira(bool $apenasProspecto = false): array
     {
         [$filtro, $params] = Permissoes::filtroCarteira();
+        $params[] = $apenasProspecto ? 1 : 0;
         return Database::todos(
-            "SELECT c.id, c.nome FROM clientes c WHERE c.ativo = 1 AND {$filtro} ORDER BY c.nome",
+            "SELECT c.id, c.nome FROM clientes c WHERE c.ativo = 1 AND {$filtro} AND c.prospecto = ? ORDER BY c.nome",
             $params
         );
     }

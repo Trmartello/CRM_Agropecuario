@@ -67,6 +67,7 @@ $router->registrar('dashboard', DashboardController::class, 'index');
 $router->registrar('clientes', ClientesController::class, 'index');
 $router->registrar('clientes/obter', ClientesController::class, 'obter');
 $router->registrar('clientes/salvar', ClientesController::class, 'salvar');
+$router->registrar('clientes/pre-cadastro', ClientesController::class, 'preCadastro');
 $router->registrar('clientes/ficha', ClientesController::class, 'ficha');
 $router->registrar('clientes/salvar-propriedade', ClientesController::class, 'salvarPropriedade');
 $router->registrar('clientes/salvar-talhao', ClientesController::class, 'salvarTalhao');

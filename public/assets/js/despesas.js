@@ -27,6 +27,35 @@ const Despesas = {
     document.getElementById('blocoProspecto').classList.toggle('d-none', !ehProspecto);
     const chk = document.getElementById('chkProspecto');
     if (chk && chk.checked !== ehProspecto) chk.checked = ehProspecto;
+    // Reinicia a seleção ao alternar produtor/prospecto (só um vale)
+    const form = document.getElementById('formKm');
+    form.querySelector('[name=cliente_produtor]').value = '0';
+    form.querySelector('[name=cliente_prospecto]').value = '0';
+    Despesas.setCliente('0');
+  },
+
+  /** Sincroniza o produtor/prospecto escolhido no campo cliente_id enviado. */
+  setCliente(valor) {
+    document.getElementById('formKm').querySelector('[name=cliente_id]').value = valor || '0';
+  },
+
+  novoProspecto() {
+    const form = document.getElementById('formProspecto');
+    form.reset();
+    new bootstrap.Modal('#modalProspecto').show();
+  },
+
+  async salvarProspecto(ev) {
+    ev.preventDefault();
+    try {
+      const r = await App.enviarForm(ev.target, 'index.php?r=clientes/pre-cadastro');
+      const sel = document.querySelector('#formKm [name=cliente_prospecto]');
+      sel.add(new Option(r.nome, r.id, true, true));
+      Despesas.setCliente(r.id);
+      bootstrap.Modal.getInstance('#modalProspecto').hide();
+      App.alerta('Prospecto pré-cadastrado. Complete os dados depois em Clientes.');
+    } catch (e) { App.alerta(e.message, 'danger'); }
+    return false;
   },
 
   novoVeiculo() {
@@ -126,6 +155,7 @@ const Despesas = {
       const r = await App.enviarForm(ev.target, 'index.php?r=despesas/salvar-km');
       bootstrap.Modal.getInstance('#modalKm').hide();
       App.alerta('Quilometragem lançada. Valor: ' + App.moeda(r.valor));
+      if (r.vinculada_visita) App.alerta('Deslocamento amarrado automaticamente à visita do dia.', 'info');
       if (r.aviso) App.alerta(r.aviso, 'warning');
       setTimeout(() => location.reload(), 700);
     } catch (e) { App.alerta(e.message, 'danger'); }

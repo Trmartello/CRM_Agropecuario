@@ -77,6 +77,7 @@ class ClientesController
             (float) str_replace(',', '.', $_POST['volume_compra_anual'] ?? 0),
             (float) str_replace(',', '.', $_POST['potencial_venda'] ?? 0),
             (float) str_replace(',', '.', $_POST['limite_credito'] ?? 0),
+            (int) ($_POST['prospecto'] ?? 0) ? 1 : 0,
         ];
 
         if ($id > 0) {
@@ -84,7 +85,7 @@ class ClientesController
             Database::executar(
                 'UPDATE clientes SET nome=?, situacao=?, cpf_cnpj=?, telefone=?, email=?, endereco=?,
                         municipio=?, estado=?, filial_id=?, latitude=?, longitude=?, responsavel_id=?,
-                        nivel_tecnologico=?, volume_compra_anual=?, potencial_venda=?, limite_credito=?
+                        nivel_tecnologico=?, volume_compra_anual=?, potencial_venda=?, limite_credito=?, prospecto=?
                   WHERE id=?',
                 array_merge($dados, [$id])
             );
@@ -92,14 +93,42 @@ class ClientesController
             Database::executar(
                 'INSERT INTO clientes (nome, situacao, cpf_cnpj, telefone, email, endereco, municipio, estado,
                         filial_id, latitude, longitude, responsavel_id, nivel_tecnologico,
-                        volume_compra_anual, potencial_venda, limite_credito)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                        volume_compra_anual, potencial_venda, limite_credito, prospecto)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                 $dados
             );
             $id = Database::ultimoId();
         }
         $this->auditar($id > 0 ? 'salvar' : 'criar', 'clientes', $id);
         json_ok(['id' => $id]);
+    }
+
+    /**
+     * Pré-cadastro de prospecto (registro leve): cria um cliente marcado como
+     * prospecto, na carteira do usuário, para ser completado depois. Sem texto livre.
+     */
+    public function preCadastro(): void
+    {
+        Permissoes::exigir(['Administrador', 'Gestor Comercial', 'Gestor Técnico', 'Consultor Técnico', 'Vendedor']);
+        $nome = trim($_POST['nome'] ?? '');
+        if ($nome === '') {
+            json_erro('Informe o nome do prospecto.');
+        }
+        Database::executar(
+            'INSERT INTO clientes (nome, situacao, telefone, municipio, estado, responsavel_id, prospecto)
+             VALUES (?, ?, ?, ?, ?, ?, 1)',
+            [
+                $nome,
+                $_POST['situacao'] ?? 'Não Associado',
+                trim($_POST['telefone'] ?? '') ?: null,
+                trim($_POST['municipio'] ?? '') ?: null,
+                strtoupper(trim($_POST['estado'] ?? 'SC')) ?: 'SC',
+                Permissoes::ehGestor() ? ((int) ($_POST['responsavel_id'] ?? 0) ?: Auth::id()) : Auth::id(),
+            ]
+        );
+        $id = Database::ultimoId();
+        $this->auditar('pre-cadastro', 'clientes', $id);
+        json_ok(['id' => $id, 'nome' => $nome]);
     }
 
     /** Ficha completa do cliente (painel lateral, AJAX → HTML parcial). */

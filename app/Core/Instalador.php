@@ -120,6 +120,20 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '5'"
             );
         }
+        if ($versao < 6) {
+            self::migrarParaV6();
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '6')
+                 ON DUPLICATE KEY UPDATE valor = '6'"
+            );
+        }
+    }
+
+    /** Fase 3 (ajuste): pré-cadastro de prospecto e amarração da KM com a visita. */
+    private static function migrarParaV6(): void
+    {
+        self::adicionarColuna('clientes', 'prospecto', 'prospecto TINYINT(1) NOT NULL DEFAULT 0 AFTER limite_credito');
+        self::adicionarColuna('quilometragem', 'visita_id', 'visita_id INT NULL AFTER veiculo_id');
     }
 
     /** Fase 3 (ajuste): refeições por tipo com reembolso por categoria/tipo e comprovante. */

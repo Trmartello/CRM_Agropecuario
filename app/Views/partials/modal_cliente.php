@@ -20,6 +20,12 @@
               <option>Não Associado</option>
             </select>
           </div>
+          <div class="col-md-4 d-flex align-items-end">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="prospecto" value="1" id="clienteProspecto">
+              <label class="form-check-label" for="clienteProspecto">Prospecto (em prospecção)</label>
+            </div>
+          </div>
           <div class="col-md-4">
             <label class="form-label">CPF/CNPJ</label>
             <input name="cpf_cnpj" class="form-control">

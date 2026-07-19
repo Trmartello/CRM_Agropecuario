@@ -71,6 +71,7 @@ $statusCor = ['Aberta'=>'secondary','Enviada'=>'info','Aprovada'=>'success','Rej
             <td class="d-none d-md-table-cell small">
               <span class="badge text-bg-light border text-dark me-1"><?= e($l['tipo_destino']) ?></span>
               <?= e($l['destino_desc'] ?? '—') ?>
+              <?php if (!empty($l['visita_id'])): ?><i class="bi bi-clipboard2-check text-success ms-1" title="Amarrado à visita realizada"></i><?php endif; ?>
             </td>
             <td class="text-end"><?= numero($l['km_rodados'], 1) ?></td>
             <td class="text-end fw-semibold"><?= moeda($l['valor']) ?></td>
@@ -225,17 +226,25 @@ $statusCor = ['Aberta'=>'secondary','Enviada'=>'info','Aprovada'=>'success','Rej
           <div class="col-12 destino-bloco" data-destino="Produtor">
             <div class="form-check mb-2">
               <input class="form-check-input" type="checkbox" id="chkProspecto" onchange="Despesas.toggleProspecto(this.checked)">
-              <label class="form-check-label small" for="chkProspecto">É um cliente prospecto (ainda não cadastrado)</label>
+              <label class="form-check-label small" for="chkProspecto">É um cliente prospecto (em prospecção)</label>
             </div>
             <div id="blocoProdutor">
-              <select name="cliente_id" class="form-select">
+              <select name="cliente_produtor" class="form-select" onchange="Despesas.setCliente(this.value)">
                 <option value="0">Selecione o produtor…</option>
                 <?php foreach ($clientes as $c): ?><option value="<?= $c['id'] ?>"><?= e($c['nome']) ?></option><?php endforeach; ?>
               </select>
             </div>
             <div id="blocoProspecto" class="d-none">
-              <input name="prospecto" class="form-control" placeholder="Nome do cliente prospecto">
+              <div class="input-group">
+                <select name="cliente_prospecto" class="form-select" onchange="Despesas.setCliente(this.value)">
+                  <option value="0">Selecione o prospecto…</option>
+                  <?php foreach ($prospectos as $c): ?><option value="<?= $c['id'] ?>"><?= e($c['nome']) ?></option><?php endforeach; ?>
+                </select>
+                <button type="button" class="btn btn-outline-success" title="Pré-cadastrar prospecto" onclick="Despesas.novoProspecto()"><i class="bi bi-person-plus"></i></button>
+              </div>
+              <div class="form-text">O prospecto vira um cliente que você completa depois (propriedade, potencial, dados) na tela de Clientes.</div>
             </div>
+            <input type="hidden" name="cliente_id" value="0">
           </div>
 
           <!-- Filial -->
@@ -259,6 +268,29 @@ $statusCor = ['Aberta'=>'secondary','Enviada'=>'info','Aprovada'=>'success','Rej
       </div>
       <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
         <button class="btn btn-success"><i class="bi bi-check-lg me-1"></i>Salvar</button></div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: pré-cadastro de prospecto -->
+<div class="modal fade" id="modalProspecto" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" id="formProspecto" onsubmit="return Despesas.salvarProspecto(event)">
+      <div class="modal-header"><h5 class="modal-title"><i class="bi bi-person-plus me-2 text-success"></i>Pré-cadastrar prospecto</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <p class="text-muted small">Cadastro rápido para vincular o deslocamento. Depois você completa propriedade, potencial e demais dados na tela de <strong>Clientes</strong>.</p>
+        <div class="row g-3">
+          <div class="col-12"><label class="form-label">Nome *</label><input name="nome" class="form-control" required></div>
+          <div class="col-md-6"><label class="form-label">Telefone</label><input name="telefone" class="form-control"></div>
+          <div class="col-md-6"><label class="form-label">Situação</label>
+            <select name="situacao" class="form-select"><option>Não Associado</option><option>Associado</option></select></div>
+          <div class="col-md-8"><label class="form-label">Município</label><input name="municipio" class="form-control"></div>
+          <div class="col-md-4"><label class="form-label">UF</label><input name="estado" class="form-control" value="SC" maxlength="2"></div>
+        </div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-success">Salvar pré-cadastro</button></div>
     </form>
   </div>
 </div>
