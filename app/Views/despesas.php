@@ -213,11 +213,11 @@ $statusCor = ['Aberta'=>'secondary','Enviada'=>'info','Aprovada'=>'success','Rej
           <div class="col-12">
             <label class="form-label d-block">Destino do deslocamento *</label>
             <div class="btn-group w-100" role="group">
-              <input type="radio" class="btn-check" name="tipo_destino" id="td_prod" value="Produtor" checked onchange="Despesas.tipoDestino('Produtor')">
+              <input type="radio" class="btn-check" name="tipo_destino" id="td_prod" value="Produtor" <?= $prefKm['tipo_destino'] === 'Produtor' ? 'checked' : '' ?> onchange="Despesas.tipoDestino('Produtor')">
               <label class="btn btn-outline-success" for="td_prod"><i class="bi bi-person me-1"></i>Produtor</label>
-              <input type="radio" class="btn-check" name="tipo_destino" id="td_fil" value="Filial" onchange="Despesas.tipoDestino('Filial')">
+              <input type="radio" class="btn-check" name="tipo_destino" id="td_fil" value="Filial" <?= $prefKm['tipo_destino'] === 'Filial' ? 'checked' : '' ?> onchange="Despesas.tipoDestino('Filial')">
               <label class="btn btn-outline-success" for="td_fil"><i class="bi bi-building me-1"></i>Filial</label>
-              <input type="radio" class="btn-check" name="tipo_destino" id="td_lug" value="Lugar" onchange="Despesas.tipoDestino('Lugar')">
+              <input type="radio" class="btn-check" name="tipo_destino" id="td_lug" value="Lugar" <?= $prefKm['tipo_destino'] === 'Lugar' ? 'checked' : '' ?> onchange="Despesas.tipoDestino('Lugar')">
               <label class="btn btn-outline-success" for="td_lug"><i class="bi bi-geo-alt me-1"></i>Lugar</label>
             </div>
           </div>
@@ -251,7 +251,7 @@ $statusCor = ['Aberta'=>'secondary','Enviada'=>'info','Aprovada'=>'success','Rej
           <div class="col-12 destino-bloco d-none" data-destino="Filial">
             <select name="filial_id" class="form-select">
               <option value="0">Selecione a filial…</option>
-              <?php foreach ($filiais as $f): ?><option value="<?= $f['id'] ?>"><?= e($f['nome']) ?> — <?= e($f['municipio']) ?>/<?= e($f['estado']) ?></option><?php endforeach; ?>
+              <?php foreach ($filiais as $f): ?><option value="<?= $f['id'] ?>" <?= (int)$prefKm['filial_id'] === (int)$f['id'] ? 'selected' : '' ?>><?= e($f['nome']) ?> — <?= e($f['municipio']) ?>/<?= e($f['estado']) ?></option><?php endforeach; ?>
             </select>
           </div>
 

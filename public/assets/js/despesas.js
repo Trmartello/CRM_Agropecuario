@@ -10,7 +10,9 @@ const Despesas = {
     form.reset(); // restaura o veículo padrão (option marcada como selected no HTML)
     form.querySelector('[name=data]').value = new Date().toISOString().slice(0, 10);
     document.getElementById('kmPreview').textContent = 'Informe os KM para calcular o valor.';
-    Despesas.tipoDestino('Produtor');
+    // Respeita o destino já marcado (última escolha do usuário), não força Produtor
+    const tipoMarcado = (form.querySelector('[name=tipo_destino]:checked') || {}).value || 'Produtor';
+    Despesas.tipoDestino(tipoMarcado);
     Despesas.toggleProspecto(false);
     // Se já veio um veículo pré-selecionado, adianta a KM inicial do último lançamento dele
     if ((form.querySelector('[name=veiculo_id]').value || '0') !== '0') {

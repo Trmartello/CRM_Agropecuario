@@ -57,6 +57,23 @@ class DespesaService
         return count($veiculos) === 1 ? (int) $veiculos[0]['id'] : 0;
     }
 
+    /** Preferências do último lançamento (tipo de destino e filial mais recente) para pré-preencher. */
+    public static function preferenciasKmUsuario(int $usuarioId): array
+    {
+        $tipo = Database::valor(
+            'SELECT tipo_destino FROM quilometragem WHERE usuario_id = ? ORDER BY data DESC, id DESC LIMIT 1',
+            [$usuarioId]
+        );
+        $filial = (int) Database::valor(
+            'SELECT filial_id FROM quilometragem WHERE usuario_id = ? AND filial_id IS NOT NULL ORDER BY data DESC, id DESC LIMIT 1',
+            [$usuarioId]
+        );
+        return [
+            'tipo_destino' => in_array($tipo, self::TIPOS_DESTINO, true) ? $tipo : 'Produtor',
+            'filial_id' => $filial,
+        ];
+    }
+
     /** Cadastra um veículo para o usuário; retorna o registro criado. */
     public static function criarVeiculo(int $usuarioId, string $descricao, string $placa): array
     {
