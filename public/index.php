@@ -136,6 +136,11 @@ $router->registrar('agenda', \App\Controllers\AgendaController::class, 'index');
 $router->registrar('agenda/salvar', \App\Controllers\AgendaController::class, 'salvar');
 $router->registrar('agenda/status', \App\Controllers\AgendaController::class, 'status');
 $router->registrar('agenda/roteiro', \App\Controllers\AgendaController::class, 'roteiro');
+$router->registrar('agenda/organizador', \App\Controllers\AgendaController::class, 'organizador');
+$router->registrar('agenda/roteiro-adicionar', \App\Controllers\AgendaController::class, 'roteiroAdicionar');
+$router->registrar('agenda/roteiro-remover', \App\Controllers\AgendaController::class, 'roteiroRemover');
+$router->registrar('agenda/roteiro-reordenar', \App\Controllers\AgendaController::class, 'roteiroReordenar');
+$router->registrar('agenda/roteiro-otimizar', \App\Controllers\AgendaController::class, 'roteiroOtimizar');
 
 // Notificações (Fase 4)
 $router->registrar('notificacoes/listar', \App\Controllers\NotificacoesController::class, 'listar');

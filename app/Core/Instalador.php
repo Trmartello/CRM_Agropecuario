@@ -148,6 +148,13 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '9'"
             );
         }
+        if ($versao < 10) {
+            self::adicionarColuna('agenda_eventos', 'ordem', 'ordem SMALLINT NOT NULL DEFAULT 0 AFTER hora');
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '10')
+                 ON DUPLICATE KEY UPDATE valor = '10'"
+            );
+        }
     }
 
     /** Fase 5: log de integração (ERP/CAPE). */

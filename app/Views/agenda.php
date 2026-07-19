@@ -28,7 +28,7 @@ $wa = function (?string $tel, string $texto): ?string {
     </form>
   </div>
   <div class="d-flex gap-2">
-    <button class="btn btn-outline-success" onclick="Agenda.verRoteiro()"><i class="bi bi-signpost-split me-1"></i>Roteiro de hoje</button>
+    <a class="btn btn-outline-success" href="<?= url('agenda/organizador') ?>"><i class="bi bi-signpost-split me-1"></i>Organizar visitas</a>
     <button class="btn btn-success" onclick="Agenda.novo()"><i class="bi bi-calendar-plus me-1"></i>Novo evento</button>
   </div>
 </div>

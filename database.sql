@@ -634,6 +634,7 @@ CREATE TABLE agenda_eventos (
   titulo VARCHAR(160) NOT NULL,
   data DATE NOT NULL,
   hora TIME NULL,
+  ordem SMALLINT NOT NULL DEFAULT 0 COMMENT 'ordem no roteiro do dia',
   status ENUM('Pendente','Concluído','Cancelado') NOT NULL DEFAULT 'Pendente',
   descricao VARCHAR(255),
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1123,5 +1124,5 @@ INSERT INTO notificacoes (usuario_id, tipo, titulo, texto, link) VALUES
 (5,'agenda','Visita agendada','Acompanhar florescimento — Berenice (22/07)','index.php?r=agenda'),
 (5,'churn','Risco de churn','Celso Casagrande com queda de 62% vs. safra anterior','index.php?r=clientes');
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','9')
-  ON DUPLICATE KEY UPDATE valor = '9';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','10')
+  ON DUPLICATE KEY UPDATE valor = '10';

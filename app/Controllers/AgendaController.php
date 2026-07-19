@@ -73,11 +73,67 @@ class AgendaController
     public function roteiro(): void
     {
         Permissoes::exigirInterno();
-        $data = $_GET['data'] ?? date('Y-m-d');
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $data)) {
-            $data = date('Y-m-d');
-        }
+        $data = $this->dataValida();
         $eventos = AgendaService::roteiro($data, Auth::id());
         render_parcial('partials/roteiro', ['eventos' => $eventos, 'data' => $data]);
+    }
+
+    /** Organizador de visitas: monta o roteiro do dia a partir das sugestões priorizadas. */
+    public function organizador(): void
+    {
+        Permissoes::exigirInterno();
+        $data = $this->dataValida();
+        render('organizador', [
+            'data' => $data,
+            'roteiro' => AgendaService::roteiro($data, Auth::id()),
+            'sugestoes' => AgendaService::sugestoesVisita($data, Auth::id()),
+            'titulo' => 'Organizador de Visitas',
+        ]);
+    }
+
+    public function roteiroAdicionar(): void
+    {
+        Permissoes::exigirInterno();
+        try {
+            $id = AgendaService::adicionarAoRoteiro((int) ($_POST['cliente_id'] ?? 0), $this->dataValida($_POST['data'] ?? null));
+        } catch (\RuntimeException $e) {
+            json_erro($e->getMessage(), 404);
+        }
+        json_ok(['id' => $id]);
+    }
+
+    public function roteiroRemover(): void
+    {
+        Permissoes::exigirInterno();
+        try {
+            AgendaService::removerDoRoteiro((int) ($_POST['id'] ?? 0));
+        } catch (\RuntimeException $e) {
+            json_erro($e->getMessage(), 404);
+        }
+        json_ok();
+    }
+
+    public function roteiroReordenar(): void
+    {
+        Permissoes::exigirInterno();
+        try {
+            AgendaService::reordenar((int) ($_POST['id'] ?? 0), ($_POST['direcao'] ?? '') === 'cima' ? 'cima' : 'baixo');
+        } catch (\RuntimeException $e) {
+            json_erro($e->getMessage(), 404);
+        }
+        json_ok();
+    }
+
+    public function roteiroOtimizar(): void
+    {
+        Permissoes::exigirInterno();
+        $n = AgendaService::otimizarRota($this->dataValida($_POST['data'] ?? null), Auth::id());
+        json_ok(['otimizadas' => $n]);
+    }
+
+    private function dataValida(?string $data = null): string
+    {
+        $data = $data ?? ($_GET['data'] ?? date('Y-m-d'));
+        return preg_match('/^\d{4}-\d{2}-\d{2}$/', $data) ? $data : date('Y-m-d');
     }
 }

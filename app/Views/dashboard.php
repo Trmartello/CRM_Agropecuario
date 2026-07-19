@@ -8,6 +8,7 @@
   <a class="btn btn-outline-success btn-atalho" href="<?= url('clientes', ['novo' => 1]) ?>"><i class="bi bi-person-plus me-1"></i>Novo Cliente</a>
   <a class="btn btn-outline-success btn-atalho" href="<?= url('clientes') ?>"><i class="bi bi-search me-1"></i>Consultar Cliente</a>
   <a class="btn btn-outline-success btn-atalho" href="<?= url('funil') ?>"><i class="bi bi-funnel me-1"></i>Funil</a>
+  <a class="btn btn-outline-success btn-atalho" href="<?= url('agenda/organizador') ?>"><i class="bi bi-signpost-split me-1"></i>Organizar visitas</a>
   <a class="btn btn-outline-success btn-atalho" href="<?= url('reclamacoes') ?>"><i class="bi bi-exclamation-octagon me-1"></i>Reclamações</a>
   <a class="btn btn-outline-success btn-atalho" href="<?= url('despesas') ?>"><i class="bi bi-receipt me-1"></i>Despesas</a>
 </div>
