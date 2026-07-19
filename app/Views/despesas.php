@@ -322,8 +322,8 @@ $statusCor = ['Aberta'=>'secondary','Enviada'=>'info','Aprovada'=>'success','Rej
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
         <div class="row g-3">
-          <div class="col-12"><label class="form-label">Data e horário *</label>
-            <input type="datetime-local" name="datahora" class="form-control" value="<?= date('Y-m-d\TH:i') ?>" required></div>
+          <div class="col-12"><label class="form-label">Data *</label>
+            <input type="date" name="data" class="form-control" value="<?= date('Y-m-d') ?>" required></div>
           <div class="col-12">
             <label class="form-label d-block">Tipo *</label>
             <div class="btn-group w-100 flex-wrap" role="group">

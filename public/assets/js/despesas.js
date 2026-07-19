@@ -106,10 +106,7 @@ const Despesas = {
   novaRefeicao() {
     const form = document.getElementById('formRefeicao');
     form.reset();
-    const agora = new Date();
-    // datetime-local no fuso local (evita o deslocamento do toISOString)
-    const local = new Date(agora.getTime() - agora.getTimezoneOffset() * 60000);
-    form.querySelector('[name=datahora]').value = local.toISOString().slice(0, 16);
+    form.querySelector('[name=data]').value = new Date().toISOString().slice(0, 10);
     Despesas.limparComprovante();
     Despesas.previewRefeicao();
     new bootstrap.Modal('#modalRefeicao').show();
