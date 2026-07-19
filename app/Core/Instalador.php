@@ -99,6 +99,109 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '2'"
             );
         }
+        if ($versao < 3) {
+            self::migrarParaV3();
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '3')
+                 ON DUPLICATE KEY UPDATE valor = '3'"
+            );
+        }
+    }
+
+    /** Fase 3: reembolso por categoria, despesas (KM/refeições), prestação de contas, reclamações e documentos. */
+    private static function migrarParaV3(): void
+    {
+        if (!self::temTabela('categorias_reembolso')) {
+            Database::executar(
+                'CREATE TABLE categorias_reembolso (
+                   id INT AUTO_INCREMENT PRIMARY KEY,
+                   nome VARCHAR(80) NOT NULL,
+                   valor_km DECIMAL(8,2) NOT NULL DEFAULT 0,
+                   teto_refeicao DECIMAL(8,2) NOT NULL DEFAULT 0,
+                   ativo TINYINT(1) NOT NULL DEFAULT 1,
+                   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                 ) ENGINE=InnoDB'
+            );
+        }
+        self::adicionarColuna('usuarios', 'categoria_reembolso_id',
+            'categoria_reembolso_id INT NULL AFTER telefone');
+
+        if (!self::temTabela('prestacao_contas')) {
+            Database::executar(
+                'CREATE TABLE prestacao_contas (
+                   id INT AUTO_INCREMENT PRIMARY KEY,
+                   usuario_id INT NOT NULL,
+                   ano SMALLINT NOT NULL,
+                   mes TINYINT NOT NULL,
+                   total_km DECIMAL(10,1) NOT NULL DEFAULT 0,
+                   total_km_valor DECIMAL(12,2) NOT NULL DEFAULT 0,
+                   total_refeicoes DECIMAL(12,2) NOT NULL DEFAULT 0,
+                   total_geral DECIMAL(12,2) NOT NULL DEFAULT 0,
+                   status ENUM("Aberta","Enviada","Aprovada","Rejeitada") NOT NULL DEFAULT "Aberta",
+                   observacao VARCHAR(255),
+                   enviado_em DATETIME NULL,
+                   avaliado_por INT NULL,
+                   avaliado_em DATETIME NULL,
+                   parecer VARCHAR(255),
+                   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                   UNIQUE KEY uk_prestacao (usuario_id, ano, mes),
+                   FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
+                   FOREIGN KEY (avaliado_por) REFERENCES usuarios(id)
+                 ) ENGINE=InnoDB'
+            );
+        }
+
+        // Colunas novas em tabelas criadas na Fase 1 (sem telas até agora)
+        self::adicionarColuna('reclamacoes', 'usuario_id', 'usuario_id INT NULL AFTER cliente_id');
+        self::adicionarColuna('reclamacoes', 'parecer', 'parecer TEXT NULL');
+        self::adicionarColuna('reclamacoes', 'valor_indenizacao', 'valor_indenizacao DECIMAL(12,2) NULL');
+        self::adicionarColuna('reclamacoes', 'atualizado_em', 'atualizado_em DATETIME NULL');
+        self::adicionarColuna('quilometragem', 'prestacao_id', 'prestacao_id INT NULL AFTER usuario_id');
+        self::adicionarColuna('quilometragem', 'valor', 'valor DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER km_final');
+        self::adicionarColuna('quilometragem', 'criado_em', 'criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP');
+        self::adicionarColuna('refeicoes', 'prestacao_id', 'prestacao_id INT NULL AFTER usuario_id');
+        self::adicionarColuna('refeicoes', 'criado_em', 'criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP');
+
+        if (!self::temTabela('reclamacao_fotos')) {
+            Database::executar(
+                'CREATE TABLE reclamacao_fotos (
+                   id INT AUTO_INCREMENT PRIMARY KEY,
+                   reclamacao_id INT NOT NULL,
+                   arquivo VARCHAR(255) NOT NULL,
+                   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                   FOREIGN KEY (reclamacao_id) REFERENCES reclamacoes(id) ON DELETE CASCADE
+                 ) ENGINE=InnoDB'
+            );
+        }
+        if (!self::temTabela('documentos')) {
+            Database::executar(
+                'CREATE TABLE documentos (
+                   id INT AUTO_INCREMENT PRIMARY KEY,
+                   cliente_id INT NOT NULL,
+                   usuario_id INT NULL,
+                   tipo ENUM("Foto","Laudo","Receita","Contrato","Nota fiscal","PDF","Outro") NOT NULL DEFAULT "Outro",
+                   nome VARCHAR(160) NOT NULL,
+                   arquivo VARCHAR(255) NOT NULL,
+                   mime VARCHAR(100),
+                   tamanho INT NOT NULL DEFAULT 0,
+                   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                   FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE CASCADE,
+                   FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+                 ) ENGINE=InnoDB'
+            );
+        }
+
+        // Seed leve das categorias de reembolso (só se vazio)
+        if ((int) Database::valor('SELECT COUNT(*) FROM categorias_reembolso') === 0) {
+            Database::executar(
+                "INSERT INTO categorias_reembolso (id, nome, valor_km, teto_refeicao) VALUES
+                 (1,'Agrônomo',1.80,60.00),(2,'Extensionista',1.60,50.00),
+                 (3,'Vendedor',1.50,45.00),(4,'Gestor',2.00,80.00)"
+            );
+            Database::executar('UPDATE usuarios SET categoria_reembolso_id = 4 WHERE id IN (2,3)');
+            Database::executar('UPDATE usuarios SET categoria_reembolso_id = 1 WHERE id = 4');
+            Database::executar('UPDATE usuarios SET categoria_reembolso_id = 3 WHERE id = 5');
+        }
     }
 
     private static function temTabela(string $tabela): bool

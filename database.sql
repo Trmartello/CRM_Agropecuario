@@ -10,7 +10,8 @@ CREATE DATABASE IF NOT EXISTS crm_agropecuario CHARACTER SET utf8mb4 COLLATE utf
 USE crm_agropecuario;
 
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS sessoes_persistentes, configuracoes, auditoria, refeicoes, quilometragem, reclamacoes,
+DROP TABLE IF EXISTS sessoes_persistentes, configuracoes, auditoria,
+  documentos, prestacao_contas, reclamacao_fotos, refeicoes, quilometragem, reclamacoes, categorias_reembolso,
   pacote_obrigatorios, pacote_categorias, pacotes_agricolas,
   entregas_futuras, promocoes, pedidos_itens, pedidos,
   propostas_itens, propostas, oportunidades,
@@ -32,6 +33,7 @@ CREATE TABLE usuarios (
   senha_hash VARCHAR(255) NOT NULL,
   perfil ENUM('Administrador','Gestor Comercial','Gestor Técnico','Consultor Técnico','Vendedor','Analista','Produtor') NOT NULL,
   telefone VARCHAR(30),
+  categoria_reembolso_id INT NULL COMMENT 'categoria de reembolso de despesas (KM/refeições)',
   ativo TINYINT(1) NOT NULL DEFAULT 1,
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
@@ -461,9 +463,45 @@ CREATE TABLE pedidos_itens (
   FOREIGN KEY (produto_id) REFERENCES produtos(id)
 ) ENGINE=InnoDB;
 
+-- Categorias de reembolso (o Administrador define o valor pago por km e o teto
+-- de refeição para cada categoria; cada usuário recebe uma categoria).
+CREATE TABLE categorias_reembolso (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  nome VARCHAR(80) NOT NULL,
+  valor_km DECIMAL(8,2) NOT NULL DEFAULT 0 COMMENT 'R$ por km rodado',
+  teto_refeicao DECIMAL(8,2) NOT NULL DEFAULT 0 COMMENT 'teto por refeição (0 = sem teto)',
+  ativo TINYINT(1) NOT NULL DEFAULT 1,
+  criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+ALTER TABLE usuarios ADD FOREIGN KEY (categoria_reembolso_id) REFERENCES categorias_reembolso(id);
+
+-- Prestação de contas mensal (consolida KM + refeições do período)
+CREATE TABLE prestacao_contas (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  usuario_id INT NOT NULL,
+  ano SMALLINT NOT NULL,
+  mes TINYINT NOT NULL,
+  total_km DECIMAL(10,1) NOT NULL DEFAULT 0,
+  total_km_valor DECIMAL(12,2) NOT NULL DEFAULT 0,
+  total_refeicoes DECIMAL(12,2) NOT NULL DEFAULT 0,
+  total_geral DECIMAL(12,2) NOT NULL DEFAULT 0,
+  status ENUM('Aberta','Enviada','Aprovada','Rejeitada') NOT NULL DEFAULT 'Aberta',
+  observacao VARCHAR(255),
+  enviado_em DATETIME NULL,
+  avaliado_por INT NULL,
+  avaliado_em DATETIME NULL,
+  parecer VARCHAR(255),
+  criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_prestacao (usuario_id, ano, mes),
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
+  FOREIGN KEY (avaliado_por) REFERENCES usuarios(id)
+) ENGINE=InnoDB;
+
 CREATE TABLE reclamacoes (
   id INT AUTO_INCREMENT PRIMARY KEY,
   cliente_id INT NOT NULL,
+  usuario_id INT NULL COMMENT 'quem registrou',
   produto_id INT,
   tipo ENUM('Sementes','Fertilizantes','Defensivos','Biológicos','Outros') NOT NULL,
   lote VARCHAR(80),
@@ -472,36 +510,70 @@ CREATE TABLE reclamacoes (
   problema VARCHAR(200),
   descricao TEXT,
   status ENUM('Registrada','Em análise','Procedente','Improcedente','Jurídico','Indenização','Encerrada') NOT NULL DEFAULT 'Registrada',
+  parecer TEXT,
+  valor_indenizacao DECIMAL(12,2) NULL,
+  atualizado_em DATETIME NULL,
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (cliente_id) REFERENCES clientes(id),
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
   FOREIGN KEY (produto_id) REFERENCES produtos(id),
   FOREIGN KEY (cultura_id) REFERENCES culturas(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE reclamacao_fotos (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  reclamacao_id INT NOT NULL,
+  arquivo VARCHAR(255) NOT NULL,
+  criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (reclamacao_id) REFERENCES reclamacoes(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE quilometragem (
   id INT AUTO_INCREMENT PRIMARY KEY,
   usuario_id INT NOT NULL,
+  prestacao_id INT NULL,
   veiculo VARCHAR(120),
   data DATE NOT NULL,
   km_inicial DECIMAL(10,1) NOT NULL,
   km_final DECIMAL(10,1) NOT NULL,
+  valor DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT 'km rodados x valor_km da categoria (na data do lançamento)',
   cliente_id INT,
   destino VARCHAR(160),
   motivo VARCHAR(200),
+  criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
+  FOREIGN KEY (prestacao_id) REFERENCES prestacao_contas(id) ON DELETE SET NULL,
   FOREIGN KEY (cliente_id) REFERENCES clientes(id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE refeicoes (
   id INT AUTO_INCREMENT PRIMARY KEY,
   usuario_id INT NOT NULL,
+  prestacao_id INT NULL,
   data DATE NOT NULL,
   cliente_id INT,
   estabelecimento VARCHAR(160),
   valor DECIMAL(10,2) NOT NULL,
   justificativa VARCHAR(255),
+  criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
+  FOREIGN KEY (prestacao_id) REFERENCES prestacao_contas(id) ON DELETE SET NULL,
   FOREIGN KEY (cliente_id) REFERENCES clientes(id)
+) ENGINE=InnoDB;
+
+-- Gestão documental: anexos por produtor (fotos, PDFs, laudos, receitas, contratos)
+CREATE TABLE documentos (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  cliente_id INT NOT NULL,
+  usuario_id INT NULL,
+  tipo ENUM('Foto','Laudo','Receita','Contrato','Nota fiscal','PDF','Outro') NOT NULL DEFAULT 'Outro',
+  nome VARCHAR(160) NOT NULL,
+  arquivo VARCHAR(255) NOT NULL,
+  mime VARCHAR(100),
+  tamanho INT NOT NULL DEFAULT 0,
+  criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE CASCADE,
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE sessoes_persistentes (
@@ -885,3 +957,40 @@ INSERT INTO propostas (oportunidade_id, validade, condicao_pagamento, valor_tota
 
 INSERT INTO propostas_itens (proposta_id, produto_id, quantidade, valor_unitario) VALUES
 (1,1,320,420.00);
+
+-- ---------------------------------------------------------------------------
+-- FASE 3 — Despesas, reembolso, reclamações e documentos
+-- ---------------------------------------------------------------------------
+
+-- Categorias de reembolso (valor por km e teto de refeição por categoria)
+INSERT INTO categorias_reembolso (id, nome, valor_km, teto_refeicao) VALUES
+(1,'Agrônomo',1.80,60.00),
+(2,'Extensionista',1.60,50.00),
+(3,'Vendedor',1.50,45.00),
+(4,'Gestor',2.00,80.00);
+
+-- Atribui categoria aos usuários de campo/gestão que recebem reembolso
+UPDATE usuarios SET categoria_reembolso_id = 4 WHERE id IN (2,3);   -- gestores
+UPDATE usuarios SET categoria_reembolso_id = 1 WHERE id = 3;        -- gestora técnica → agrônomo
+UPDATE usuarios SET categoria_reembolso_id = 1 WHERE id = 4;        -- consultor técnico → agrônomo
+UPDATE usuarios SET categoria_reembolso_id = 3 WHERE id = 5;        -- vendedora
+
+-- Quilometragem de exemplo (valor = km rodados x valor_km da categoria)
+INSERT INTO quilometragem (usuario_id, veiculo, data, km_inicial, km_final, valor, cliente_id, destino, motivo) VALUES
+(5,'Fiat Strada — ABC1D23','2026-07-06',45210.0,45298.0,132.00,1,'Linha São Roque, Concórdia','Visita técnica e negociação'),
+(5,'Fiat Strada — ABC1D23','2026-07-10',45298.0,45362.0,96.00,2,'Seara','Acompanhamento de lavoura'),
+(4,'Saveiro — EFG4H56','2026-07-08',88110.0,88190.0,144.00,7,'Chapecó','Assistência técnica');
+
+-- Refeições de exemplo
+INSERT INTO refeicoes (usuario_id, data, cliente_id, estabelecimento, valor, justificativa) VALUES
+(5,'2026-07-06',1,'Restaurante Sabor da Roça',38.00,'Almoço em visita a produtor'),
+(4,'2026-07-08',7,'Cantina Central',42.00,'Almoço durante assistência técnica');
+
+-- Reclamações de exemplo (fluxo de laudo)
+INSERT INTO reclamacoes (cliente_id, usuario_id, produto_id, tipo, lote, nota_fiscal, cultura_id, problema, descricao, status) VALUES
+(1,4,1,'Sementes','L2026-0455','NF-88231',1,'Baixa germinação','Germinação abaixo de 70% em duas glebas.','Em análise'),
+(6,5,7,'Defensivos','FG-7781','NF-88410',1,'Fitotoxidez','Sintoma de fitotoxidez após aplicação de fungicida.','Registrada');
+
+-- schema_versao: instalações novas já nascem na versão atual (não re-executam migrações)
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','3')
+  ON DUPLICATE KEY UPDATE valor = '3';
