@@ -53,22 +53,32 @@ $logoRaio = (int) ConfigService::obter('logo_borda_raio', '10');
     <ul class="nav nav-pills flex-column mb-auto">
       <?php
         $rotaAtual = $_GET['r'] ?? 'dashboard';
-        $menu = [
-            ['dashboard', 'bi-speedometer2', 'Dashboard'],
-            ['clientes', 'bi-people', 'Clientes'],
-            ['visitas', 'bi-clipboard2-pulse', 'Visitas'],
-            ['pedidos', 'bi-cart3', 'Pedidos'],
-            ['despesas', 'bi-receipt', 'Despesas'],
-            ['reclamacoes', 'bi-exclamation-octagon', 'Reclamações'],
-            ['funil', 'bi-funnel', 'Funil'],
-            ['cap', 'bi-trophy', 'Metas CAP'],
-            ['relatorios/potencial', 'bi-bar-chart-line', 'Potencial'],
-        ];
-        if (in_array(Auth::perfil(), ['Administrador', 'Gestor Comercial', 'Gestor Técnico', 'Analista'], true)) {
-            $menu[] = ['pacotes', 'bi-box-seam', 'Pacotes'];
-        }
-        if (Auth::perfil() === 'Administrador') {
-            $menu[] = ['usuarios', 'bi-person-gear', 'Usuários'];
+        if (Auth::perfil() === 'Produtor') {
+            // Portal do Produtor — menu enxuto
+            $menu = [
+                ['portal', 'bi-house-heart', 'Meu Portal'],
+            ];
+        } else {
+            $menu = [
+                ['dashboard', 'bi-speedometer2', 'Dashboard'],
+                ['agenda', 'bi-calendar-week', 'Agenda'],
+                ['clientes', 'bi-people', 'Clientes'],
+                ['visitas', 'bi-clipboard2-pulse', 'Visitas'],
+                ['mapa', 'bi-geo-alt', 'Mapa'],
+                ['pedidos', 'bi-cart3', 'Pedidos'],
+                ['despesas', 'bi-receipt', 'Despesas'],
+                ['reclamacoes', 'bi-exclamation-octagon', 'Reclamações'],
+                ['funil', 'bi-funnel', 'Funil'],
+                ['cap', 'bi-trophy', 'Metas CAP'],
+                ['relatorios/potencial', 'bi-bar-chart-line', 'Potencial'],
+            ];
+            if (in_array(Auth::perfil(), ['Administrador', 'Gestor Comercial', 'Gestor Técnico', 'Analista'], true)) {
+                $menu[] = ['gerencial', 'bi-graph-up-arrow', 'Gerencial'];
+                $menu[] = ['pacotes', 'bi-box-seam', 'Pacotes'];
+            }
+            if (Auth::perfil() === 'Administrador') {
+                $menu[] = ['usuarios', 'bi-person-gear', 'Usuários'];
+            }
         }
       ?>
       <?php foreach ($menu as [$rota, $icone, $rotulo]): ?>
@@ -104,6 +114,20 @@ $logoRaio = (int) ConfigService::obter('logo_borda_raio', '10');
       <h1 class="h5 mb-0 flex-grow-1"><?= e($titulo ?? '') ?></h1>
       <span id="indicadorOffline" class="badge text-bg-warning d-none"><i class="bi bi-wifi-off me-1"></i>Offline</span>
       <span id="indicadorSync" class="badge text-bg-info d-none"><i class="bi bi-arrow-repeat me-1"></i>Sincronizando…</span>
+      <!-- Sino de notificações -->
+      <div class="dropdown">
+        <button class="btn btn-light border position-relative" id="btnSino" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-label="Notificações" onclick="Notificacoes.abrir()">
+          <i class="bi bi-bell"></i>
+          <span id="sinoContador" class="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger d-none">0</span>
+        </button>
+        <div class="dropdown-menu dropdown-menu-end shadow" style="width:320px;max-height:420px;overflow:auto" id="sinoLista" aria-labelledby="btnSino">
+          <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
+            <strong class="small">Notificações</strong>
+            <button class="btn btn-sm btn-link p-0 text-decoration-none" onclick="Notificacoes.lerTodas(event)">Marcar todas</button>
+          </div>
+          <div id="sinoItens"><div class="text-muted small text-center py-3">Carregando…</div></div>
+        </div>
+      </div>
     </header>
     <div class="p-3">
       <?php require $conteudoView; ?>

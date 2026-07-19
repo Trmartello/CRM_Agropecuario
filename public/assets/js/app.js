@@ -157,6 +157,51 @@ const Voz = {
   },
 };
 
+/* ============================== NOTIFICAÇÕES ============================== */
+
+const Notificacoes = {
+  async atualizarContador() {
+    try {
+      const d = await App.json('index.php?r=notificacoes/listar', { headers: { 'X-Requested-With': 'fetch' } });
+      const badge = document.getElementById('sinoContador');
+      if (!badge) return;
+      badge.textContent = d.nao_lidas;
+      badge.classList.toggle('d-none', d.nao_lidas === 0);
+      Notificacoes._itens = d.itens;
+    } catch (e) { /* silencioso */ }
+  },
+
+  abrir() {
+    const alvo = document.getElementById('sinoItens');
+    const itens = Notificacoes._itens || [];
+    if (!itens.length) { alvo.innerHTML = '<div class="text-muted small text-center py-3">Sem notificações.</div>'; return; }
+    alvo.innerHTML = itens.map(n => `
+      <a class="dropdown-item d-flex gap-2 py-2 ${n.lida == 0 ? 'bg-success-subtle' : ''}" href="${n.link || '#'}"
+         onclick="Notificacoes.ler(${n.id})">
+        <i class="bi bi-dot fs-4 ${n.lida == 0 ? 'text-success' : 'text-muted'}"></i>
+        <div style="white-space:normal"><div class="fw-semibold small">${n.titulo}</div>
+          <div class="small text-muted">${n.texto || ''}</div></div>
+      </a>`).join('');
+  },
+
+  async ler(id) {
+    try {
+      const fd = new FormData(); fd.append('id', id);
+      await App.json('index.php?r=notificacoes/ler', { method: 'POST', body: fd });
+      Notificacoes.atualizarContador();
+    } catch (e) { /* segue o link mesmo assim */ }
+  },
+
+  async lerTodas(ev) {
+    if (ev) ev.preventDefault();
+    try {
+      await App.json('index.php?r=notificacoes/ler-todas', { method: 'POST', body: new FormData() });
+      await Notificacoes.atualizarContador();
+      Notificacoes.abrir();
+    } catch (e) { App.alerta('Erro ao marcar notificações.', 'danger'); }
+  },
+};
+
 /* ============================== CLIENTES ============================== */
 
 const Clientes = {
@@ -671,6 +716,7 @@ const Usuarios = {
 
 document.addEventListener('DOMContentLoaded', () => {
   Voz.iniciar();
+  if (document.getElementById('btnSino')) Notificacoes.atualizarContador();
 
   // Recolher/expandir menu lateral (desktop) com preferência lembrada
   if (localStorage.getItem('menuRecolhido') === '1') {

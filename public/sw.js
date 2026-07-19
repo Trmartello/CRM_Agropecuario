@@ -2,7 +2,7 @@
  * Cache do app e assets para abrir sem conexão (offline básico da Fase 1).
  */
 
-const CACHE = 'crm-coperdia-v14';
+const CACHE = 'crm-coperdia-v15';
 
 const ARQUIVOS_APP = [
   'assets/vendor/bootstrap.min.css',
@@ -16,6 +16,7 @@ const ARQUIVOS_APP = [
   'assets/js/offline.js',
   'assets/js/despesas.js',
   'assets/js/reclamacoes.js',
+  'assets/js/agenda.js',
   'assets/icons/icone-192.png',
   'assets/icons/icone-512.png',
   'assets/icons/favicon-32.png',

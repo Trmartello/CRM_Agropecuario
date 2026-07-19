@@ -11,6 +11,7 @@ USE crm_agropecuario;
 
 SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS sessoes_persistentes, configuracoes, auditoria,
+  notificacoes, agenda_eventos,
   documentos, prestacao_contas, reclamacao_fotos, reembolso_refeicoes, refeicoes, quilometragem, veiculos, reclamacoes, categorias_reembolso,
   pacote_obrigatorios, pacote_categorias, pacotes_agricolas,
   entregas_futuras, promocoes, pedidos_itens, pedidos,
@@ -34,6 +35,7 @@ CREATE TABLE usuarios (
   perfil ENUM('Administrador','Gestor Comercial','Gestor Técnico','Consultor Técnico','Vendedor','Analista','Produtor') NOT NULL,
   telefone VARCHAR(30),
   categoria_reembolso_id INT NULL COMMENT 'categoria de reembolso de despesas (KM/refeições)',
+  cliente_id INT NULL COMMENT 'produtor vinculado (perfil Produtor — portal)',
   ativo TINYINT(1) NOT NULL DEFAULT 1,
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
@@ -620,6 +622,38 @@ CREATE TABLE documentos (
   FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
 ) ENGINE=InnoDB;
 
+-- ============================================================================
+-- FASE 4 — Relacionamento e gestão (agenda e notificações)
+-- ============================================================================
+
+CREATE TABLE agenda_eventos (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  usuario_id INT NOT NULL,
+  cliente_id INT NULL,
+  tipo ENUM('Visita','Reunião','Tarefa','Entrega','Cobrança','Outro') NOT NULL DEFAULT 'Visita',
+  titulo VARCHAR(160) NOT NULL,
+  data DATE NOT NULL,
+  hora TIME NULL,
+  status ENUM('Pendente','Concluído','Cancelado') NOT NULL DEFAULT 'Pendente',
+  descricao VARCHAR(255),
+  criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
+  FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE notificacoes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  usuario_id INT NOT NULL,
+  tipo VARCHAR(40) NOT NULL,
+  titulo VARCHAR(160) NOT NULL,
+  texto VARCHAR(255),
+  link VARCHAR(160),
+  lida TINYINT(1) NOT NULL DEFAULT 0,
+  criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+  INDEX idx_notif_usuario (usuario_id, lida)
+) ENGINE=InnoDB;
+
 CREATE TABLE sessoes_persistentes (
   id INT AUTO_INCREMENT PRIMARY KEY,
   usuario_id INT NOT NULL,
@@ -1057,5 +1091,20 @@ INSERT INTO reclamacoes (cliente_id, usuario_id, produto_id, tipo, lote, nota_fi
 (6,5,7,'Defensivos','FG-7781','NF-88410',1,'Fitotoxidez','Sintoma de fitotoxidez após aplicação de fungicida.','Registrada');
 
 -- schema_versao: instalações novas já nascem na versão atual (não re-executam migrações)
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','7')
-  ON DUPLICATE KEY UPDATE valor = '7';
+-- ---------------------------------------------------------------------------
+-- FASE 4 — vínculo do Produtor ao cliente, agenda e notificações de exemplo
+-- ---------------------------------------------------------------------------
+UPDATE usuarios SET cliente_id = 1 WHERE id = 7;  -- Pedro Produtor ↔ Alberto Antunes (portal)
+
+INSERT INTO agenda_eventos (usuario_id, cliente_id, tipo, titulo, data, hora, status, descricao) VALUES
+(5,2,'Visita','Acompanhar florescimento — Berenice','2026-07-22','08:30','Pendente','Conferir estágio R1'),
+(5,4,'Cobrança','Renegociar título em atraso — Dirceu','2026-07-23','14:00','Pendente','Levar proposta de parcelamento'),
+(4,7,'Reunião','Planejamento de safra — Gilda','2026-07-24','10:00','Pendente',NULL),
+(5,1,'Tarefa','Enviar recomendação de fungicida','2026-07-21',NULL,'Concluído',NULL);
+
+INSERT INTO notificacoes (usuario_id, tipo, titulo, texto, link) VALUES
+(5,'agenda','Visita agendada','Acompanhar florescimento — Berenice (22/07)','index.php?r=agenda'),
+(5,'churn','Risco de churn','Celso Casagrande com queda de 62% vs. safra anterior','index.php?r=clientes');
+
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','8')
+  ON DUPLICATE KEY UPDATE valor = '8';

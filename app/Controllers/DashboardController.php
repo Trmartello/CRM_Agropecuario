@@ -15,6 +15,11 @@ class DashboardController
 {
     public function index(): void
     {
+        Auth::exigirLogin();
+        if (Auth::perfil() === 'Produtor') {
+            header('Location: ' . url('portal'));
+            exit;
+        }
         Permissoes::exigirInterno();
         [$filtro, $params] = Permissoes::filtroCarteira();
 

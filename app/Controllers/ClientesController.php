@@ -259,10 +259,10 @@ class ClientesController
         json_ok(['id' => Database::ultimoId()]);
     }
 
-    /** Baixa um documento (autenticado, restrito à carteira do usuário). */
+    /** Baixa um documento (autenticado, restrito à carteira ou ao próprio produtor). */
     public function baixarDocumento(): void
     {
-        Permissoes::exigirInterno();
+        Auth::exigirLogin();
         $doc = $this->documentoDaCarteira((int) ($_GET['id'] ?? 0));
         $caminho = dirname(__DIR__, 2) . '/public/uploads/documentos/' . basename($doc['arquivo']);
         if (!is_file($caminho)) {
@@ -290,17 +290,22 @@ class ClientesController
         json_ok();
     }
 
-    /** Carrega o documento garantindo que o cliente está na carteira do usuário. */
+    /** Carrega o documento garantindo acesso: carteira do usuário ou o próprio produtor. */
     private function documentoDaCarteira(int $id): array
     {
-        [$filtro, $params] = Permissoes::filtroCarteira();
-        $doc = Database::um(
-            "SELECT d.* FROM documentos d JOIN clientes c ON c.id = d.cliente_id
-              WHERE d.id = ? AND {$filtro}",
-            array_merge([$id], $params)
-        );
+        if (Auth::perfil() === 'Produtor') {
+            $clienteId = (int) Database::valor('SELECT cliente_id FROM usuarios WHERE id = ?', [Auth::id()]);
+            $doc = Database::um('SELECT * FROM documentos WHERE id = ? AND cliente_id = ?', [$id, $clienteId]);
+        } else {
+            [$filtro, $params] = Permissoes::filtroCarteira();
+            $doc = Database::um(
+                "SELECT d.* FROM documentos d JOIN clientes c ON c.id = d.cliente_id
+                  WHERE d.id = ? AND {$filtro}",
+                array_merge([$id], $params)
+            );
+        }
         if (!$doc) {
-            json_erro('Documento não encontrado na sua carteira.', 404);
+            json_erro('Documento não encontrado.', 404);
         }
         return $doc;
     }

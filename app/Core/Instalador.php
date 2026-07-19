@@ -134,6 +134,53 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '7'"
             );
         }
+        if ($versao < 8) {
+            self::migrarParaV8();
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '8')
+                 ON DUPLICATE KEY UPDATE valor = '8'"
+            );
+        }
+    }
+
+    /** Fase 4: agenda, notificações e vínculo do Produtor ao cliente (portal). */
+    private static function migrarParaV8(): void
+    {
+        self::adicionarColuna('usuarios', 'cliente_id', 'cliente_id INT NULL AFTER categoria_reembolso_id');
+        if (!self::temTabela('agenda_eventos')) {
+            Database::executar(
+                'CREATE TABLE agenda_eventos (
+                   id INT AUTO_INCREMENT PRIMARY KEY,
+                   usuario_id INT NOT NULL,
+                   cliente_id INT NULL,
+                   tipo ENUM("Visita","Reunião","Tarefa","Entrega","Cobrança","Outro") NOT NULL DEFAULT "Visita",
+                   titulo VARCHAR(160) NOT NULL,
+                   data DATE NOT NULL,
+                   hora TIME NULL,
+                   status ENUM("Pendente","Concluído","Cancelado") NOT NULL DEFAULT "Pendente",
+                   descricao VARCHAR(255),
+                   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                   FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
+                   FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE SET NULL
+                 ) ENGINE=InnoDB'
+            );
+        }
+        if (!self::temTabela('notificacoes')) {
+            Database::executar(
+                'CREATE TABLE notificacoes (
+                   id INT AUTO_INCREMENT PRIMARY KEY,
+                   usuario_id INT NOT NULL,
+                   tipo VARCHAR(40) NOT NULL,
+                   titulo VARCHAR(160) NOT NULL,
+                   texto VARCHAR(255),
+                   link VARCHAR(160),
+                   lida TINYINT(1) NOT NULL DEFAULT 0,
+                   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                   FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+                   INDEX idx_notif_usuario (usuario_id, lida)
+                 ) ENGINE=InnoDB'
+            );
+        }
     }
 
     /** Fase 3 (ajuste): municípios pré-cadastrados (UF atrelado ao município). */

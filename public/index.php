@@ -125,6 +125,24 @@ $router->registrar('pacotes', \App\Controllers\PacotesController::class, 'index'
 $router->registrar('pacotes/obter', \App\Controllers\PacotesController::class, 'obter');
 $router->registrar('pacotes/salvar', \App\Controllers\PacotesController::class, 'salvar');
 
+// Agenda (Fase 4)
+$router->registrar('agenda', \App\Controllers\AgendaController::class, 'index');
+$router->registrar('agenda/salvar', \App\Controllers\AgendaController::class, 'salvar');
+$router->registrar('agenda/status', \App\Controllers\AgendaController::class, 'status');
+$router->registrar('agenda/roteiro', \App\Controllers\AgendaController::class, 'roteiro');
+
+// Notificações (Fase 4)
+$router->registrar('notificacoes/listar', \App\Controllers\NotificacoesController::class, 'listar');
+$router->registrar('notificacoes/ler', \App\Controllers\NotificacoesController::class, 'ler');
+$router->registrar('notificacoes/ler-todas', \App\Controllers\NotificacoesController::class, 'lerTodas');
+
+// Painel gerencial e mapa (Fase 4)
+$router->registrar('gerencial', \App\Controllers\GerencialController::class, 'index');
+$router->registrar('mapa', \App\Controllers\MapaController::class, 'index');
+
+// Portal do Produtor (Fase 4)
+$router->registrar('portal', \App\Controllers\PortalController::class, 'index');
+
 // Relatórios
 $router->registrar('relatorios/potencial', RelatoriosController::class, 'potencial');
 $router->registrar('relatorios/potencial-dados', RelatoriosController::class, 'potencialDados');
