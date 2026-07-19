@@ -12,7 +12,7 @@
 
 const Offline = {
   DB_NOME: 'crm_coperdia',
-  DB_VERSAO: 2,
+  DB_VERSAO: 3,
   STORE: 'fila_sync',
 
   abrirBanco() {
@@ -22,6 +22,10 @@ const Offline = {
         const db = req.result;
         if (!db.objectStoreNames.contains('fila_sync')) {
           db.createObjectStore('fila_sync', { keyPath: 'id', autoIncrement: true });
+        }
+        // v3: snapshot da carteira para leitura offline (O2)
+        if (!db.objectStoreNames.contains('snapshot')) {
+          db.createObjectStore('snapshot', { keyPath: 'chave' });
         }
         // Migração v1→v2: leva os itens antigos de fila_visitas para a fila genérica
         if (ev.oldVersion < 2 && db.objectStoreNames.contains('fila_visitas')) {
@@ -177,6 +181,37 @@ const Offline = {
     }
   },
 
+  // ---------- Snapshot da carteira (leitura offline — O2) ----------
+
+  async salvarSnapshot(dados) {
+    const db = await Offline.abrirBanco();
+    await new Promise(resolver => {
+      const tx = db.transaction('snapshot', 'readwrite');
+      tx.objectStore('snapshot').put({ chave: 'carteira', dados, atualizado_em: dados.atualizado_em || new Date().toISOString() });
+      tx.oncomplete = resolver;
+    });
+  },
+
+  async lerSnapshot() {
+    const db = await Offline.abrirBanco();
+    return new Promise(resolver => {
+      const tx = db.transaction('snapshot', 'readonly');
+      const req = tx.objectStore('snapshot').get('carteira');
+      req.onsuccess = () => resolver(req.result ? req.result.dados : null);
+      req.onerror = () => resolver(null);
+    });
+  },
+
+  /** Baixa a carteira do servidor e guarda no IndexedDB (só quando online). */
+  async baixarCarteira() {
+    if (!navigator.onLine) return;
+    try {
+      const resp = await fetch('index.php?r=sync/carteira', { headers: { 'X-Requested-With': 'fetch' } });
+      const dados = await resp.json();
+      if (dados && dados.ok) await Offline.salvarSnapshot(dados);
+    } catch (e) { /* offline/erro: mantém o snapshot anterior */ }
+  },
+
   // Compatibilidade: chamada antiga de visitas continua funcionando.
   async guardarVisita(form) {
     await Offline.enfileirar('visitas/salvar', form, { modulo: 'visitas', rotulo: 'Visita técnica' });
@@ -190,7 +225,8 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// Tenta sincronizar ao abrir a página
+// Ao abrir a página: sincroniza a fila e atualiza o snapshot da carteira.
 document.addEventListener('DOMContentLoaded', () => {
-  setTimeout(() => Offline.sincronizar(), 1500);
+  setTimeout(() => { Offline.sincronizar(); Offline.baixarCarteira(); }, 1500);
 });
+window.addEventListener('online', () => Offline.baixarCarteira());

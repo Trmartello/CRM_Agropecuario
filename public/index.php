@@ -32,6 +32,7 @@ use App\Controllers\LoginController;
 use App\Controllers\RelatoriosController;
 use App\Controllers\UsuariosController;
 use App\Controllers\VisitasController;
+use App\Controllers\SyncController;
 use App\Core\Auth;
 use App\Core\Instalador;
 use App\Core\Router;
@@ -87,6 +88,7 @@ $router->registrar('visitas', VisitasController::class, 'index');
 $router->registrar('visitas/apoio-modal', VisitasController::class, 'apoioModal');
 $router->registrar('visitas/modelos', VisitasController::class, 'modelos');
 $router->registrar('visitas/salvar', VisitasController::class, 'salvar');
+$router->registrar('sync/carteira', SyncController::class, 'carteira');
 $router->registrar('visitas/detalhe', VisitasController::class, 'detalhe');
 
 // Funil de oportunidades

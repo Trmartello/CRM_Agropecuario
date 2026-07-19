@@ -430,16 +430,35 @@ const Visitas = {
 
   async carregarApoio(clienteId) {
     if (!clienteId) return;
+    let dados;
     try {
-      const dados = await App.json(`index.php?r=visitas/apoio-modal&cliente_id=${clienteId}`);
-      Visitas.apoio = dados;
-      const selProp = document.getElementById('visitaPropriedade');
-      selProp.innerHTML = '<option value="">—</option>' +
-        dados.propriedades.map(p => `<option value="${p.id}">${p.nome}</option>`).join('');
-      if (dados.propriedades.length === 1) selProp.value = dados.propriedades[0].id;
-      Visitas.filtrarTalhoes();
-      Visitas.renderPainelComercial(dados.painel);
-    } catch (e) { App.alerta(e.message, 'danger'); }
+      dados = await App.json(`index.php?r=visitas/apoio-modal&cliente_id=${clienteId}`);
+    } catch (e) {
+      // Offline/erro de rede: usa o snapshot da carteira salvo no aparelho
+      dados = await Visitas.apoioOffline(clienteId);
+      if (!dados) { App.alerta('Sem conexão e sem carteira salva no aparelho para este produtor.', 'warning'); return; }
+      App.alerta('Modo offline: usando a carteira salva' + (dados._atualizado ? ' de ' + dados._atualizado : '') + '.', 'info');
+    }
+    Visitas.apoio = dados;
+    const selProp = document.getElementById('visitaPropriedade');
+    selProp.innerHTML = '<option value="">—</option>' +
+      dados.propriedades.map(p => `<option value="${Number(p.id)}">${App.escapeHtml(p.nome)}</option>`).join('');
+    if (dados.propriedades.length === 1) selProp.value = dados.propriedades[0].id;
+    Visitas.filtrarTalhoes();
+    Visitas.renderPainelComercial(dados.painel);
+  },
+
+  /** Monta o "apoio" (propriedades/talhões) a partir do snapshot offline. */
+  async apoioOffline(clienteId) {
+    const snap = typeof Offline !== 'undefined' ? await Offline.lerSnapshot() : null;
+    const a = snap && snap.apoio ? snap.apoio[clienteId] : null;
+    if (!a) return null;
+    return {
+      propriedades: a.propriedades || [],
+      talhoes: a.talhoes || [],
+      painel: null, // dados comerciais não ficam no snapshot (indisponíveis offline)
+      _atualizado: snap.atualizado_em ? new Date(snap.atualizado_em).toLocaleString('pt-BR') : '',
+    };
   },
 
   filtrarTalhoes() {
@@ -462,14 +481,21 @@ const Visitas = {
   async carregarModelos() {
     const culturaId = document.getElementById('visitaCultura').value;
     const alvo = document.getElementById('visitaModelos');
+    let modelos;
     try {
-      const { modelos } = await App.json(`index.php?r=visitas/modelos&cultura_id=${culturaId || 0}`);
-      alvo.innerHTML = modelos.length
-        ? modelos.map(m => `<button type="button" class="btn btn-outline-success btn-sm"
-            onclick='Visitas.usarModelo(${JSON.stringify(m.texto_padrao)})'>
-            <i class="bi bi-journal-plus me-1"></i>${m.categoria}: ${m.titulo}</button>`).join('')
-        : '<span class="text-muted small">Nenhum modelo cadastrado para esta cultura.</span>';
-    } catch (e) { alvo.innerHTML = '<span class="text-muted small">Falha ao carregar modelos.</span>'; }
+      ({ modelos } = await App.json(`index.php?r=visitas/modelos&cultura_id=${culturaId || 0}`));
+    } catch (e) {
+      // Offline: filtra os modelos do snapshot pela cultura (ou sem cultura definida)
+      const snap = typeof Offline !== 'undefined' ? await Offline.lerSnapshot() : null;
+      const cid = Number(culturaId) || 0;
+      modelos = (snap && snap.modelos ? snap.modelos : [])
+        .filter(m => m.cultura_id === null || Number(m.cultura_id) === cid);
+    }
+    alvo.innerHTML = modelos.length
+      ? modelos.map(m => `<button type="button" class="btn btn-outline-success btn-sm"
+          data-texto="${App.escapeHtml(m.texto_padrao)}" onclick="Visitas.usarModelo(this.dataset.texto)">
+          <i class="bi bi-journal-plus me-1"></i>${App.escapeHtml(m.categoria)}: ${App.escapeHtml(m.titulo)}</button>`).join('')
+      : '<span class="text-muted small">Nenhum modelo cadastrado para esta cultura.</span>';
   },
 
   usarModelo(texto) {
@@ -480,7 +506,7 @@ const Visitas = {
 
   renderPainelComercial(p) {
     const alvo = document.getElementById('visitaPainelComercial');
-    if (!p) { alvo.innerHTML = 'Sem dados.'; return; }
+    if (!p) { alvo.innerHTML = '<span class="text-muted small">Dados comerciais indisponíveis offline.</span>'; return; }
     const corInad = { success: 'success', warning: 'warning', orange: 'warning', danger: 'danger' }[p.inadimplencia.cor] || 'secondary';
     const linhaCompra = c => `<tr><td>${App.escapeHtml(c.produto)}</td><td class="text-end">${Number(c.quantidade).toLocaleString('pt-BR')} ${App.escapeHtml(c.unidade || '')}</td><td class="text-end">${App.moeda(c.valor_total)}</td></tr>`;
     const linhaGap = g => `<li class="list-group-item d-flex justify-content-between align-items-center py-1">
