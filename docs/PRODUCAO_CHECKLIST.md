@@ -4,19 +4,25 @@ Itens de segurança/confiabilidade para rodar o sistema com dados reais.
 Os passos 1 e 2 são **configuração no painel do Railway** (não dá para
 resolver por código). Os demais já estão implementados no app.
 
-## 1. Volume para as fotos (`public/uploads`) — OBRIGATÓRIO
+## 1. Volume para os uploads (`/app/dados/uploads`) — OBRIGATÓRIO
 
-Sem volume, **as fotos são apagadas a cada redeploy** (o banco guarda o
-registro, mas o arquivo some — a miniatura aparece como "abrir foto").
+Sem volume, **fotos/comprovantes/documentos são apagados a cada redeploy**
+(o banco guarda o registro, mas o arquivo some — a miniatura vira "abrir foto").
+
+> Desde a versão com uploads autenticados, os arquivos ficam FORA do docroot,
+> em **`/app/dados/uploads`** (não use mais `/app/public/uploads`). Tudo é
+> servido pela rota autenticada `arquivo/upload` — sem URL pública direta.
 
 1. No Railway, abra o serviço da **aplicação** (não o MySQL).
 2. Aba **Settings → Volumes → Add Volume** (ou botão direito no serviço → *Attach volume*).
-3. **Mount path**: `/app/public/uploads`
+3. **Mount path**: `/app/dados/uploads`
 4. Salve — o Railway reinicia o serviço com o volume montado.
 5. Teste: envie uma foto numa visita, faça um redeploy e confira que a foto continua abrindo.
 
 > Fotos enviadas ANTES do volume foram perdidas nos redeploys — os registros
 > antigos mostrarão o cartão "abrir foto". Só as novas ficam persistidas.
+> (Arquivos legados em `public/uploads` continuam legíveis: a rota autenticada
+> procura primeiro em `dados/uploads` e cai para o caminho antigo.)
 
 ## 2. Backup do banco (MySQL) — OBRIGATÓRIO
 

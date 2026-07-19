@@ -88,6 +88,21 @@ function sync_limpar_antigos(int $dias = 90): void
     } catch (\Throwable $e) { /* tabela ainda não migrada: ignora */ }
 }
 
+/**
+ * Diretório de uploads FORA do docroot (fotos/comprovantes/documentos não são
+ * acessíveis por URL direta; tudo passa pela rota autenticada arquivo/upload).
+ */
+function uploads_dir(): string
+{
+    return dirname(__DIR__) . '/dados/uploads';
+}
+
+/** URL autenticada para um arquivo enviado (foto, comprovante, documento). */
+function upload_url(string $arquivo): string
+{
+    return 'index.php?r=arquivo/upload&f=' . rawurlencode($arquivo);
+}
+
 /** Formata valor em reais. */
 function moeda(float|int|string|null $valor): string
 {

@@ -97,7 +97,7 @@ class ReclamacoesController
         if (empty($_FILES['fotos']['name'][0] ?? null)) {
             return;
         }
-        $dir = dirname(__DIR__, 2) . '/public/uploads';
+        $dir = uploads_dir();
         if (!is_dir($dir)) {
             mkdir($dir, 0775, true);
         }

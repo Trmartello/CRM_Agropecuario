@@ -237,7 +237,7 @@ class ClientesController
         }
         $nome = trim($_POST['nome'] ?? '') ?: pathinfo($_FILES['arquivo']['name'], PATHINFO_FILENAME);
 
-        $dir = dirname(__DIR__, 2) . '/public/uploads/documentos';
+        $dir = uploads_dir() . '/documentos';
         if (!is_dir($dir)) {
             mkdir($dir, 0775, true);
         }
@@ -265,7 +265,10 @@ class ClientesController
     {
         Auth::exigirLogin();
         $doc = $this->documentoDaCarteira((int) ($_GET['id'] ?? 0));
-        $caminho = dirname(__DIR__, 2) . '/public/uploads/documentos/' . basename($doc['arquivo']);
+        $caminho = uploads_dir() . '/documentos/' . basename($doc['arquivo']);
+        if (!is_file($caminho)) { // arquivos antigos ainda no docroot
+            $caminho = dirname(__DIR__, 2) . '/public/uploads/documentos/' . basename($doc['arquivo']);
+        }
         if (!is_file($caminho)) {
             http_response_code(404);
             echo 'Arquivo não encontrado.';
@@ -283,9 +286,11 @@ class ClientesController
     {
         Permissoes::exigirInterno();
         $doc = $this->documentoDaCarteira((int) ($_POST['id'] ?? 0));
-        $caminho = dirname(__DIR__, 2) . '/public/uploads/documentos/' . basename($doc['arquivo']);
-        if (is_file($caminho)) {
-            @unlink($caminho);
+        foreach ([uploads_dir(), dirname(__DIR__, 2) . '/public/uploads'] as $base) {
+            $caminho = $base . '/documentos/' . basename($doc['arquivo']);
+            if (is_file($caminho)) {
+                @unlink($caminho);
+            }
         }
         Database::executar('DELETE FROM documentos WHERE id = ?', [(int) $doc['id']]);
         json_ok();

@@ -44,7 +44,7 @@
   <h6 class="text-success">Fotos</h6>
   <div class="d-flex flex-wrap gap-2">
     <?php foreach ($fotos as $f): ?>
-      <a href="uploads/<?= e($f['arquivo']) ?>" target="_blank"><img src="uploads/<?= e($f['arquivo']) ?>" class="foto-miniatura" alt="Foto" loading="lazy" onerror="App.fotoIndisponivel(this)"></a>
+      <a href="<?= e(upload_url($f['arquivo'])) ?>" target="_blank"><img src="<?= e(upload_url($f['arquivo'])) ?>" class="foto-miniatura" alt="Foto" loading="lazy" onerror="App.fotoIndisponivel(this)"></a>
     <?php endforeach; ?>
   </div>
 <?php endif; ?>

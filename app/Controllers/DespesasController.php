@@ -125,7 +125,7 @@ class DespesasController
         if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'pdf'], true)) { // sem HEIC: navegador não exibe
             return null;
         }
-        $dir = dirname(__DIR__, 2) . '/public/uploads/comprovantes';
+        $dir = uploads_dir() . '/comprovantes';
         if (!is_dir($dir)) {
             mkdir($dir, 0775, true);
         }

@@ -109,7 +109,7 @@ $statusCor = ['Aberta'=>'secondary','Enviada'=>'info','Aprovada'=>'success','Rej
               <?php if ((float)$l['valor_reembolso'] < (float)$l['valor']): ?><i class="bi bi-info-circle text-warning ms-1" title="Limitado ao teto da categoria"></i><?php endif; ?>
             </td>
             <td class="d-none d-md-table-cell text-center">
-              <?php if (!empty($l['comprovante'])): ?><a href="uploads/<?= e($l['comprovante']) ?>" target="_blank" title="Ver comprovante"><i class="bi bi-paperclip"></i></a><?php endif; ?>
+              <?php if (!empty($l['comprovante'])): ?><a href="<?= e(upload_url($l['comprovante'])) ?>" target="_blank" title="Ver comprovante"><i class="bi bi-paperclip"></i></a><?php endif; ?>
             </td>
             <td class="text-end">
               <?php if (!$l['prestacao_id'] && ($ehGestor || (int)$l['usuario_id'] === Auth::id())): ?>
