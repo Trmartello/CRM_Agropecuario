@@ -20,7 +20,7 @@ $logoFundo = ConfigService::obter('logo_fundo', 'branco');
 <link rel="apple-touch-icon" href="assets/icons/icone-192.png">
 <link rel="stylesheet" href="assets/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="assets/vendor/bootstrap-icons.min.css">
-<link rel="stylesheet" href="assets/css/app.css">
+<link rel="stylesheet" href="assets/css/app.css?v=<?= filemtime(dirname(__DIR__, 2) . '/public/assets/css/app.css') ?>">
 </head>
 <body>
 <div class="d-flex" id="app">
@@ -61,9 +61,6 @@ $logoFundo = ConfigService::obter('logo_fundo', 'branco');
       <?php endforeach; ?>
     </ul>
     <hr class="text-white-50">
-    <button class="btn btn-outline-light btn-sm w-100 mb-2 d-none d-lg-block" id="btnRecolherMenu" title="Recolher/expandir o menu">
-      <i class="bi bi-chevron-double-left"></i><span class="rotulo ms-1">Recolher menu</span>
-    </button>
     <div class="sidebar-usuario small">
       <div class="fw-semibold text-truncate rotulo"><?= e(Auth::usuario()['nome'] ?? '') ?></div>
       <div class="opacity-75 mb-2 rotulo"><?= e(Auth::perfil()) ?></div>
@@ -75,6 +72,10 @@ $logoFundo = ConfigService::obter('logo_fundo', 'branco');
   <main class="conteudo flex-grow-1">
     <header class="topo d-flex align-items-center gap-2 px-3">
       <button class="btn btn-outline-secondary d-lg-none" id="btnMenu" aria-label="Menu"><i class="bi bi-list"></i></button>
+      <button class="btn btn-light border d-none d-lg-inline-flex align-items-center" id="btnRecolherMenu"
+              title="Recolher/expandir o menu lateral" aria-label="Recolher menu">
+        <i class="bi bi-layout-sidebar"></i>
+      </button>
       <h1 class="h5 mb-0 flex-grow-1"><?= e($titulo ?? '') ?></h1>
       <span id="indicadorOffline" class="badge text-bg-warning d-none"><i class="bi bi-wifi-off me-1"></i>Offline</span>
       <span id="indicadorSync" class="badge text-bg-info d-none"><i class="bi bi-arrow-repeat me-1"></i>Sincronizando…</span>
@@ -89,7 +90,7 @@ $logoFundo = ConfigService::obter('logo_fundo', 'branco');
 
 <script src="assets/vendor/bootstrap.bundle.min.js"></script>
 <script src="assets/vendor/chart.umd.min.js"></script>
-<script src="assets/js/offline.js"></script>
-<script src="assets/js/app.js"></script>
+<script src="assets/js/offline.js?v=<?= filemtime(dirname(__DIR__, 2) . '/public/assets/js/offline.js') ?>"></script>
+<script src="assets/js/app.js?v=<?= filemtime(dirname(__DIR__, 2) . '/public/assets/js/app.js') ?>"></script>
 </body>
 </html>

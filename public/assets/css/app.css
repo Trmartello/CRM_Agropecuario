@@ -52,8 +52,9 @@ body { background: #f4f6f4; }
     background: url('../img/logo-marca.svg') center/contain no-repeat #fff;
     border-radius: .5rem; padding: 2px;
   }
-  body.menu-recolhido #btnRecolherMenu i { transform: rotate(180deg); }
 }
+#btnRecolherMenu { transition: background .15s ease; }
+body.menu-recolhido #btnRecolherMenu { background: #e8f0e9; }
 
 /* Sidebar vira gaveta no celular */
 @media (max-width: 991.98px) {
