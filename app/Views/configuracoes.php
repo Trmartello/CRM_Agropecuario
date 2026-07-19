@@ -36,6 +36,12 @@
             </select>
           </div>
           <div class="mb-3">
+            <label class="form-label d-flex justify-content-between">Arredondamento dos cantos <span class="text-muted" id="valRaio"><?= $ajustes['borda_raio'] ?>px</span></label>
+            <input type="range" class="form-range" name="borda_raio" min="0" max="30" step="1"
+                   value="<?= $ajustes['borda_raio'] ?>" oninput="document.getElementById('valRaio').textContent=this.value+'px'; Config.previa()">
+            <div class="form-text">0 = cantos retos (a imagem aparece inteira, sem nenhum recorte).</div>
+          </div>
+          <div class="mb-3">
             <label class="form-label">Posição da logo no menu</label>
             <select name="posicao" class="form-select" onchange="Config.previa()">
               <option value="acima" <?= $ajustes['posicao'] === 'acima' ? 'selected' : '' ?>>Acima do título CRM AGRO (empilhada)</option>
@@ -110,9 +116,12 @@ const Config = {
     const fundo = document.querySelector('[name=fundo]').value;
     const posicao = document.querySelector('[name=posicao]').value;
     const lado = posicao === 'lado';
+    const raio = document.querySelector('[name=borda_raio]').value + 'px';
     cartao.style.maxWidth = (lado ? Math.min(110, largura) : largura) + 'px';
     cartao.style.background = fundo === 'transparente' ? 'transparent' : '#fff';
     cartao.style.padding = fundo === 'transparente' ? '0' : '.4rem .6rem';
+    cartao.style.borderRadius = raio;
+    cartao.querySelector('img').style.borderRadius = raio;
     marca.classList.toggle('flex-column', !lado);
     marca.classList.toggle('flex-row', lado);
     marca.classList.toggle('justify-content-center', lado);

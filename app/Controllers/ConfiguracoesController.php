@@ -29,6 +29,7 @@ class ConfiguracoesController
                 'login_largura' => (int) ConfigService::obter('logo_login_largura', '170'),
                 'fundo' => ConfigService::obter('logo_fundo', 'branco'),
                 'posicao' => ConfigService::obter('logo_posicao', 'acima'),
+                'borda_raio' => (int) ConfigService::obter('logo_borda_raio', '10'),
             ],
         ]);
     }
@@ -41,10 +42,12 @@ class ConfiguracoesController
         $login = max(100, min(340, (int) ($_POST['login_largura'] ?? 170)));
         $fundo = ($_POST['fundo'] ?? 'branco') === 'transparente' ? 'transparente' : 'branco';
         $posicao = ($_POST['posicao'] ?? 'acima') === 'lado' ? 'lado' : 'acima';
+        $bordaRaio = max(0, min(30, (int) ($_POST['borda_raio'] ?? 10)));
         ConfigService::definir('logo_sidebar_largura', (string) $sidebar);
         ConfigService::definir('logo_login_largura', (string) $login);
         ConfigService::definir('logo_fundo', $fundo);
         ConfigService::definir('logo_posicao', $posicao);
+        ConfigService::definir('logo_borda_raio', (string) $bordaRaio);
         json_ok();
     }
 

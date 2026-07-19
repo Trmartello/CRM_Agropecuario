@@ -8,6 +8,7 @@ $faviconApp = ConfigService::faviconAplicacao();
 $logoLargura = (int) ConfigService::obter('logo_sidebar_largura', '180');
 $logoFundo = ConfigService::obter('logo_fundo', ConfigService::logoPersonalizada() ? 'branco' : 'transparente');
 $logoPosicao = ConfigService::obter('logo_posicao', 'acima');
+$logoRaio = (int) ConfigService::obter('logo_borda_raio', '10');
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -30,7 +31,7 @@ $logoPosicao = ConfigService::obter('logo_posicao', 'acima');
     <?php if ($logoPosicao === 'lado'): ?>
     <a href="<?= url('dashboard') ?>" class="sidebar-marca text-decoration-none d-flex align-items-center gap-2">
       <span class="logo-cartao <?= $logoFundo === 'transparente' ? 'logo-transparente' : '' ?> flex-shrink-0"
-            style="max-width:<?= min(110, $logoLargura) ?>px"><img src="<?= e($logoApp) ?>" alt="Copérdia"></span>
+            style="max-width:<?= min(110, $logoLargura) ?>px;border-radius:<?= $logoRaio ?>px"><img src="<?= e($logoApp) ?>" alt="Copérdia" style="border-radius:<?= $logoRaio ?>px"></span>
       <span class="rotulo-marca">
         <strong class="d-block">CRM AGRO</strong>
         <span class="small opacity-75">Copérdia</span>
@@ -39,7 +40,7 @@ $logoPosicao = ConfigService::obter('logo_posicao', 'acima');
     <?php else: ?>
     <a href="<?= url('dashboard') ?>" class="sidebar-marca text-decoration-none text-center d-block">
       <span class="logo-cartao <?= $logoFundo === 'transparente' ? 'logo-transparente' : '' ?> d-block mx-auto mb-1"
-            style="max-width:<?= $logoLargura ?>px"><img src="<?= e($logoApp) ?>" alt="Copérdia"></span>
+            style="max-width:<?= $logoLargura ?>px;border-radius:<?= $logoRaio ?>px"><img src="<?= e($logoApp) ?>" alt="Copérdia" style="border-radius:<?= $logoRaio ?>px"></span>
       <span class="rotulo-marca">
         <strong class="d-block">CRM AGRO</strong>
         <span class="small opacity-75">Copérdia</span>
