@@ -32,12 +32,31 @@ class ConfigService
     /** URL da logo do aplicativo (personalizada ou padrão). */
     public static function logoAplicacao(): string
     {
-        return self::obter('logo_aplicacao', 'assets/img/logo-coperdia.svg');
+        return self::imagemValida('logo_aplicacao', 'assets/img/logo-coperdia.svg');
     }
 
     /** URL do ícone da aba do navegador (personalizado ou padrão). */
     public static function faviconAplicacao(): string
     {
-        return self::obter('favicon_aplicacao', 'assets/icons/favicon-32.png');
+        return self::imagemValida('favicon_aplicacao', 'assets/icons/favicon-32.png');
+    }
+
+    /**
+     * Retorna a imagem configurada somente se o arquivo ainda existir no disco
+     * (uploads somem quando o volume não está montado no deploy); caso
+     * contrário, limpa a configuração órfã e volta ao padrão.
+     */
+    private static function imagemValida(string $chave, string $padrao): string
+    {
+        $valor = self::obter($chave);
+        if ($valor === null) {
+            return $padrao;
+        }
+        $arquivo = dirname(__DIR__, 2) . '/public/' . $valor;
+        if (str_starts_with($valor, 'uploads/') && !is_file($arquivo)) {
+            self::remover($chave);
+            return $padrao;
+        }
+        return $valor;
     }
 }
