@@ -20,6 +20,7 @@ class LoginController
         $email = trim($_POST['email'] ?? '');
         $senha = $_POST['senha'] ?? '';
         if (Auth::tentar($email, $senha)) {
+            sync_limpar_antigos(); // manutenção leve: poda uuids de idempotência antigos
             header('Location: ' . url(Auth::perfil() === 'Produtor' ? 'portal' : 'dashboard'));
             exit;
         }

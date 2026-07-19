@@ -117,9 +117,7 @@ class VisitasController
     public function salvar(): void
     {
         Permissoes::exigir(['Administrador', 'Gestor Técnico', 'Consultor Técnico', 'Vendedor', 'Gestor Comercial']);
-        if (sync_uuid_processado($_POST['uuid_offline'] ?? null)) {
-            json_ok(['duplicado' => true]);
-        }
+        sync_iniciar($_POST['uuid_offline'] ?? null);
         $clienteId = (int) ($_POST['cliente_id'] ?? 0);
         [$filtro, $params] = Permissoes::filtroCarteira();
         $cliente = Database::um(
@@ -183,9 +181,8 @@ class VisitasController
             }
         }
 
-        // Registra o uuid só depois de gravar fotos/concorrência/vínculos, para que
-        // um reenvio (resposta perdida) reprocesse tudo em vez de perder anexos.
-        sync_registrar_uuid($_POST['uuid_offline'] ?? null);
+        // Confirma a transação idempotente: uuid + visita + fotos/vínculos juntos.
+        sync_confirmar($_POST['uuid_offline'] ?? null);
         json_ok(['id' => $visitaId]);
     }
 

@@ -48,9 +48,7 @@ class AgendaController
     public function salvar(): void
     {
         Permissoes::exigirInterno();
-        if (sync_uuid_processado($_POST['uuid_offline'] ?? null)) {
-            json_ok(['duplicado' => true]);
-        }
+        sync_iniciar($_POST['uuid_offline'] ?? null);
         try {
             $id = AgendaService::salvar($_POST);
         } catch (\InvalidArgumentException $e) {
@@ -58,7 +56,7 @@ class AgendaController
         } catch (\RuntimeException $e) {
             json_erro($e->getMessage(), 404);
         }
-        sync_registrar_uuid($_POST['uuid_offline'] ?? null);
+        sync_confirmar($_POST['uuid_offline'] ?? null);
         json_ok(['id' => $id]);
     }
 

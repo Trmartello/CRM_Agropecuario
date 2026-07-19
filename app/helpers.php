@@ -39,26 +39,53 @@ function json_erro(string $mensagem, int $status = 400): never
 }
 
 /**
- * Idempotência do offline (O3): true se este uuid de reenvio da fila já foi
- * processado antes (evita cadastro duplicado se a resposta do OK se perdeu).
+ * Idempotência do offline (O3) — ATÔMICA.
+ * Abre uma transação e insere o uuid do reenvio como "trava" (PK). Se o uuid já
+ * existe (reenvio de uma requisição cuja resposta se perdeu), desfaz e responde
+ * `duplicado` sem reprocessar. O cadastro real roda dentro da mesma transação e
+ * só é confirmado por `sync_confirmar()` — assim uuid + cadastro + anexos são
+ * tudo-ou-nada (sem duplicata por crash, sem perda de anexos). Sem uuid (envio
+ * online normal) é no-op: fluxo autocommit inalterado.
  */
-function sync_uuid_processado(?string $uuid): bool
-{
-    $uuid = trim((string) $uuid);
-    if ($uuid === '') {
-        return false;
-    }
-    return (bool) \App\Core\Database::valor('SELECT 1 FROM sync_processados WHERE uuid = ?', [$uuid]);
-}
-
-/** Registra o uuid de um reenvio já processado com sucesso. */
-function sync_registrar_uuid(?string $uuid): void
+function sync_iniciar(?string $uuid): void
 {
     $uuid = trim((string) $uuid);
     if ($uuid === '') {
         return;
     }
-    \App\Core\Database::executar('INSERT IGNORE INTO sync_processados (uuid) VALUES (?)', [$uuid]);
+    $pdo = \App\Core\Database::conexao();
+    $pdo->beginTransaction();
+    try {
+        \App\Core\Database::executar('INSERT INTO sync_processados (uuid) VALUES (?)', [$uuid]);
+    } catch (\PDOException $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        json_ok(['duplicado' => true]); // já processado — encerra (json_ok é never)
+    }
+}
+
+/** Confirma (commit) a transação idempotente aberta por sync_iniciar(). */
+function sync_confirmar(?string $uuid): void
+{
+    if (trim((string) $uuid) === '') {
+        return;
+    }
+    $pdo = \App\Core\Database::conexao();
+    if ($pdo->inTransaction()) {
+        $pdo->commit();
+    }
+}
+
+/** Limpeza periódica: remove uuids de idempotência mais antigos que N dias. */
+function sync_limpar_antigos(int $dias = 90): void
+{
+    try {
+        \App\Core\Database::executar(
+            'DELETE FROM sync_processados WHERE criado_em < (NOW() - INTERVAL ? DAY)',
+            [$dias]
+        );
+    } catch (\Throwable $e) { /* tabela ainda não migrada: ignora */ }
 }
 
 /** Formata valor em reais. */

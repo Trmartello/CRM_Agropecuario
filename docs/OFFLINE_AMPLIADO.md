@@ -86,13 +86,14 @@ uma com o usuário.
 ## 4. Mudanças de schema (migração leve) — implementado
 
 - **Tabela central `sync_processados` (uuid PK)** em vez de uma coluna por tabela
-  (schema v13, `Instalador` V13 + `database.sql`). Cada `salvar` offline checa o
-  `uuid` no início (retorna `duplicado`) e o registra **por último**, após todos os
-  efeitos colaterais (fotos/vínculos) — assim um reenvio com resposta perdida
-  reprocessa tudo em vez de perder anexos. Concorrência entre abas é travada com
-  `navigator.locks` no cliente. `agenda/status` dispensa `uuid` por ser um UPDATE
-  naturalmente idempotente. Pendência menor: limpeza periódica de `sync_processados`
-  (ex.: `criado_em < NOW() - INTERVAL 90 DAY`).
+  (schema v13, `Instalador` V13 + `database.sql`). A idempotência é **atômica**:
+  `sync_iniciar()` abre uma transação e insere o `uuid` como trava (PK) no início;
+  o cadastro real (+ fotos/vínculos) roda na mesma transação e só é confirmado por
+  `sync_confirmar()` no fim — uuid + registro + anexos são tudo-ou-nada (sem
+  duplicata por crash entre statements, sem perda de anexos, e um erro de validação
+  faz rollback do uuid, permitindo retry). Concorrência entre abas é travada com
+  `navigator.locks`; `agenda/status` dispensa `uuid` (UPDATE idempotente). Limpeza
+  periódica via `sync_limpar_antigos()` no login (`criado_em < NOW() - INTERVAL 90 DAY`).
 
 ## 5. Cache (service worker)
 
@@ -113,14 +114,16 @@ uma com o usuário.
   re-renderiza do snapshot as telas Produtores, Priorização e Organizador
   (sugestões) quando offline, com banner de modo offline. Ações que exigem
   servidor (ficha completa, montar/otimizar roteiro) seguem online.
-- **O3 — Robustez. ✅ ENTREGUE.** Idempotência: cada item da fila leva um `uuid`
-  (`uuid_offline`) e o servidor deduplica via a tabela `sync_processados` (schema
-  v13) — reenvio à prova de resposta perdida, sem cadastro duplicado. Sessão
-  expirada durante o sync mantém a fila e pede login (não perde dados). Aviso de
-  cota de armazenamento ao enfileirar anexos. Background Sync: o SW registra a
-  tag `sync-fila` e, ao voltar a conexão, avisa os clientes abertos para enviar a
-  fila (o reenvio headless, com a aba fechada, ainda depende do evento `online`/
-  do próximo load — replay dentro do SW fica como evolução futura).
+- **O3 — Robustez. ✅ ENTREGUE.** Idempotência **atômica** (uuid + transação, ver
+  seção 4), sem duplicata por crash/concorrência nem perda de anexos. Sessão
+  expirada durante o sync mantém a fila e pede login. Aviso de cota ao enfileirar
+  anexos. **Background Sync com replay headless no próprio SW**: o SW lê a
+  `fila_sync` do IndexedDB e reenvia cada item mesmo com o app fechado (idempotência
+  cobre eventual concorrência com um cliente aberto), depois avisa os clientes para
+  atualizar a UI. O SW **não cacheia respostas JSON** (APIs autenticadas como
+  `sync/carteira` nunca ficam no CacheStorage); o snapshot em IndexedDB é limpo no
+  logout. Ressalva de plataforma: `SyncManager` não existe em iOS/PWA — lá o reenvio
+  cai no evento `online` + timer de load (cobre o caso comum).
 
 ## 7. Testes (a cada fase)
 
