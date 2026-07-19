@@ -42,14 +42,7 @@ const Despesas = {
   novoProspecto() {
     const form = document.getElementById('formProspecto');
     form.reset();
-    document.getElementById('prospEstado').value = '—';
     new bootstrap.Modal('#modalProspecto').show();
-  },
-
-  /** Preenche o UF a partir do município selecionado (UF atrelado ao município). */
-  municipioUf(sel) {
-    const uf = sel.options[sel.selectedIndex]?.dataset.uf || '—';
-    document.getElementById('prospEstado').value = uf;
   },
 
   async salvarProspecto(ev) {

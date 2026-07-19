@@ -283,13 +283,12 @@ $statusCor = ['Aberta'=>'secondary','Enviada'=>'info','Aprovada'=>'success','Rej
         <div class="row g-3">
           <div class="col-12"><label class="form-label">Nome *</label><input name="nome" class="form-control" required></div>
           <div class="col-12"><label class="form-label">Telefone <span class="text-muted small">(opcional)</span></label><input name="telefone" class="form-control"></div>
-          <div class="col-8"><label class="form-label">Município <span class="text-muted small">(opcional)</span></label>
-            <select name="municipio_id" class="form-select" onchange="Despesas.municipioUf(this)">
+          <div class="col-12"><label class="form-label">Município <span class="text-muted small">(opcional)</span></label>
+            <select name="municipio_id" class="form-select">
               <option value="0">—</option>
-              <?php foreach ($municipios as $m): ?><option value="<?= $m['id'] ?>" data-uf="<?= e($m['estado']) ?>"><?= e($m['nome']) ?> (<?= e($m['estado']) ?>)</option><?php endforeach; ?>
+              <?php foreach ($municipios as $m): ?><option value="<?= $m['id'] ?>"><?= e($m['nome']) ?> (<?= e($m['estado']) ?>)</option><?php endforeach; ?>
             </select>
           </div>
-          <div class="col-4"><label class="form-label">UF</label><input class="form-control bg-light" id="prospEstado" value="—" readonly></div>
         </div>
       </div>
       <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
