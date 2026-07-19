@@ -19,7 +19,7 @@ DROP TABLE IF EXISTS sessoes_persistentes, configuracoes, auditoria,
   metas_cap, realizado_cap, garantias, potencial_compra, titulos_financeiros,
   compras, produtos, familias_produto, safras, concorrencia_registros,
   visita_fotos, visitas, modelos_recomendacao, talhoes, propriedades,
-  cliente_contatos, clientes, culturas, filiais, usuarios;
+  cliente_contatos, clientes, culturas, municipios, filiais, usuarios;
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ============================================================================
@@ -43,6 +43,15 @@ CREATE TABLE filiais (
   nome VARCHAR(120) NOT NULL,
   municipio VARCHAR(120) NOT NULL,
   estado CHAR(2) NOT NULL
+) ENGINE=InnoDB;
+
+-- Municípios pré-cadastrados (o UF fica atrelado ao município)
+CREATE TABLE municipios (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  nome VARCHAR(120) NOT NULL,
+  estado CHAR(2) NOT NULL,
+  ativo TINYINT(1) NOT NULL DEFAULT 1,
+  UNIQUE KEY uk_municipio (nome, estado)
 ) ENGINE=InnoDB;
 
 CREATE TABLE culturas (
@@ -659,6 +668,15 @@ INSERT INTO filiais (id, nome, municipio, estado) VALUES
 INSERT INTO culturas (id, nome) VALUES
 (1,'Soja'),(2,'Milho'),(3,'Trigo'),(4,'Feijão'),(5,'Pastagem');
 
+-- Municípios da região de atuação (Alto Uruguai Catarinense e entorno)
+INSERT INTO municipios (nome, estado) VALUES
+('Concórdia','SC'),('Seara','SC'),('Chapecó','SC'),('Ipumirim','SC'),('Itá','SC'),
+('Arabutã','SC'),('Lindóia do Sul','SC'),('Irani','SC'),('Presidente Castello Branco','SC'),
+('Peritiba','SC'),('Piratuba','SC'),('Alto Bela Vista','SC'),('Xavantina','SC'),('Arvoredo','SC'),
+('Paial','SC'),('Ipira','SC'),('Jaborá','SC'),('Xanxerê','SC'),('Xaxim','SC'),('Coronel Freitas','SC'),
+('Águas de Chapecó','SC'),('Nova Erechim','SC'),('Cordilheira Alta','SC'),('Guatambú','SC'),
+('Erval Velho','SC'),('Joaçaba','SC'),('Capinzal','SC'),('Ouro','SC'),('Marcelino Ramos','RS'),('Erechim','RS');
+
 INSERT INTO familias_produto (id, nome) VALUES
 (1,'Sementes'),(2,'Fertilizantes'),(3,'Herbicidas'),(4,'Fungicidas'),
 (5,'Inseticidas'),(6,'Adubos Foliares / Nutrição'),(7,'Biológicos'),
@@ -1039,5 +1057,5 @@ INSERT INTO reclamacoes (cliente_id, usuario_id, produto_id, tipo, lote, nota_fi
 (6,5,7,'Defensivos','FG-7781','NF-88410',1,'Fitotoxidez','Sintoma de fitotoxidez após aplicação de fungicida.','Registrada');
 
 -- schema_versao: instalações novas já nascem na versão atual (não re-executam migrações)
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','6')
-  ON DUPLICATE KEY UPDATE valor = '6';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','7')
+  ON DUPLICATE KEY UPDATE valor = '7';

@@ -127,6 +127,40 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '6'"
             );
         }
+        if ($versao < 7) {
+            self::migrarParaV7();
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '7')
+                 ON DUPLICATE KEY UPDATE valor = '7'"
+            );
+        }
+    }
+
+    /** Fase 3 (ajuste): municípios pré-cadastrados (UF atrelado ao município). */
+    private static function migrarParaV7(): void
+    {
+        if (!self::temTabela('municipios')) {
+            Database::executar(
+                'CREATE TABLE municipios (
+                   id INT AUTO_INCREMENT PRIMARY KEY,
+                   nome VARCHAR(120) NOT NULL,
+                   estado CHAR(2) NOT NULL,
+                   ativo TINYINT(1) NOT NULL DEFAULT 1,
+                   UNIQUE KEY uk_municipio (nome, estado)
+                 ) ENGINE=InnoDB'
+            );
+        }
+        if ((int) Database::valor('SELECT COUNT(*) FROM municipios') === 0) {
+            Database::executar(
+                "INSERT IGNORE INTO municipios (nome, estado) VALUES
+                 ('Concórdia','SC'),('Seara','SC'),('Chapecó','SC'),('Ipumirim','SC'),('Itá','SC'),
+                 ('Arabutã','SC'),('Lindóia do Sul','SC'),('Irani','SC'),('Presidente Castello Branco','SC'),
+                 ('Peritiba','SC'),('Piratuba','SC'),('Alto Bela Vista','SC'),('Xavantina','SC'),('Arvoredo','SC'),
+                 ('Paial','SC'),('Ipira','SC'),('Jaborá','SC'),('Xanxerê','SC'),('Xaxim','SC'),('Coronel Freitas','SC'),
+                 ('Águas de Chapecó','SC'),('Nova Erechim','SC'),('Cordilheira Alta','SC'),('Guatambú','SC'),
+                 ('Erval Velho','SC'),('Joaçaba','SC'),('Capinzal','SC'),('Ouro','SC'),('Marcelino Ramos','RS'),('Erechim','RS')"
+            );
+        }
     }
 
     /** Fase 3 (ajuste): pré-cadastro de prospecto e amarração da KM com a visita. */

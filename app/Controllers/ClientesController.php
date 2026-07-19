@@ -114,15 +114,26 @@ class ClientesController
         if ($nome === '') {
             json_erro('Informe o nome do prospecto.');
         }
+        // Município vem da lista pré-cadastrada; o UF fica atrelado ao município
+        $municipio = null;
+        $estado = 'SC';
+        $municipioId = (int) ($_POST['municipio_id'] ?? 0);
+        if ($municipioId > 0) {
+            $m = Database::um('SELECT nome, estado FROM municipios WHERE id = ?', [$municipioId]);
+            if ($m) {
+                $municipio = $m['nome'];
+                $estado = $m['estado'];
+            }
+        }
         Database::executar(
             'INSERT INTO clientes (nome, situacao, telefone, municipio, estado, responsavel_id, prospecto)
              VALUES (?, ?, ?, ?, ?, ?, 1)',
             [
                 $nome,
-                $_POST['situacao'] ?? 'Não Associado',
+                'Não Associado',
                 trim($_POST['telefone'] ?? '') ?: null,
-                trim($_POST['municipio'] ?? '') ?: null,
-                strtoupper(trim($_POST['estado'] ?? 'SC')) ?: 'SC',
+                $municipio,
+                $estado,
                 Permissoes::ehGestor() ? ((int) ($_POST['responsavel_id'] ?? 0) ?: Auth::id()) : Auth::id(),
             ]
         );

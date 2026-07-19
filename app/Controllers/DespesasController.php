@@ -37,6 +37,7 @@ class DespesasController
         $prospectos = $this->clientesCarteira(true);
         $veiculos = DespesaService::veiculosUsuario(Auth::id());
         $filiais = Database::todos('SELECT id, nome, municipio, estado FROM filiais ORDER BY nome');
+        $municipios = Database::todos('SELECT id, nome, estado FROM municipios WHERE ativo = 1 ORDER BY nome');
         $equipe = $ehGestor
             ? Database::todos("SELECT id, nome FROM usuarios WHERE ativo = 1 AND perfil <> 'Produtor' ORDER BY nome")
             : [];
@@ -53,6 +54,7 @@ class DespesasController
             'prospectos' => $prospectos,
             'veiculos' => $veiculos,
             'filiais' => $filiais,
+            'municipios' => $municipios,
             'equipe' => $equipe,
             'ehGestor' => $ehGestor,
             'filtroUsuario' => $filtroUsuario,

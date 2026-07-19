@@ -279,14 +279,17 @@ $statusCor = ['Aberta'=>'secondary','Enviada'=>'info','Aprovada'=>'success','Rej
       <div class="modal-header"><h5 class="modal-title"><i class="bi bi-person-plus me-2 text-success"></i>Pré-cadastrar prospecto</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
-        <p class="text-muted small">Cadastro rápido para vincular o deslocamento. Depois você completa propriedade, potencial e demais dados na tela de <strong>Clientes</strong>.</p>
+        <p class="text-muted small">Basta o nome. Você completa telefone, município, propriedade, potencial e demais dados depois na tela de <strong>Clientes</strong> ou durante a visita.</p>
         <div class="row g-3">
           <div class="col-12"><label class="form-label">Nome *</label><input name="nome" class="form-control" required></div>
-          <div class="col-md-6"><label class="form-label">Telefone</label><input name="telefone" class="form-control"></div>
-          <div class="col-md-6"><label class="form-label">Situação</label>
-            <select name="situacao" class="form-select"><option>Não Associado</option><option>Associado</option></select></div>
-          <div class="col-md-8"><label class="form-label">Município</label><input name="municipio" class="form-control"></div>
-          <div class="col-md-4"><label class="form-label">UF</label><input name="estado" class="form-control" value="SC" maxlength="2"></div>
+          <div class="col-12"><label class="form-label">Telefone <span class="text-muted small">(opcional)</span></label><input name="telefone" class="form-control"></div>
+          <div class="col-8"><label class="form-label">Município <span class="text-muted small">(opcional)</span></label>
+            <select name="municipio_id" class="form-select" onchange="Despesas.municipioUf(this)">
+              <option value="0">—</option>
+              <?php foreach ($municipios as $m): ?><option value="<?= $m['id'] ?>" data-uf="<?= e($m['estado']) ?>"><?= e($m['nome']) ?> (<?= e($m['estado']) ?>)</option><?php endforeach; ?>
+            </select>
+          </div>
+          <div class="col-4"><label class="form-label">UF</label><input class="form-control bg-light" id="prospEstado" value="—" readonly></div>
         </div>
       </div>
       <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
