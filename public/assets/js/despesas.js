@@ -7,11 +7,15 @@ const Despesas = {
 
   novoKm() {
     const form = document.getElementById('formKm');
-    form.reset();
+    form.reset(); // restaura o veículo padrão (option marcada como selected no HTML)
     form.querySelector('[name=data]').value = new Date().toISOString().slice(0, 10);
     document.getElementById('kmPreview').textContent = 'Informe os KM para calcular o valor.';
     Despesas.tipoDestino('Produtor');
     Despesas.toggleProspecto(false);
+    // Se já veio um veículo pré-selecionado, adianta a KM inicial do último lançamento dele
+    if ((form.querySelector('[name=veiculo_id]').value || '0') !== '0') {
+      Despesas.pegarUltimoKm(true);
+    }
     new bootstrap.Modal('#modalKm').show();
   },
 

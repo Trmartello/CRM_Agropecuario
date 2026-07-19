@@ -191,7 +191,7 @@ $statusCor = ['Aberta'=>'secondary','Enviada'=>'info','Aprovada'=>'success','Rej
               <select name="veiculo_id" class="form-select" onchange="Despesas.veiculoMudou()">
                 <option value="0">— selecione —</option>
                 <?php foreach ($veiculos as $v): ?>
-                  <option value="<?= $v['id'] ?>"><?= e($v['descricao']) ?><?= $v['placa'] ? ' — ' . e($v['placa']) : '' ?></option>
+                  <option value="<?= $v['id'] ?>" <?= (int)$veiculoPadrao === (int)$v['id'] ? 'selected' : '' ?>><?= e($v['descricao']) ?><?= $v['placa'] ? ' — ' . e($v['placa']) : '' ?></option>
                 <?php endforeach; ?>
               </select>
               <button type="button" class="btn btn-outline-success" title="Cadastrar veículo" onclick="Despesas.novoVeiculo()"><i class="bi bi-plus-lg"></i></button>

@@ -34,6 +34,29 @@ class DespesaService
         );
     }
 
+    /**
+     * Veículo a pré-selecionar no lançamento: o usado no último lançamento do
+     * usuário; se não houver, e ele tiver apenas um veículo, esse único.
+     */
+    public static function veiculoPadraoUsuario(int $usuarioId): int
+    {
+        $ultimo = (int) Database::valor(
+            'SELECT veiculo_id FROM quilometragem
+              WHERE usuario_id = ? AND veiculo_id IS NOT NULL
+              ORDER BY data DESC, id DESC LIMIT 1',
+            [$usuarioId]
+        );
+        if ($ultimo) {
+            // confirma que o veículo ainda existe e está ativo
+            $ok = Database::valor('SELECT 1 FROM veiculos WHERE id = ? AND usuario_id = ? AND ativo = 1', [$ultimo, $usuarioId]);
+            if ($ok) {
+                return $ultimo;
+            }
+        }
+        $veiculos = self::veiculosUsuario($usuarioId);
+        return count($veiculos) === 1 ? (int) $veiculos[0]['id'] : 0;
+    }
+
     /** Cadastra um veículo para o usuário; retorna o registro criado. */
     public static function criarVeiculo(int $usuarioId, string $descricao, string $placa): array
     {

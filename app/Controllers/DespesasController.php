@@ -36,6 +36,7 @@ class DespesasController
         $clientes = $this->clientesCarteira(false);
         $prospectos = $this->clientesCarteira(true);
         $veiculos = DespesaService::veiculosUsuario(Auth::id());
+        $veiculoPadrao = DespesaService::veiculoPadraoUsuario(Auth::id());
         $filiais = Database::todos('SELECT id, nome, municipio, estado FROM filiais ORDER BY nome');
         $municipios = Database::todos('SELECT id, nome, estado FROM municipios WHERE ativo = 1 ORDER BY nome');
         $equipe = $ehGestor
@@ -53,6 +54,7 @@ class DespesasController
             'clientes' => $clientes,
             'prospectos' => $prospectos,
             'veiculos' => $veiculos,
+            'veiculoPadrao' => $veiculoPadrao,
             'filiais' => $filiais,
             'municipios' => $municipios,
             'equipe' => $equipe,
