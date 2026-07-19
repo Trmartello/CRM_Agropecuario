@@ -61,9 +61,23 @@ $diaBr = data_br($data);
           <i class="bi bi-stars me-2 text-success"></i><strong>Adicionar ao roteiro</strong>
           <span class="ms-auto small text-muted">buscar ou sugestões</span>
         </div>
-        <div class="input-group input-group-sm">
+        <div class="input-group input-group-sm mb-2">
           <span class="input-group-text"><i class="bi bi-search"></i></span>
-          <input type="search" id="buscaProdutor" class="form-control" placeholder="Buscar qualquer produtor por nome…" oninput="Organizador.buscar(this.value)">
+          <input type="search" id="buscaProdutor" class="form-control" placeholder="Buscar produtor por nome…" oninput="Organizador.buscar()">
+        </div>
+        <div class="row g-2">
+          <div class="col-6">
+            <select id="filtroMunicipio" class="form-select form-select-sm" onchange="Organizador.buscar()">
+              <option value="">Todos os municípios</option>
+              <?php foreach ($municipios as $m): ?><option value="<?= e($m) ?>"><?= e($m) ?></option><?php endforeach; ?>
+            </select>
+          </div>
+          <div class="col-6">
+            <select id="filtroLinha" class="form-select form-select-sm" onchange="Organizador.buscar()">
+              <option value="">Todas as linhas</option>
+              <?php foreach ($linhas as $l): ?><option value="<?= e($l) ?>"><?= e($l) ?></option><?php endforeach; ?>
+            </select>
+          </div>
         </div>
       </div>
       <!-- Resultados da busca -->
@@ -135,18 +149,23 @@ const Organizador = {
   },
 
   _t: null,
-  buscar(termo) {
+  buscar() {
     clearTimeout(Organizador._t);
+    const termo = document.getElementById('buscaProdutor').value.trim();
+    const municipio = document.getElementById('filtroMunicipio').value;
+    const linha = document.getElementById('filtroLinha').value;
     const res = document.getElementById('resultadosBusca');
     const sug = document.getElementById('listaSugestoes');
-    if (!termo || termo.trim().length < 2) {
+    // Sem nenhum critério → volta a mostrar as sugestões priorizadas
+    if (termo.length < 2 && !municipio && !linha) {
       res.classList.add('d-none'); res.innerHTML = ''; sug.classList.remove('d-none');
       return;
     }
     Organizador._t = setTimeout(async () => {
       try {
-        const d = await App.json('index.php?r=agenda/buscar-produtor&q=' + encodeURIComponent(termo) + '&data=' + Organizador.data,
-          { headers: { 'X-Requested-With': 'fetch' } });
+        const qs = 'q=' + encodeURIComponent(termo) + '&municipio=' + encodeURIComponent(municipio) +
+          '&linha=' + encodeURIComponent(linha) + '&data=' + Organizador.data;
+        const d = await App.json('index.php?r=agenda/buscar-produtor&' + qs, { headers: { 'X-Requested-With': 'fetch' } });
         sug.classList.add('d-none');
         res.classList.remove('d-none');
         if (!d.resultados.length) {
@@ -157,7 +176,7 @@ const Organizador = {
           <div class="list-group-item d-flex align-items-center gap-2">
             <div class="flex-grow-1">
               <div class="fw-semibold">${App.escapeHtml(c.nome)}</div>
-              <div class="small text-muted">${App.escapeHtml(c.municipio || '—')}</div>
+              <div class="small text-muted">${App.escapeHtml(c.municipio || '—')}${c.linha ? ' · ' + App.escapeHtml(c.linha) : ''}</div>
             </div>
             <button class="btn btn-sm btn-success" title="Adicionar ao roteiro" onclick="Organizador.adicionar(${Number(c.id)})"><i class="bi bi-plus-lg"></i></button>
           </div>`).join('');

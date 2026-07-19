@@ -71,6 +71,7 @@ CREATE TABLE clientes (
   email VARCHAR(160),
   endereco VARCHAR(255),
   municipio VARCHAR(120),
+  linha VARCHAR(120) COMMENT 'linha/localidade rural (comunidade)',
   estado CHAR(2) DEFAULT 'SC',
   filial_id INT,
   latitude DECIMAL(10,7),
@@ -1124,5 +1125,10 @@ INSERT INTO notificacoes (usuario_id, tipo, titulo, texto, link) VALUES
 (5,'agenda','Visita agendada','Acompanhar florescimento — Berenice (22/07)','index.php?r=agenda'),
 (5,'churn','Risco de churn','Celso Casagrande com queda de 62% vs. safra anterior','index.php?r=clientes');
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','10')
-  ON DUPLICATE KEY UPDATE valor = '10';
+-- Linhas rurais de exemplo para alguns produtores
+UPDATE clientes SET linha='Linha São Roque' WHERE id IN (1,4);
+UPDATE clientes SET linha='Linha Barra Fria' WHERE id IN (2,5);
+UPDATE clientes SET linha='Linha Sede' WHERE id IN (3,6);
+
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','11')
+  ON DUPLICATE KEY UPDATE valor = '11';

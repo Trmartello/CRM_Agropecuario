@@ -50,6 +50,10 @@
             <label class="form-label">UF</label>
             <input name="estado" class="form-control" maxlength="2" value="SC">
           </div>
+          <div class="col-md-3">
+            <label class="form-label">Linha <span class="text-muted small">(localidade)</span></label>
+            <input name="linha" class="form-control" placeholder="Ex.: Linha São Roque">
+          </div>
           <div class="col-md-2">
             <label class="form-label">Filial</label>
             <select name="filial_id" class="form-select">

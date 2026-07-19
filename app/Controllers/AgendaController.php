@@ -83,23 +83,28 @@ class AgendaController
     {
         Permissoes::exigirInterno();
         $data = $this->dataValida();
+        $locais = AgendaService::locaisCarteira();
         render('organizador', [
             'data' => $data,
             'roteiro' => AgendaService::roteiro($data, Auth::id()),
             'sugestoes' => AgendaService::sugestoesVisita($data, Auth::id()),
             'kmRoteiro' => AgendaService::distanciaRoteiro($data, Auth::id()),
+            'municipios' => $locais['municipios'],
+            'linhas' => $locais['linhas'],
             'titulo' => 'Organizador de Visitas',
         ]);
     }
 
-    /** Busca produtores da carteira por nome (para encaixar no roteiro). */
+    /** Busca produtores da carteira por nome/município/linha (para encaixar no roteiro). */
     public function buscarProdutor(): void
     {
         Permissoes::exigirInterno();
         $resultados = AgendaService::buscarProdutorRoteiro(
             $_GET['q'] ?? '',
             $this->dataValida(),
-            Auth::id()
+            Auth::id(),
+            $_GET['municipio'] ?? '',
+            $_GET['linha'] ?? ''
         );
         json_ok(['resultados' => $resultados]);
     }

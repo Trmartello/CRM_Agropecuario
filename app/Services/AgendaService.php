@@ -333,22 +333,62 @@ class AgendaService
         return round($total, 1);
     }
 
-    /** Busca produtores da carteira por nome para encaixar no roteiro (exclui os já incluídos). */
-    public static function buscarProdutorRoteiro(string $termo, string $data, int $usuarioId): array
+    /**
+     * Busca produtores da carteira para encaixar no roteiro, por nome e/ou
+     * município e/ou linha (localidade rural). Exclui quem já está no roteiro.
+     */
+    public static function buscarProdutorRoteiro(string $termo, string $data, int $usuarioId, string $municipio = '', string $linha = ''): array
     {
         $termo = trim($termo);
-        if (mb_strlen($termo) < 2) {
+        $municipio = trim($municipio);
+        $linha = trim($linha);
+        // Precisa de pelo menos um critério (nome com 2+ letras, ou um filtro de local)
+        if (mb_strlen($termo) < 2 && $municipio === '' && $linha === '') {
             return [];
         }
         [$filtro, $params] = Permissoes::filtroCarteira();
-        $sql = "SELECT c.id, c.nome, c.municipio, c.telefone
-                  FROM clientes c
-                 WHERE c.ativo = 1 AND {$filtro} AND c.nome LIKE ?
-                   AND c.id NOT IN (
+        $where = "c.ativo = 1 AND {$filtro}";
+        if (mb_strlen($termo) >= 2) {
+            $where .= ' AND c.nome LIKE ?';
+            $params[] = '%' . $termo . '%';
+        }
+        if ($municipio !== '') {
+            $where .= ' AND c.municipio = ?';
+            $params[] = $municipio;
+        }
+        if ($linha !== '') {
+            $where .= ' AND c.linha = ?';
+            $params[] = $linha;
+        }
+        $where .= " AND c.id NOT IN (
                        SELECT cliente_id FROM agenda_eventos
-                        WHERE usuario_id = ? AND data = ? AND cliente_id IS NOT NULL AND status <> 'Cancelado')
-                 ORDER BY c.nome LIMIT 15";
-        return Database::todos($sql, array_merge($params, ['%' . $termo . '%', $usuarioId, $data]));
+                        WHERE usuario_id = ? AND data = ? AND cliente_id IS NOT NULL AND status <> 'Cancelado')";
+        $params[] = $usuarioId;
+        $params[] = $data;
+        return Database::todos(
+            "SELECT c.id, c.nome, c.municipio, c.linha, c.telefone
+               FROM clientes c WHERE {$where} ORDER BY c.nome LIMIT 30",
+            $params
+        );
+    }
+
+    /** Municípios e linhas distintos da carteira (para os filtros do organizador). */
+    public static function locaisCarteira(): array
+    {
+        [$filtro, $params] = Permissoes::filtroCarteira();
+        $municipios = Database::todos(
+            "SELECT DISTINCT municipio FROM clientes c WHERE c.ativo = 1 AND {$filtro} AND municipio IS NOT NULL AND municipio <> '' ORDER BY municipio",
+            $params
+        );
+        [$filtro2, $params2] = Permissoes::filtroCarteira();
+        $linhas = Database::todos(
+            "SELECT DISTINCT linha FROM clientes c WHERE c.ativo = 1 AND {$filtro2} AND linha IS NOT NULL AND linha <> '' ORDER BY linha",
+            $params2
+        );
+        return [
+            'municipios' => array_map(fn ($r) => $r['municipio'], $municipios),
+            'linhas' => array_map(fn ($r) => $r['linha'], $linhas),
+        ];
     }
 
     /** Distância aproximada (Haversine, km). */

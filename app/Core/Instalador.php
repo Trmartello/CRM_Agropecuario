@@ -155,6 +155,13 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '10'"
             );
         }
+        if ($versao < 11) {
+            self::adicionarColuna('clientes', 'linha', 'linha VARCHAR(120) NULL AFTER municipio');
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '11')
+                 ON DUPLICATE KEY UPDATE valor = '11'"
+            );
+        }
     }
 
     /** Fase 5: log de integração (ERP/CAPE). */

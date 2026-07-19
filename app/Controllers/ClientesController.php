@@ -68,6 +68,7 @@ class ClientesController
             trim($_POST['email'] ?? '') ?: null,
             trim($_POST['endereco'] ?? '') ?: null,
             trim($_POST['municipio'] ?? '') ?: null,
+            trim($_POST['linha'] ?? '') ?: null,
             strtoupper(trim($_POST['estado'] ?? 'SC')) ?: 'SC',
             (int) ($_POST['filial_id'] ?? 0) ?: null,
             $_POST['latitude'] !== '' ? (float) $_POST['latitude'] : null,
@@ -84,17 +85,17 @@ class ClientesController
             $this->clienteDaCarteira($id);
             Database::executar(
                 'UPDATE clientes SET nome=?, situacao=?, cpf_cnpj=?, telefone=?, email=?, endereco=?,
-                        municipio=?, estado=?, filial_id=?, latitude=?, longitude=?, responsavel_id=?,
+                        municipio=?, linha=?, estado=?, filial_id=?, latitude=?, longitude=?, responsavel_id=?,
                         nivel_tecnologico=?, volume_compra_anual=?, potencial_venda=?, limite_credito=?, prospecto=?
                   WHERE id=?',
                 array_merge($dados, [$id])
             );
         } else {
             Database::executar(
-                'INSERT INTO clientes (nome, situacao, cpf_cnpj, telefone, email, endereco, municipio, estado,
+                'INSERT INTO clientes (nome, situacao, cpf_cnpj, telefone, email, endereco, municipio, linha, estado,
                         filial_id, latitude, longitude, responsavel_id, nivel_tecnologico,
                         volume_compra_anual, potencial_venda, limite_credito, prospecto)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                 $dados
             );
             $id = Database::ultimoId();
