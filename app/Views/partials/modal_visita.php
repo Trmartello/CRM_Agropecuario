@@ -82,23 +82,23 @@
             </div>
             <div class="col-md-8">
               <label class="form-label">Desenvolvimento <span class="text-danger" title="Obrigatório para finalizar">*</span></label>
-              <div class="campo-voz"><input name="desenvolvimento" class="form-control" placeholder="Condição geral da lavoura…"><button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
+              <div class="campo-voz"><textarea name="desenvolvimento" rows="1" class="form-control auto-crescer" oninput="App.autoCrescer(this)" placeholder="Condição geral da lavoura…"></textarea><button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
             </div>
             <div class="col-md-6">
               <label class="form-label">Pragas</label>
-              <div class="campo-voz"><input name="pragas" class="form-control" placeholder="Percevejo, lagarta…"><button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
+              <div class="campo-voz"><textarea name="pragas" rows="1" class="form-control auto-crescer" oninput="App.autoCrescer(this)" placeholder="Percevejo, lagarta…"></textarea><button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
             </div>
             <div class="col-md-6">
               <label class="form-label">Doenças</label>
-              <div class="campo-voz"><input name="doencas" class="form-control" placeholder="Ferrugem, mancha…"><button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
+              <div class="campo-voz"><textarea name="doencas" rows="1" class="form-control auto-crescer" oninput="App.autoCrescer(this)" placeholder="Ferrugem, mancha…"></textarea><button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
             </div>
             <div class="col-md-6">
               <label class="form-label">Plantas daninhas</label>
-              <div class="campo-voz"><input name="plantas_daninhas" class="form-control" placeholder="Buva, azevém…"><button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
+              <div class="campo-voz"><textarea name="plantas_daninhas" rows="1" class="form-control auto-crescer" oninput="App.autoCrescer(this)" placeholder="Buva, azevém…"></textarea><button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
             </div>
             <div class="col-md-6">
               <label class="form-label">Deficiência nutricional</label>
-              <div class="campo-voz"><input name="deficiencia_nutricional" class="form-control" placeholder="N, K, Mn…"><button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
+              <div class="campo-voz"><textarea name="deficiencia_nutricional" rows="1" class="form-control auto-crescer" oninput="App.autoCrescer(this)" placeholder="N, K, Mn…"></textarea><button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
             </div>
             <div class="col-md-4">
               <label class="form-label">Condições climáticas</label>
@@ -106,7 +106,7 @@
             </div>
             <div class="col-md-8">
               <label class="form-label">Observações <span class="text-muted small">(use o microfone para ditar)</span></label>
-              <div class="campo-voz"><textarea name="observacoes" class="form-control" rows="3"></textarea><button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
+              <div class="campo-voz"><textarea name="observacoes" class="form-control auto-crescer" rows="2" oninput="App.autoCrescer(this)"></textarea><button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
             </div>
           </div>
         </div>
@@ -121,7 +121,7 @@
           </div>
           <label class="form-label">Recomendação técnica <span class="text-danger" title="Obrigatório para finalizar">*</span> <span class="text-muted small">(texto livre — pode ditar pelo microfone)</span></label>
           <div class="campo-voz">
-            <textarea name="recomendacao" class="form-control" rows="8" placeholder="Escreva ou carregue um modelo padrão…"></textarea>
+            <textarea name="recomendacao" class="form-control auto-crescer" rows="6" oninput="App.autoCrescer(this)" placeholder="Escreva ou carregue um modelo padrão…"></textarea>
             <button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button>
           </div>
         </div>

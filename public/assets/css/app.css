@@ -137,6 +137,8 @@ body.menu-recolhido #btnRecolherMenu { background: #e8f0e9; }
 .campo-voz .btn-voz:focus-visible { outline: 0; box-shadow: 0 0 0 3px rgba(46,125,50,.25); }
 /* Em textarea o botão fica no canto superior (não briga com a alça de redimensionar) */
 .campo-voz textarea + .btn-voz { top: .5rem; transform: none; }
+/* Campo que cresce com o conteúdo e pode ser aumentado à mão pela alça inferior */
+textarea.auto-crescer { resize: vertical; overflow: hidden; min-height: 38px; line-height: 1.4; }
 .campo-voz .btn-voz.gravando {
   background: #dc3545; color: #fff;
   animation: pulso-voz 1.2s ease-out infinite;

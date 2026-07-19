@@ -70,6 +70,14 @@ const App = {
     return (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   },
 
+  /** Cresce um textarea para caber todo o texto; respeita o aumento manual (alça). */
+  autoCrescer(el) {
+    if (!el || el.tagName !== 'TEXTAREA') return;
+    el.style.height = 'auto';
+    const manual = parseInt(el.dataset.alturaManual || '0', 10);
+    el.style.height = Math.max(el.scrollHeight, manual) + 'px';
+  },
+
   /** Escapa texto para inserção segura via innerHTML. */
   escapeHtml(v) {
     return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -167,6 +175,7 @@ const Voz = {
         if (ev.results[i].isFinal) {
           const texto = ev.results[i][0].transcript.trim();
           campo.value = (campo.value ? campo.value.trimEnd() + ' ' : '') + texto;
+          App.autoCrescer(campo);
         }
       }
     };
@@ -401,6 +410,7 @@ const Visitas = {
     document.getElementById('visitaTalhao').innerHTML = '';
     document.getElementById('visitaPainelComercial').innerHTML = '<span class="text-muted small">Selecione o cliente na etapa 1 para carregar os dados comerciais.</span>';
     document.getElementById('visitaModelos').innerHTML = '<span class="text-muted small">Escolha a cultura na etapa 1 para listar os modelos.</span>';
+    document.querySelectorAll('#formVisita textarea.auto-crescer').forEach(t => { delete t.dataset.alturaManual; t.style.height = ''; });
     Visitas.irParaEtapa(1);
     document.getElementById('visitaFotosPreview').innerHTML = '';
     Visitas.atualizarCompletude();
@@ -501,6 +511,7 @@ const Visitas = {
   usarModelo(texto) {
     const campo = document.querySelector('#formVisita [name=recomendacao]');
     campo.value = (campo.value ? campo.value.trimEnd() + '\n\n' : '') + texto;
+    App.autoCrescer(campo);
     App.alerta('Modelo carregado — ajuste o que for necessário.', 'info');
   },
 
@@ -985,6 +996,13 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   window.addEventListener('online', () => { atualizarIndicador(); if (typeof Offline !== 'undefined') Offline.sincronizar(); });
   window.addEventListener('offline', () => { atualizarIndicador(); if (typeof OfflineView !== 'undefined') OfflineView.aplicar(); });
+  // Se o usuário arrastar a alça de um campo auto-crescível, memoriza a altura escolhida
+  document.addEventListener('mouseup', ev => {
+    const el = ev.target;
+    if (el && el.classList && el.classList.contains('auto-crescer') && el.offsetHeight > el.scrollHeight + 4) {
+      el.dataset.alturaManual = el.offsetHeight;
+    }
+  });
   atualizarIndicador();
   if (typeof Offline !== 'undefined') { Pendencias.atualizar(); OfflineView.aplicar(); }
 });
