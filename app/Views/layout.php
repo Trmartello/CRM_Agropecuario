@@ -50,43 +50,86 @@ $logoRaio = (int) ConfigService::obter('logo_borda_raio', '10');
     </a>
     <?php endif; ?>
     <hr class="text-white-50 my-2">
-    <ul class="nav nav-pills flex-column mb-auto">
-      <?php
-        $rotaAtual = $_GET['r'] ?? 'dashboard';
-        if (Auth::perfil() === 'Produtor') {
-            // Portal do Produtor — menu enxuto
-            $menu = [
-                ['portal', 'bi-house-heart', 'Meu Portal'],
-            ];
-        } else {
-            $menu = [
-                ['dashboard', 'bi-speedometer2', 'Dashboard'],
-                ['agenda', 'bi-calendar-week', 'Agenda'],
-                ['clientes', 'bi-people', 'Clientes'],
-                ['visitas', 'bi-clipboard2-pulse', 'Visitas'],
-                ['mapa', 'bi-geo-alt', 'Mapa'],
-                ['pedidos', 'bi-cart3', 'Pedidos'],
-                ['despesas', 'bi-receipt', 'Despesas'],
-                ['reclamacoes', 'bi-exclamation-octagon', 'Reclamações'],
-                ['funil', 'bi-funnel', 'Funil'],
-                ['cap', 'bi-trophy', 'Metas CAP'],
-                ['relatorios/potencial', 'bi-bar-chart-line', 'Potencial'],
-            ];
-            if (in_array(Auth::perfil(), ['Administrador', 'Gestor Comercial', 'Gestor Técnico', 'Analista'], true)) {
-                $menu[] = ['gerencial', 'bi-graph-up-arrow', 'Gerencial'];
-                $menu[] = ['pacotes', 'bi-box-seam', 'Pacotes'];
-            }
-            if (Auth::perfil() === 'Administrador') {
-                $menu[] = ['usuarios', 'bi-person-gear', 'Usuários'];
-                $menu[] = ['integracao', 'bi-hdd-network', 'Integração'];
-            }
-        }
-      ?>
-      <?php foreach ($menu as [$rota, $icone, $rotulo]): ?>
+    <?php
+      $rotaAtual = $_GET['r'] ?? 'dashboard';
+      $rotaBase = explode('/', $rotaAtual)[0];
+      $ativo = fn (string $rota): bool => $rotaBase === explode('/', $rota)[0];
+
+      if (Auth::perfil() === 'Produtor') {
+          // Portal do Produtor — menu enxuto (sem grupos)
+          $itensSoltos = [['portal', 'bi-house-heart', 'Meu Portal']];
+          $grupos = [];
+      } else {
+          $ehGestao = in_array(Auth::perfil(), ['Administrador', 'Gestor Comercial', 'Gestor Técnico', 'Analista'], true);
+          $ehAdmin = Auth::perfil() === 'Administrador';
+
+          $itensSoltos = [['dashboard', 'bi-speedometer2', 'Dashboard']];
+
+          $comercial = [['pedidos', 'bi-cart3', 'Pedidos']];
+          if ($ehGestao) {
+              $comercial[] = ['pacotes', 'bi-box-seam', 'Pacotes'];
+          }
+          $comercial[] = ['funil', 'bi-funnel', 'Funil'];
+          $comercial[] = ['relatorios/potencial', 'bi-bar-chart-line', 'Potencial de Vendas'];
+          $comercial[] = ['cap', 'bi-trophy', 'Metas CAP'];
+
+          $gestao = [];
+          if ($ehGestao) {
+              $gestao[] = ['gerencial', 'bi-graph-up-arrow', 'Gerencial'];
+          }
+          if ($ehAdmin) {
+              $gestao[] = ['usuarios', 'bi-person-gear', 'Usuários'];
+              $gestao[] = ['integracao', 'bi-hdd-network', 'Integração'];
+          }
+
+          $grupos = [
+              ['Atendimento ao Produtor', 'bi-people', [
+                  ['clientes', 'bi-person-vcard', 'Produtores'],
+                  ['visitas', 'bi-clipboard2-pulse', 'Visitas'],
+                  ['agenda', 'bi-calendar-week', 'Agenda'],
+                  ['mapa', 'bi-geo-alt', 'Mapa'],
+                  ['reclamacoes', 'bi-exclamation-octagon', 'Reclamações'],
+              ]],
+              ['Comercial', 'bi-graph-up', $comercial],
+              ['Despesas', 'bi-receipt', [
+                  ['despesas', 'bi-receipt', 'KM e Refeição'],
+              ]],
+          ];
+          if ($gestao) {
+              $grupos[] = ['Gestão', 'bi-gear-wide-connected', $gestao];
+          }
+      }
+    ?>
+    <ul class="nav nav-pills flex-column mb-auto" id="menuPrincipal">
+      <?php foreach ($itensSoltos as [$rota, $icone, $rotulo]): ?>
       <li class="nav-item">
-        <a href="<?= url($rota) ?>" title="<?= e($rotulo) ?>" class="nav-link <?= str_starts_with($rotaAtual, explode('/', $rota)[0]) && (explode('/', $rotaAtual)[0] === explode('/', $rota)[0]) ? 'active' : 'text-white' ?>">
+        <a href="<?= url($rota) ?>" title="<?= e($rotulo) ?>" class="nav-link <?= $ativo($rota) ? 'active' : 'text-white' ?>">
           <i class="bi <?= $icone ?> me-2"></i><span class="rotulo"><?= $rotulo ?></span>
         </a>
+      </li>
+      <?php endforeach; ?>
+
+      <?php foreach ($grupos as $gi => [$gLabel, $gIcone, $itens]): ?>
+        <?php if (!$itens) { continue; }
+          $grupoAtivo = false;
+          foreach ($itens as $it) { if ($ativo($it[0])) { $grupoAtivo = true; break; } }
+          $collId = 'grupo' . $gi;
+        ?>
+      <li class="nav-item mt-1">
+        <button type="button" class="nav-link grupo-header w-100 d-flex align-items-center <?= $grupoAtivo ? '' : 'collapsed' ?>"
+                data-bs-toggle="collapse" data-bs-target="#<?= $collId ?>" aria-expanded="<?= $grupoAtivo ? 'true' : 'false' ?>" title="<?= e($gLabel) ?>">
+          <i class="bi <?= $gIcone ?> me-2"></i><span class="rotulo flex-grow-1 text-start"><?= $gLabel ?></span>
+          <i class="bi bi-chevron-down chevron rotulo"></i>
+        </button>
+        <ul class="nav nav-pills flex-column grupo-itens collapse <?= $grupoAtivo ? 'show' : '' ?>" id="<?= $collId ?>">
+          <?php foreach ($itens as [$rota, $icone, $rotulo]): ?>
+          <li class="nav-item">
+            <a href="<?= url($rota) ?>" title="<?= e($rotulo) ?>" class="nav-link ps-4 <?= $ativo($rota) ? 'active' : 'text-white' ?>">
+              <i class="bi <?= $icone ?> me-2"></i><span class="rotulo"><?= $rotulo ?></span>
+            </a>
+          </li>
+          <?php endforeach; ?>
+        </ul>
       </li>
       <?php endforeach; ?>
     </ul>

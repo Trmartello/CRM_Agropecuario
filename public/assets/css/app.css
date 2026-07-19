@@ -33,6 +33,12 @@ body { background: #f4f6f4; }
 .sidebar .nav-link { color: rgba(255,255,255,.85); border-radius: .5rem; padding: .65rem .75rem; font-size: 1.02rem; }
 .sidebar .nav-link:hover { background: rgba(255,255,255,.08); color: #fff; }
 .sidebar .nav-link.active { background: rgba(255,255,255,.18); color: #fff; font-weight: 600; }
+/* Cabeçalho de grupo (módulo) */
+.sidebar .grupo-header { background: transparent; border: 0; font-size: .74rem; text-transform: uppercase; letter-spacing: .04em; color: rgba(255,255,255,.6); padding: .55rem .75rem .3rem; }
+.sidebar .grupo-header:hover { color: rgba(255,255,255,.9); background: transparent; }
+.sidebar .grupo-header .chevron { font-size: .8rem; transition: transform .2s ease; }
+.sidebar .grupo-header.collapsed .chevron { transform: rotate(-90deg); }
+.sidebar .grupo-itens .nav-link { font-size: .98rem; }
 
 .topo {
   height: 56px;
@@ -53,6 +59,9 @@ body { background: #f4f6f4; }
   body.menu-recolhido .sidebar .logo-cartao { display: none !important; }
   body.menu-recolhido .sidebar .nav-link { text-align: center; padding-left: .4rem; padding-right: .4rem; }
   body.menu-recolhido .sidebar .nav-link i { margin-right: 0 !important; }
+  /* Recolhido: some com cabeçalhos de grupo e mostra os itens como ícones */
+  body.menu-recolhido .sidebar .grupo-header { display: none !important; }
+  body.menu-recolhido .sidebar .grupo-itens { display: block !important; height: auto !important; }
   body.menu-recolhido .sidebar .logo-mini {
     display: block; width: 44px; height: 44px; margin: 0 auto;
     object-fit: contain; background: #fff; border-radius: .5rem; padding: 4px;
