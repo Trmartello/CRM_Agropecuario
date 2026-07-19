@@ -15,16 +15,25 @@ class ComercialService
     /** Queda de compra acima deste percentual marca risco de churn. */
     public const LIMIAR_CHURN = 0.30;
 
+    /** Cache por requisição (as safras não mudam no meio de uma página). */
+    private static array $cacheSafras = [];
+
     public static function safraAtual(): ?array
     {
-        return Database::um('SELECT * FROM safras WHERE atual = 1 LIMIT 1');
+        if (!array_key_exists('atual', self::$cacheSafras)) {
+            self::$cacheSafras['atual'] = Database::um('SELECT * FROM safras WHERE atual = 1 LIMIT 1');
+        }
+        return self::$cacheSafras['atual'];
     }
 
     public static function safraAnterior(): ?array
     {
-        return Database::um(
-            'SELECT * FROM safras WHERE atual = 0 ORDER BY data_inicio DESC LIMIT 1'
-        );
+        if (!array_key_exists('anterior', self::$cacheSafras)) {
+            self::$cacheSafras['anterior'] = Database::um(
+                'SELECT * FROM safras WHERE atual = 0 ORDER BY data_inicio DESC LIMIT 1'
+            );
+        }
+        return self::$cacheSafras['anterior'];
     }
 
     /** Compras do cliente em uma safra, com produto e família. */
@@ -117,10 +126,26 @@ class ComercialService
      */
     public static function quedaCompra(int $clienteId): array
     {
+        return self::quedaCompraLote([$clienteId])[$clienteId];
+    }
+
+    /**
+     * Queda de compra (anti-churn) de VÁRIOS clientes em 2 consultas agregadas
+     * — usada pela priorização/snapshot para não fazer consultas por cliente.
+     */
+    public static function quedaCompraLote(array $clienteIds): array
+    {
+        $vazio = ['queda' => 0, 'risco_churn' => false, 'total_atual' => 0, 'total_anterior_periodo' => 0];
+        $ids = array_values(array_unique(array_map('intval', $clienteIds)));
+        if (!$ids) {
+            return [];
+        }
+        $resultado = array_fill_keys($ids, $vazio);
+
         $atual = self::safraAtual();
         $anterior = self::safraAnterior();
         if (!$atual || !$anterior) {
-            return ['queda' => 0, 'risco_churn' => false, 'total_atual' => 0, 'total_anterior_periodo' => 0];
+            return $resultado;
         }
 
         // Dias decorridos da safra atual → mesmo recorte na safra anterior
@@ -129,27 +154,42 @@ class ComercialService
             [$atual['id']]
         );
 
-        $totalAtual = (float) Database::valor(
-            'SELECT COALESCE(SUM(valor_total),0) FROM compras WHERE cliente_id = ? AND safra_id = ?',
-            [$clienteId, $atual['id']]
-        );
-        $totalAnteriorPeriodo = (float) Database::valor(
-            'SELECT COALESCE(SUM(valor_total),0) FROM compras co
-              WHERE cliente_id = ? AND safra_id = ?
-                AND co.data_compra <= DATE_ADD(?, INTERVAL ? DAY)',
-            [$clienteId, $anterior['id'], $anterior['data_inicio'], $diasDecorridos]
-        );
+        $marcadores = implode(',', array_fill(0, count($ids), '?'));
+        $totaisAtuais = [];
+        foreach (Database::todos(
+            "SELECT cliente_id, COALESCE(SUM(valor_total),0) AS total
+               FROM compras WHERE safra_id = ? AND cliente_id IN ({$marcadores})
+              GROUP BY cliente_id",
+            array_merge([$atual['id']], $ids)
+        ) as $l) {
+            $totaisAtuais[(int) $l['cliente_id']] = (float) $l['total'];
+        }
+        $totaisAnteriores = [];
+        foreach (Database::todos(
+            "SELECT cliente_id, COALESCE(SUM(valor_total),0) AS total
+               FROM compras
+              WHERE safra_id = ? AND data_compra <= DATE_ADD(?, INTERVAL ? DAY)
+                AND cliente_id IN ({$marcadores})
+              GROUP BY cliente_id",
+            array_merge([$anterior['id'], $anterior['data_inicio'], $diasDecorridos], $ids)
+        ) as $l) {
+            $totaisAnteriores[(int) $l['cliente_id']] = (float) $l['total'];
+        }
 
-        $queda = $totalAnteriorPeriodo > 0
-            ? max(0.0, 1 - ($totalAtual / $totalAnteriorPeriodo))
-            : 0.0;
-
-        return [
-            'queda' => $queda,
-            'risco_churn' => $queda > self::LIMIAR_CHURN,
-            'total_atual' => $totalAtual,
-            'total_anterior_periodo' => $totalAnteriorPeriodo,
-        ];
+        foreach ($ids as $id) {
+            $totalAtual = $totaisAtuais[$id] ?? 0.0;
+            $totalAnteriorPeriodo = $totaisAnteriores[$id] ?? 0.0;
+            $queda = $totalAnteriorPeriodo > 0
+                ? max(0.0, 1 - ($totalAtual / $totalAnteriorPeriodo))
+                : 0.0;
+            $resultado[$id] = [
+                'queda' => $queda,
+                'risco_churn' => $queda > self::LIMIAR_CHURN,
+                'total_atual' => $totalAtual,
+                'total_anterior_periodo' => $totalAnteriorPeriodo,
+            ];
+        }
+        return $resultado;
     }
 
     /** Histórico completo de compras (todas as safras) — consulta comercial. */

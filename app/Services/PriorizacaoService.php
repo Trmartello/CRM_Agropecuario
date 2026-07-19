@@ -54,6 +54,9 @@ class PriorizacaoService
         $maxVolume = max(array_map(fn ($c) => (float) $c['volume_compra_anual'], $clientes)) ?: 1;
         $maxPotencial = max(array_map(fn ($c) => (float) $c['potencial_venda'], $clientes)) ?: 1;
 
+        // Anti-churn de toda a carteira em 2 consultas (não 1 por cliente)
+        $quedas = ComercialService::quedaCompraLote(array_map(fn ($c) => (int) $c['id'], $clientes));
+
         foreach ($clientes as &$c) {
             $dias = $c['ultima_visita']
                 ? (int) floor((time() - strtotime($c['ultima_visita'])) / 86400)
@@ -69,7 +72,7 @@ class PriorizacaoService
             $fatorVolume = (float) $c['volume_compra_anual'] / $maxVolume;
             $fatorPotencial = (float) $c['potencial_venda'] / $maxPotencial;
 
-            $queda = ComercialService::quedaCompra((int) $c['id']);
+            $queda = $quedas[(int) $c['id']];
             $fatorChurn = $queda['risco_churn'] ? 1.0 : min(1.0, $queda['queda'] / ComercialService::LIMIAR_CHURN * 0.5);
 
             $score =
