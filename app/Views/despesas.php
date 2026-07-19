@@ -1,0 +1,238 @@
+<?php
+use App\Core\Auth;
+$mesLabel = function (?string $ym): string {
+    if (!$ym || !preg_match('/^\d{4}-\d{2}$/', $ym)) return '—';
+    $meses = [1=>'jan',2=>'fev',3=>'mar',4=>'abr',5=>'mai',6=>'jun',7=>'jul',8=>'ago',9=>'set',10=>'out',11=>'nov',12=>'dez'];
+    [$a,$m] = explode('-', $ym);
+    return ($meses[(int)$m] ?? $m) . '/' . $a;
+};
+$statusCor = ['Aberta'=>'secondary','Enviada'=>'info','Aprovada'=>'success','Rejeitada'=>'danger'];
+?>
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <p class="text-muted mb-0">
+    Quilometragem, refeições e prestação de contas mensal.
+    <?php if ($categoria): ?>
+      <span class="badge text-bg-light border text-dark ms-1">Sua categoria: <?= e($categoria['nome']) ?> · <?= moeda($categoria['valor_km']) ?>/km</span>
+    <?php else: ?>
+      <span class="badge text-bg-warning ms-1">Sem categoria de reembolso definida</span>
+    <?php endif; ?>
+  </p>
+  <div class="d-flex gap-2">
+    <button class="btn btn-outline-success" onclick="Despesas.novoKm()"><i class="bi bi-signpost-2 me-1"></i>Lançar KM</button>
+    <button class="btn btn-success" onclick="Despesas.novaRefeicao()"><i class="bi bi-cup-hot me-1"></i>Lançar Refeição</button>
+  </div>
+</div>
+
+<?php if ($ehGestor): ?>
+<form class="row g-2 align-items-end mb-3" method="get">
+  <input type="hidden" name="r" value="despesas">
+  <div class="col-auto">
+    <label class="form-label small mb-0">Usuário</label>
+    <select name="usuario_id" class="form-select form-select-sm">
+      <option value="0">Toda a equipe</option>
+      <?php foreach ($equipe as $u): ?>
+        <option value="<?= $u['id'] ?>" <?= $filtroUsuario === (int)$u['id'] ? 'selected' : '' ?>><?= e($u['nome']) ?></option>
+      <?php endforeach; ?>
+    </select>
+  </div>
+  <div class="col-auto">
+    <label class="form-label small mb-0">Mês</label>
+    <input type="month" name="mes" value="<?= e($mes) ?>" class="form-control form-control-sm">
+  </div>
+  <div class="col-auto">
+    <button class="btn btn-sm btn-outline-secondary"><i class="bi bi-filter me-1"></i>Filtrar</button>
+  </div>
+</form>
+<?php endif; ?>
+
+<ul class="nav nav-tabs mb-3" role="tablist">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabKm" type="button"><i class="bi bi-signpost-2 me-1"></i>Quilometragem</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabRefeicoes" type="button"><i class="bi bi-cup-hot me-1"></i>Refeições</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabPrestacao" type="button"><i class="bi bi-file-earmark-text me-1"></i>Prestação de Contas</button></li>
+</ul>
+
+<div class="tab-content">
+  <!-- ABA: QUILOMETRAGEM -->
+  <div class="tab-pane fade show active" id="tabKm">
+    <div class="card"><div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light"><tr>
+          <th>Data</th><?php if ($ehGestor): ?><th>Usuário</th><?php endif; ?>
+          <th class="d-none d-md-table-cell">Veículo</th><th class="d-none d-md-table-cell">Destino</th>
+          <th class="text-end">KM</th><th class="text-end">Valor</th><th></th>
+        </tr></thead>
+        <tbody>
+          <?php if (!$km): ?><tr><td colspan="7" class="text-center text-muted py-4">Nenhum lançamento no período.</td></tr><?php endif; ?>
+          <?php foreach ($km as $l): ?>
+          <tr>
+            <td><?= data_br($l['data']) ?></td>
+            <?php if ($ehGestor): ?><td class="small"><?= e($l['usuario']) ?></td><?php endif; ?>
+            <td class="d-none d-md-table-cell small"><?= e($l['veiculo'] ?? '—') ?></td>
+            <td class="d-none d-md-table-cell small"><?= e($l['destino'] ?? ($l['cliente'] ?? '—')) ?></td>
+            <td class="text-end"><?= numero($l['km_rodados'], 1) ?></td>
+            <td class="text-end fw-semibold"><?= moeda($l['valor']) ?></td>
+            <td class="text-end">
+              <?php if (!$l['prestacao_id'] && ($ehGestor || (int)$l['usuario_id'] === Auth::id())): ?>
+              <button class="btn btn-sm btn-outline-danger" title="Excluir" onclick="Despesas.excluir('km', <?= $l['id'] ?>)"><i class="bi bi-trash"></i></button>
+              <?php elseif ($l['prestacao_id']): ?><span class="badge text-bg-light border text-muted">consolidado</span><?php endif; ?>
+            </td>
+          </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+
+  <!-- ABA: REFEIÇÕES -->
+  <div class="tab-pane fade" id="tabRefeicoes">
+    <div class="card"><div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light"><tr>
+          <th>Data</th><?php if ($ehGestor): ?><th>Usuário</th><?php endif; ?>
+          <th class="d-none d-md-table-cell">Estabelecimento</th><th class="d-none d-md-table-cell">Justificativa</th>
+          <th class="text-end">Valor</th><th></th>
+        </tr></thead>
+        <tbody>
+          <?php if (!$refeicoes): ?><tr><td colspan="6" class="text-center text-muted py-4">Nenhuma refeição no período.</td></tr><?php endif; ?>
+          <?php foreach ($refeicoes as $l): ?>
+          <tr>
+            <td><?= data_br($l['data']) ?></td>
+            <?php if ($ehGestor): ?><td class="small"><?= e($l['usuario']) ?></td><?php endif; ?>
+            <td class="d-none d-md-table-cell small"><?= e($l['estabelecimento'] ?? '—') ?></td>
+            <td class="d-none d-md-table-cell small text-muted"><?= e($l['justificativa'] ?? '—') ?></td>
+            <td class="text-end fw-semibold"><?= moeda($l['valor']) ?></td>
+            <td class="text-end">
+              <?php if (!$l['prestacao_id'] && ($ehGestor || (int)$l['usuario_id'] === Auth::id())): ?>
+              <button class="btn btn-sm btn-outline-danger" title="Excluir" onclick="Despesas.excluir('refeicao', <?= $l['id'] ?>)"><i class="bi bi-trash"></i></button>
+              <?php elseif ($l['prestacao_id']): ?><span class="badge text-bg-light border text-muted">consolidado</span><?php endif; ?>
+            </td>
+          </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+
+  <!-- ABA: PRESTAÇÃO DE CONTAS -->
+  <div class="tab-pane fade" id="tabPrestacao">
+    <div class="card mb-3 border-success">
+      <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-3">
+        <div>
+          <h6 class="mb-1"><i class="bi bi-calendar-check me-1 text-success"></i>Prestação do mês corrente (<?= $mesLabel(date('Y-m')) ?>)</h6>
+          <div class="small text-muted">
+            KM: <strong><?= numero($previa['total_km'], 1) ?></strong> (<?= moeda($previa['total_km_valor']) ?>) ·
+            Refeições: <strong><?= moeda($previa['total_refeicoes']) ?></strong> ·
+            <span class="text-dark">Total a consolidar: <strong><?= moeda($previa['total_geral']) ?></strong></span>
+          </div>
+        </div>
+        <button class="btn btn-success" onclick="Despesas.gerarPrestacao(<?= $previa['ano'] ?>, <?= $previa['mes'] ?>)"
+                <?= $previa['total_geral'] <= 0 ? 'disabled' : '' ?>>
+          <i class="bi bi-file-earmark-plus me-1"></i>Gerar prestação do mês
+        </button>
+      </div>
+    </div>
+
+    <div class="card"><div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light"><tr>
+          <th>Competência</th><?php if ($ehGestor): ?><th>Usuário</th><?php endif; ?>
+          <th class="text-end">KM (R$)</th><th class="text-end">Refeições</th><th class="text-end">Total</th>
+          <th>Status</th><th class="text-end"></th>
+        </tr></thead>
+        <tbody>
+          <?php if (!$prestacoes): ?><tr><td colspan="7" class="text-center text-muted py-4">Nenhuma prestação gerada.</td></tr><?php endif; ?>
+          <?php foreach ($prestacoes as $p): ?>
+          <tr>
+            <td class="fw-semibold"><?= $mesLabel(sprintf('%04d-%02d', $p['ano'], $p['mes'])) ?></td>
+            <?php if ($ehGestor): ?><td class="small"><?= e($p['usuario']) ?></td><?php endif; ?>
+            <td class="text-end"><?= moeda($p['total_km_valor']) ?></td>
+            <td class="text-end"><?= moeda($p['total_refeicoes']) ?></td>
+            <td class="text-end fw-semibold"><?= moeda($p['total_geral']) ?></td>
+            <td><span class="badge text-bg-<?= $statusCor[$p['status']] ?? 'secondary' ?>"><?= e($p['status']) ?></span></td>
+            <td class="text-end text-nowrap">
+              <button class="btn btn-sm btn-outline-secondary" title="Ver" onclick="Despesas.verPrestacao(<?= $p['id'] ?>)"><i class="bi bi-eye"></i></button>
+              <?php if (!$ehGestor && (int)$p['usuario_id'] === Auth::id() && in_array($p['status'], ['Aberta','Rejeitada'], true)): ?>
+              <button class="btn btn-sm btn-outline-primary" title="Enviar para aprovação" onclick="Despesas.enviarPrestacao(<?= $p['id'] ?>)"><i class="bi bi-send"></i></button>
+              <?php endif; ?>
+              <?php if ($ehGestor && $p['status'] === 'Enviada' && in_array(Auth::perfil(), ['Administrador','Gestor Comercial','Gestor Técnico'], true)): ?>
+              <button class="btn btn-sm btn-outline-success" title="Avaliar" onclick="Despesas.avaliar(<?= $p['id'] ?>)"><i class="bi bi-check2-square"></i></button>
+              <?php endif; ?>
+            </td>
+          </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+</div>
+
+<!-- Modal: Quilometragem -->
+<div class="modal fade" id="modalKm" tabindex="-1">
+  <div class="modal-dialog modal-fullscreen-sm-down">
+    <form class="modal-content" id="formKm" onsubmit="return Despesas.salvarKm(event)">
+      <div class="modal-header"><h5 class="modal-title"><i class="bi bi-signpost-2 me-2 text-success"></i>Lançar Quilometragem</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label">Data *</label><input type="date" name="data" class="form-control" value="<?= date('Y-m-d') ?>" required></div>
+          <div class="col-md-6"><label class="form-label">Veículo</label><input name="veiculo" class="form-control" placeholder="Modelo — placa"></div>
+          <div class="col-6"><label class="form-label">KM inicial *</label><input type="number" step="0.1" name="km_inicial" class="form-control" required oninput="Despesas.previewKm()"></div>
+          <div class="col-6"><label class="form-label">KM final *</label><input type="number" step="0.1" name="km_final" class="form-control" required oninput="Despesas.previewKm()"></div>
+          <div class="col-12">
+            <div class="alert alert-light border mb-0 py-2 small" id="kmPreview">Informe os KM para calcular o valor.</div>
+          </div>
+          <div class="col-md-6"><label class="form-label">Cliente (opcional)</label>
+            <select name="cliente_id" class="form-select"><option value="0">—</option>
+              <?php foreach ($clientes as $c): ?><option value="<?= $c['id'] ?>"><?= e($c['nome']) ?></option><?php endforeach; ?>
+            </select>
+          </div>
+          <div class="col-md-6"><label class="form-label">Destino</label><input name="destino" class="form-control" placeholder="Localidade/município"></div>
+          <div class="col-12"><label class="form-label">Motivo</label><input name="motivo" class="form-control" placeholder="Ex.: visita técnica, entrega de proposta…"></div>
+        </div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-success"><i class="bi bi-check-lg me-1"></i>Salvar</button></div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: Refeição -->
+<div class="modal fade" id="modalRefeicao" tabindex="-1">
+  <div class="modal-dialog modal-fullscreen-sm-down">
+    <form class="modal-content" id="formRefeicao" onsubmit="return Despesas.salvarRefeicao(event)">
+      <div class="modal-header"><h5 class="modal-title"><i class="bi bi-cup-hot me-2 text-success"></i>Lançar Refeição</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label">Data *</label><input type="date" name="data" class="form-control" value="<?= date('Y-m-d') ?>" required></div>
+          <div class="col-md-6"><label class="form-label">Valor *</label><input type="number" step="0.01" min="0" name="valor" class="form-control" required></div>
+          <div class="col-md-6"><label class="form-label">Estabelecimento</label><input name="estabelecimento" class="form-control"></div>
+          <div class="col-md-6"><label class="form-label">Cliente (opcional)</label>
+            <select name="cliente_id" class="form-select"><option value="0">—</option>
+              <?php foreach ($clientes as $c): ?><option value="<?= $c['id'] ?>"><?= e($c['nome']) ?></option><?php endforeach; ?>
+            </select>
+          </div>
+          <div class="col-12"><label class="form-label">Justificativa</label><input name="justificativa" class="form-control" placeholder="Ex.: almoço durante visita a produtor"></div>
+          <?php if ($categoria && (float)$categoria['teto_refeicao'] > 0): ?>
+          <div class="col-12"><div class="alert alert-light border mb-0 py-2 small">Teto da sua categoria: <?= moeda($categoria['teto_refeicao']) ?> por refeição.</div></div>
+          <?php endif; ?>
+        </div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-success"><i class="bi bi-check-lg me-1"></i>Salvar</button></div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: detalhe/avaliação da prestação -->
+<div class="modal fade" id="modalPrestacao" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-fullscreen-sm-down">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title"><i class="bi bi-file-earmark-text me-2 text-success"></i>Prestação de Contas</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body" id="prestacaoCorpo"></div>
+    </div>
+  </div>
+</div>
+
+<script src="assets/js/despesas.js?v=<?= filemtime(dirname(__DIR__, 2) . '/public/assets/js/despesas.js') ?>"></script>

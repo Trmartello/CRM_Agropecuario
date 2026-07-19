@@ -97,6 +97,17 @@ $router->registrar('pedidos/faturar', \App\Controllers\PedidosController::class,
 $router->registrar('pedidos/cancelar', \App\Controllers\PedidosController::class, 'cancelar');
 $router->registrar('pedidos/detalhe', \App\Controllers\PedidosController::class, 'detalhe');
 
+// Despesas: quilometragem, refeições e prestação de contas (Fase 3)
+$router->registrar('despesas', \App\Controllers\DespesasController::class, 'index');
+$router->registrar('despesas/salvar-km', \App\Controllers\DespesasController::class, 'salvarKm');
+$router->registrar('despesas/salvar-refeicao', \App\Controllers\DespesasController::class, 'salvarRefeicao');
+$router->registrar('despesas/excluir-km', \App\Controllers\DespesasController::class, 'excluirKm');
+$router->registrar('despesas/excluir-refeicao', \App\Controllers\DespesasController::class, 'excluirRefeicao');
+$router->registrar('despesas/gerar-prestacao', \App\Controllers\DespesasController::class, 'gerarPrestacao');
+$router->registrar('despesas/enviar-prestacao', \App\Controllers\DespesasController::class, 'enviarPrestacao');
+$router->registrar('despesas/avaliar-prestacao', \App\Controllers\DespesasController::class, 'avaliarPrestacao');
+$router->registrar('despesas/detalhe-prestacao', \App\Controllers\DespesasController::class, 'detalhePrestacao');
+
 // Pacotes Agrícolas (Fase 2)
 $router->registrar('pacotes', \App\Controllers\PacotesController::class, 'index');
 $router->registrar('pacotes/obter', \App\Controllers\PacotesController::class, 'obter');

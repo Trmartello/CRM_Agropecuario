@@ -58,6 +58,7 @@ $logoRaio = (int) ConfigService::obter('logo_borda_raio', '10');
             ['clientes', 'bi-people', 'Clientes'],
             ['visitas', 'bi-clipboard2-pulse', 'Visitas'],
             ['pedidos', 'bi-cart3', 'Pedidos'],
+            ['despesas', 'bi-receipt', 'Despesas'],
             ['funil', 'bi-funnel', 'Funil'],
             ['cap', 'bi-trophy', 'Metas CAP'],
             ['relatorios/potencial', 'bi-bar-chart-line', 'Potencial'],
