@@ -19,6 +19,29 @@ const App = {
     return App.json(url, { method: 'POST', body: new FormData(form) });
   },
 
+  /**
+   * Envia um formulário/FormData com suporte offline: sem conexão (ou se a rede
+   * cair no meio), guarda na fila local e devolve { ok:true, offline:true }.
+   * Erros de negócio (validação do servidor) continuam sendo lançados.
+   */
+  async enviarFormOffline(origem, url, opc = {}) {
+    const rota = String(url).replace(/^.*[?&]r=/, '').replace(/&.*$/, '');
+    const fd = origem instanceof FormData ? origem : new FormData(origem);
+    if (!navigator.onLine) {
+      await Offline.enfileirar(rota, fd, opc);
+      return { ok: true, offline: true };
+    }
+    try {
+      return await App.json(url, { method: 'POST', body: fd });
+    } catch (e) {
+      if (e instanceof TypeError) { // falha de REDE (não de negócio) → enfileira
+        await Offline.enfileirar(rota, fd, opc);
+        return { ok: true, offline: true };
+      }
+      throw e;
+    }
+  },
+
   alerta(mensagem, tipo = 'success') {
     const div = document.createElement('div');
     div.className = `toast align-items-center text-bg-${tipo} border-0 show mb-2`;
@@ -619,17 +642,16 @@ const Visitas = {
       if (!confirm(msg)) return false;
     }
     try {
-      if (!navigator.onLine) {
-        // Sem conexão: guarda na fila local e sincroniza depois
-        await Offline.guardarVisita(form);
-        bootstrap.Modal.getInstance('#modalVisita').hide();
-        App.alerta('Sem conexão: visita guardada no aparelho. Será enviada automaticamente quando a internet voltar.', 'info');
-        return false;
-      }
-      await App.enviarForm(form, 'index.php?r=visitas/salvar');
+      const sel = document.getElementById('visitaCliente');
+      const nome = sel && sel.selectedOptions[0] ? sel.selectedOptions[0].text : 'Visita';
+      const r = await App.enviarFormOffline(form, 'index.php?r=visitas/salvar', { modulo: 'Visitas', rotulo: 'Visita — ' + nome });
       bootstrap.Modal.getInstance('#modalVisita').hide();
-      App.alerta('Visita registrada com sucesso.');
-      setTimeout(() => location.href = 'index.php?r=visitas', 700);
+      if (r.offline) {
+        App.alerta('Sem conexão: visita guardada no aparelho. Será enviada quando a internet voltar.', 'info');
+      } else {
+        App.alerta('Visita registrada com sucesso.');
+        setTimeout(() => location.href = 'index.php?r=visitas', 700);
+      }
     } catch (e) { App.alerta(e.message, 'danger'); }
     return false;
   },
@@ -935,7 +957,64 @@ document.addEventListener('DOMContentLoaded', () => {
     const badge = document.getElementById('indicadorOffline');
     if (badge) badge.classList.toggle('d-none', navigator.onLine);
   };
-  window.addEventListener('online', () => { atualizarIndicador(); if (window.Offline) Offline.sincronizar(); });
+  window.addEventListener('online', () => { atualizarIndicador(); if (typeof Offline !== 'undefined') Offline.sincronizar(); });
   window.addEventListener('offline', atualizarIndicador);
   atualizarIndicador();
+  if (typeof Offline !== 'undefined') Pendencias.atualizar();
 });
+
+/* ===================== PENDÊNCIAS DE ENVIO (offline) ===================== */
+
+const Pendencias = {
+  async atualizar() {
+    const itens = await Offline.listar();
+    const btn = document.getElementById('btnPendencias');
+    const cont = document.getElementById('pendenciasContador');
+    if (!btn || !cont) return;
+    cont.textContent = itens.length;
+    btn.classList.toggle('d-none', itens.length === 0);
+    const corpo = document.getElementById('pendenciasCorpo');
+    if (corpo && corpo.offsetParent !== null) Pendencias.render(itens);
+  },
+
+  async abrir() {
+    Pendencias.render(await Offline.listar());
+    new bootstrap.Offcanvas('#painelPendencias').show();
+  },
+
+  render(itens) {
+    const corpo = document.getElementById('pendenciasCorpo');
+    if (!corpo) return;
+    if (!itens.length) {
+      corpo.innerHTML = '<p class="text-muted small p-3 mb-0">Nada pendente — tudo sincronizado.</p>';
+      return;
+    }
+    corpo.innerHTML = itens.map(r => `
+      <div class="list-group-item">
+        <div class="d-flex justify-content-between align-items-start gap-2">
+          <div class="flex-grow-1">
+            <div class="fw-semibold small">${App.escapeHtml(r.rotulo || r.rota)}</div>
+            <div class="text-muted" style="font-size:.78rem">${App.escapeHtml(r.modulo || '')} · ${App.escapeHtml(new Date(r.criado_em).toLocaleString('pt-BR'))}</div>
+            ${r.erro
+              ? `<div class="text-danger small mt-1"><i class="bi bi-exclamation-triangle me-1"></i>${App.escapeHtml(r.erro)}</div>`
+              : '<div class="text-muted small mt-1"><i class="bi bi-clock-history me-1"></i>aguardando envio</div>'}
+          </div>
+          <div class="btn-group-vertical btn-group-sm flex-shrink-0">
+            ${r.erro ? `<button class="btn btn-outline-success" onclick="Pendencias.tentar(${Number(r.id)})" title="Tentar novamente"><i class="bi bi-arrow-repeat"></i></button>` : ''}
+            <button class="btn btn-outline-danger" onclick="Pendencias.descartar(${Number(r.id)})" title="Descartar"><i class="bi bi-trash"></i></button>
+          </div>
+        </div>
+      </div>`).join('');
+  },
+
+  async tentar(id) {
+    if (!navigator.onLine) { App.alerta('Sem conexão — conecte-se para reenviar.', 'warning'); return; }
+    await Offline.tentarNovamente(id);
+  },
+
+  async descartar(id) {
+    if (!confirm('Descartar este lançamento pendente? Ele não será enviado.')) return;
+    await Offline.remover(id);
+    App.alerta('Lançamento pendente descartado.', 'info');
+  },
+};

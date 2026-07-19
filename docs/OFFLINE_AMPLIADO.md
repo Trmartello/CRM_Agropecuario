@@ -97,8 +97,10 @@ uma com o usuário.
 
 ## 6. Fases de entrega
 
-- **O1 — Fila genérica + Despesas/Agenda/Reclamações offline.** Reaproveita o
-  pipeline de visitas; menor risco, alto valor. Inclui painel de pendências.
+- **O1 — Fila genérica + Despesas/Agenda/Reclamações offline. ✅ ENTREGUE.**
+  `fila_sync` no IndexedDB (v2), `App.enviarFormOffline`, painel de "Pendências
+  de envio", auto-sync com guard de reentrância, e *runtime caching* dos assets
+  versionados no service worker. Falta a idempotência (vai na O3).
 - **O2 — Snapshot da carteira + leitura offline.** Endpoint `sync/carteira`,
   stores de leitura e camada de dados nas telas (Produtores, Priorização,
   Organizador, apoio do modal de visita).

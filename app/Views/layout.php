@@ -158,6 +158,11 @@ $logoRaio = (int) ConfigService::obter('logo_borda_raio', '10');
       <h1 class="h5 mb-0 flex-grow-1"><?= e($titulo ?? '') ?></h1>
       <span id="indicadorOffline" class="badge text-bg-warning d-none"><i class="bi bi-wifi-off me-1"></i>Offline</span>
       <span id="indicadorSync" class="badge text-bg-info d-none"><i class="bi bi-arrow-repeat me-1"></i>Sincronizando…</span>
+      <!-- Pendências de envio (fila offline) -->
+      <button class="btn btn-light border position-relative d-none" id="btnPendencias" aria-label="Pendências de envio" title="Lançamentos aguardando envio" onclick="Pendencias.abrir()">
+        <i class="bi bi-cloud-arrow-up"></i>
+        <span id="pendenciasContador" class="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-warning">0</span>
+      </button>
       <!-- Sino de notificações -->
       <div class="dropdown">
         <button class="btn btn-light border position-relative" id="btnSino" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-label="Notificações" onclick="Notificacoes.abrir()">
@@ -177,6 +182,18 @@ $logoRaio = (int) ConfigService::obter('logo_borda_raio', '10');
       <?php require $conteudoView; ?>
     </div>
   </main>
+</div>
+
+<!-- Painel de pendências de envio (fila offline) -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="painelPendencias" aria-labelledby="painelPendenciasTitulo">
+  <div class="offcanvas-header border-bottom">
+    <h5 class="offcanvas-title" id="painelPendenciasTitulo"><i class="bi bi-cloud-arrow-up me-2 text-warning"></i>Pendências de envio</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Fechar"></button>
+  </div>
+  <div class="offcanvas-body p-0">
+    <p class="text-muted small px-3 pt-3 mb-2">Lançamentos feitos sem conexão. São enviados sozinhos quando a internet volta.</p>
+    <div class="list-group list-group-flush" id="pendenciasCorpo"></div>
+  </div>
 </div>
 
 <div id="alertas" class="position-fixed bottom-0 end-0 p-3" style="z-index:1080"></div>

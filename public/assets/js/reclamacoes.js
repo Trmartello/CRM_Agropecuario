@@ -13,8 +13,10 @@ const Reclamacoes = {
   async salvar(ev) {
     ev.preventDefault();
     try {
-      await App.enviarForm(ev.target, 'index.php?r=reclamacoes/salvar');
+      const form = ev.target;
+      const r = await App.enviarFormOffline(form, 'index.php?r=reclamacoes/salvar', { modulo: 'Reclamações', rotulo: 'Reclamação registrada' });
       bootstrap.Modal.getInstance('#modalReclamacao').hide();
+      if (r.offline) { App.alerta('Sem conexão: reclamação guardada no aparelho. Será enviada quando a internet voltar.', 'info'); return false; }
       App.alerta('Reclamação registrada.');
       setTimeout(() => location.reload(), 700);
     } catch (e) { App.alerta(e.message, 'danger'); }

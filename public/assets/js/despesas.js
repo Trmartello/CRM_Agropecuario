@@ -186,8 +186,13 @@ const Despesas = {
   async salvarKm(ev) {
     ev.preventDefault();
     try {
-      const r = await App.enviarForm(ev.target, 'index.php?r=despesas/salvar-km');
+      const form = ev.target;
+      const ini = parseFloat(form.querySelector('[name=km_inicial]').value) || 0;
+      const fim = parseFloat(form.querySelector('[name=km_final]').value) || 0;
+      const rotulo = 'KM ' + (form.querySelector('[name=data]').value || '') + ' — ' + (fim - ini).toFixed(1) + ' km';
+      const r = await App.enviarFormOffline(form, 'index.php?r=despesas/salvar-km', { modulo: 'Despesas', rotulo });
       bootstrap.Modal.getInstance('#modalKm').hide();
+      if (r.offline) { App.alerta('Sem conexão: KM guardada no aparelho. Será enviada quando a internet voltar.', 'info'); return false; }
       App.alerta('Quilometragem lançada. Valor: ' + App.moeda(r.valor));
       if (r.vinculada_visita) App.alerta('Deslocamento amarrado automaticamente à visita do dia.', 'info');
       if (r.aviso) App.alerta(r.aviso, 'warning');
@@ -199,8 +204,12 @@ const Despesas = {
   async salvarRefeicao(ev) {
     ev.preventDefault();
     try {
-      const r = await App.enviarForm(ev.target, 'index.php?r=despesas/salvar-refeicao');
+      const form = ev.target;
+      const tipo = (form.querySelector('[name=tipo]:checked') || {}).value || 'Refeição';
+      const rotulo = 'Refeição ' + tipo + ' ' + (form.querySelector('[name=data]').value || '');
+      const r = await App.enviarFormOffline(form, 'index.php?r=despesas/salvar-refeicao', { modulo: 'Despesas', rotulo });
       bootstrap.Modal.getInstance('#modalRefeicao').hide();
+      if (r.offline) { App.alerta('Sem conexão: refeição guardada no aparelho. Será enviada quando a internet voltar.', 'info'); return false; }
       App.alerta('Refeição lançada. Reembolso: ' + App.moeda(r.valor_reembolso));
       if (r.aviso) App.alerta(r.aviso, 'warning');
       setTimeout(() => location.reload(), 700);

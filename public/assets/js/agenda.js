@@ -29,8 +29,11 @@ const Agenda = {
   async salvar(ev) {
     ev.preventDefault();
     try {
-      await App.enviarForm(ev.target, 'index.php?r=agenda/salvar');
+      const form = ev.target;
+      const rotulo = 'Evento — ' + (form.querySelector('[name=titulo]').value || 'agenda');
+      const r = await App.enviarFormOffline(form, 'index.php?r=agenda/salvar', { modulo: 'Agenda', rotulo });
       bootstrap.Modal.getInstance('#modalAgenda').hide();
+      if (r.offline) { App.alerta('Sem conexão: evento guardado no aparelho. Será enviado quando a internet voltar.', 'info'); return false; }
       App.alerta('Evento salvo.');
       setTimeout(() => location.reload(), 600);
     } catch (e) { App.alerta(e.message, 'danger'); }
@@ -41,7 +44,8 @@ const Agenda = {
     try {
       const fd = new FormData();
       fd.append('id', id); fd.append('status', status);
-      await App.json('index.php?r=agenda/status', { method: 'POST', body: fd });
+      const r = await App.enviarFormOffline(fd, 'index.php?r=agenda/status', { modulo: 'Agenda', rotulo: 'Evento — ' + status });
+      if (r.offline) { App.alerta('Sem conexão: alteração guardada no aparelho.', 'info'); return; }
       App.alerta('Evento atualizado.');
       setTimeout(() => location.reload(), 500);
     } catch (e) { App.alerta(e.message, 'danger'); }
