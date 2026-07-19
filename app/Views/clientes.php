@@ -27,7 +27,7 @@
           <th class="text-end">Ações</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody id="tabelaClientes">
         <?php if (!$clientes): ?>
           <tr><td colspan="6" class="text-center text-muted py-4">Nenhum cliente encontrado.</td></tr>
         <?php endif; ?>

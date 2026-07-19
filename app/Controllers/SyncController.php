@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Core\Database;
 use App\Core\Permissoes;
+use App\Services\PriorizacaoService;
 
 /**
  * Snapshot da carteira para leitura offline (Offline Ampliado — O2).
@@ -19,13 +20,32 @@ class SyncController
         Permissoes::exigirInterno();
         [$filtro, $params] = Permissoes::filtroCarteira();
 
-        $produtores = Database::todos(
-            "SELECT c.id, c.nome, c.telefone, c.municipio, c.linha, c.latitude, c.longitude
-               FROM clientes c
-              WHERE c.ativo = 1 AND {$filtro}
-              ORDER BY c.nome",
+        // Produtores já com os campos de priorização (score/dias/churn/cadastro),
+        // para as telas Produtores/Priorização/Organizador funcionarem offline.
+        $prioridades = PriorizacaoService::listaPriorizada($filtro, $params);
+        $extra = Database::todos(
+            "SELECT c.id, c.telefone, c.linha, c.latitude, c.longitude, c.situacao, c.prospecto,
+                    (SELECT MAX(v.data_visita) FROM visitas v WHERE v.cliente_id = c.id) AS ultima_visita
+               FROM clientes c WHERE c.ativo = 1 AND {$filtro}",
             $params
         );
+        $mapaExtra = [];
+        foreach ($extra as $x) {
+            $mapaExtra[(int) $x['id']] = $x;
+        }
+        $produtores = [];
+        foreach ($prioridades as $p) {
+            $x = $mapaExtra[(int) $p['id']] ?? [];
+            $produtores[] = array_merge($p, [
+                'telefone' => $x['telefone'] ?? null,
+                'linha' => $x['linha'] ?? null,
+                'latitude' => $x['latitude'] ?? null,
+                'longitude' => $x['longitude'] ?? null,
+                'situacao' => $x['situacao'] ?? null,
+                'prospecto' => isset($x['prospecto']) ? (int) $x['prospecto'] : 0,
+                'ultima_visita' => $x['ultima_visita'] ?? null,
+            ]);
+        }
 
         $propriedades = Database::todos(
             "SELECT p.id, p.nome, p.cliente_id

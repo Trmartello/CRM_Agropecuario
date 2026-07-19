@@ -27,7 +27,7 @@
               <th class="text-end"></th>
             </tr>
           </thead>
-          <tbody>
+          <tbody id="tabelaPriorizacao">
             <?php foreach ($prioridades as $i => $p): ?>
             <tr class="<?= $i < 3 ? 'table-warning-subtle' : '' ?>">
               <td><span class="badge rounded-pill text-bg-<?= $i < 3 ? 'danger' : 'success' ?> fs-6"><?= $i + 1 ?>º</span></td>

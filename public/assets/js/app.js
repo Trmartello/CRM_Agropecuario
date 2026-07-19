@@ -984,9 +984,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (badge) badge.classList.toggle('d-none', navigator.onLine);
   };
   window.addEventListener('online', () => { atualizarIndicador(); if (typeof Offline !== 'undefined') Offline.sincronizar(); });
-  window.addEventListener('offline', atualizarIndicador);
+  window.addEventListener('offline', () => { atualizarIndicador(); if (typeof OfflineView !== 'undefined') OfflineView.aplicar(); });
   atualizarIndicador();
-  if (typeof Offline !== 'undefined') Pendencias.atualizar();
+  if (typeof Offline !== 'undefined') { Pendencias.atualizar(); OfflineView.aplicar(); }
 });
 
 /* ===================== PENDÊNCIAS DE ENVIO (offline) ===================== */
@@ -1042,5 +1042,104 @@ const Pendencias = {
     if (!confirm('Descartar este lançamento pendente? Ele não será enviado.')) return;
     await Offline.remover(id);
     App.alerta('Lançamento pendente descartado.', 'info');
+  },
+};
+
+/* ============ LEITURA OFFLINE das telas a partir do snapshot (O2) ============ */
+
+const OfflineView = {
+  async aplicar() {
+    if (navigator.onLine || typeof Offline === 'undefined') return;
+    const snap = await Offline.lerSnapshot();
+    if (!snap || !snap.produtores) return;
+    const quando = snap.atualizado_em ? new Date(snap.atualizado_em).toLocaleString('pt-BR') : '';
+    if (document.getElementById('tabelaClientes')) OfflineView.clientes(snap, quando);
+    if (document.getElementById('tabelaPriorizacao')) OfflineView.priorizacao(snap, quando);
+    if (document.getElementById('listaSugestoes')) OfflineView.sugestoes(snap, quando);
+  },
+
+  banner(texto) {
+    if (document.getElementById('bannerOffline')) return;
+    const main = document.querySelector('main .p-3') || document.querySelector('main');
+    if (!main) return;
+    const div = document.createElement('div');
+    div.id = 'bannerOffline';
+    div.className = 'alert alert-warning d-flex align-items-center gap-2 py-2';
+    div.innerHTML = '<i class="bi bi-wifi-off"></i><span class="small">' + App.escapeHtml(texto) + '</span>';
+    main.insertBefore(div, main.firstChild);
+  },
+
+  wa(tel, texto) {
+    if (!tel) return null;
+    let n = String(tel).replace(/\D+/g, '');
+    if (n.length < 10) return null;
+    if (n.length <= 11) n = '55' + n;
+    return 'https://wa.me/' + n + '?text=' + encodeURIComponent(texto);
+  },
+
+  _dias(d) { return Number(d) >= 120 ? '120+' : Number(d); },
+  _seloCadastro(p) {
+    if (p.ultima_completude === null || p.ultima_completude === undefined) {
+      return '<span class="badge rounded-pill text-bg-light border text-muted">sem visita</span>';
+    }
+    return p.ultima_finalizada
+      ? '<span class="badge rounded-pill text-bg-success">Cadastro 100%</span>'
+      : `<span class="badge rounded-pill text-bg-warning text-dark">Cadastro ${Number(p.ultima_completude)}%</span>`;
+  },
+
+  clientes(snap, quando) {
+    const tb = document.getElementById('tabelaClientes');
+    const lista = [...snap.produtores].sort((a, b) => String(a.nome).localeCompare(b.nome, 'pt-BR'));
+    tb.innerHTML = lista.map(c => `
+      <tr>
+        <td>
+          <div class="fw-semibold">${App.escapeHtml(c.nome)}${Number(c.prospecto) ? ' <span class="badge text-bg-warning ms-1">Prospecto</span>' : ''}</div>
+          <div class="small text-muted d-md-none">${App.escapeHtml(c.municipio || '')}</div>
+        </td>
+        <td class="d-none d-md-table-cell">${App.escapeHtml(c.municipio || '—')}</td>
+        <td class="d-none d-md-table-cell">${c.situacao ? `<span class="badge text-bg-${c.situacao === 'Associado' ? 'success' : 'secondary'}">${App.escapeHtml(c.situacao)}</span>` : '—'}</td>
+        <td class="d-none d-lg-table-cell">${App.escapeHtml(c.nivel_tecnologico || '')}</td>
+        <td class="d-none d-lg-table-cell">${c.ultima_visita ? String(c.ultima_visita).split('-').reverse().join('/') : '—'}</td>
+        <td class="text-end text-nowrap"><button class="btn btn-sm btn-success" onclick="Visitas.nova(${Number(c.id)})" title="Nova visita"><i class="bi bi-clipboard2-plus"></i></button></td>
+      </tr>`).join('');
+    OfflineView.banner('Modo offline — carteira salva de ' + quando + '. A ficha completa e a busca do servidor exigem conexão.');
+  },
+
+  priorizacao(snap, quando) {
+    const tb = document.getElementById('tabelaPriorizacao');
+    tb.innerHTML = snap.produtores.map((p, i) => {
+      const cor = p.score >= 60 ? 'danger' : (p.score >= 40 ? 'warning' : 'success');
+      return `<tr class="${i < 3 ? 'table-warning-subtle' : ''}">
+        <td><span class="badge rounded-pill text-bg-${i < 3 ? 'danger' : 'success'} fs-6">${i + 1}º</span></td>
+        <td>
+          <div class="fw-semibold">${App.escapeHtml(p.nome)}${p.risco_churn ? ` <span class="badge text-bg-danger ms-1">Churn −${Number(p.queda_percentual)}%</span>` : ''}</div>
+          <div class="small text-muted">${App.escapeHtml(p.municipio || '')}</div>
+          <div class="mt-1">${OfflineView._seloCadastro(p)}</div>
+        </td>
+        <td class="d-none d-md-table-cell">${OfflineView._dias(p.dias_sem_visita)}</td>
+        <td class="d-none d-md-table-cell">${App.escapeHtml(p.nivel_tecnologico || '')}</td>
+        <td class="d-none d-lg-table-cell">${App.moeda(p.volume_compra_anual)}</td>
+        <td class="d-none d-lg-table-cell">${App.moeda(p.potencial_venda)}</td>
+        <td><div class="progress" style="width:70px;height:8px"><div class="progress-bar bg-${cor}" style="width:${Number(p.score)}%"></div></div><span class="small text-muted">${Number(p.score)}</span></td>
+        <td class="text-end"><button class="btn btn-sm btn-success" onclick="Visitas.nova(${Number(p.id)})" title="Visitar"><i class="bi bi-clipboard2-plus"></i></button></td>
+      </tr>`;
+    }).join('');
+    OfflineView.banner('Modo offline — prioridades da carteira salva de ' + quando + '.');
+  },
+
+  sugestoes(snap, quando) {
+    const alvo = document.getElementById('listaSugestoes');
+    alvo.innerHTML = snap.produtores.slice(0, 12).map(s => {
+      const wa = OfflineView.wa(s.telefone, 'Olá! Podemos agendar uma visita técnica?');
+      return `<div class="list-group-item d-flex align-items-center gap-2">
+        <span class="badge rounded-pill text-bg-success">score ${Number(s.score)}</span>
+        <div class="flex-grow-1">
+          <div class="fw-semibold">${App.escapeHtml(s.nome)}${s.risco_churn ? ` <span class="badge text-bg-danger ms-1">Churn −${Number(s.queda_percentual)}%</span>` : ''}</div>
+          <div class="small text-muted">${Number(s.dias_sem_visita) >= 120 ? '+120' : Number(s.dias_sem_visita)} dias sem visita · ${App.escapeHtml(s.municipio || '—')} · Nível ${App.escapeHtml(s.nivel_tecnologico || '')}</div>
+        </div>
+        ${wa ? `<a class="btn btn-sm btn-outline-success" href="${App.escapeHtml(wa)}" target="_blank" title="WhatsApp"><i class="bi bi-whatsapp"></i></a>` : ''}
+      </div>`;
+    }).join('');
+    OfflineView.banner('Modo offline — sugestões da carteira salva de ' + quando + '. Montar/otimizar o roteiro exige conexão.');
   },
 };

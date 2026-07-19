@@ -101,12 +101,13 @@ uma com o usuário.
   `fila_sync` no IndexedDB (v2), `App.enviarFormOffline`, painel de "Pendências
   de envio", auto-sync com guard de reentrância, e *runtime caching* dos assets
   versionados no service worker. Falta a idempotência (vai na O3).
-- **O2 — Snapshot da carteira + leitura offline. 🟡 PARCIAL.** Entregue:
-  endpoint `sync/carteira` (`SyncController`), store `snapshot` no IndexedDB
-  (atualiza a cada load online e no evento `online`) e **fallback offline no
-  apoio da Nova Visita** (propriedades/talhões/cultura/modelos). Pendente:
-  ler do snapshot também nas telas Produtores, Priorização e Organizador
-  (hoje offline vêm só do cache de página).
+- **O2 — Snapshot da carteira + leitura offline. ✅ ENTREGUE.** Endpoint
+  `sync/carteira` (`SyncController`) com produtores já priorizados + apoio +
+  culturas + modelos; store `snapshot` no IndexedDB (atualiza a cada load online
+  e no evento `online`); fallback offline no apoio da Nova Visita; e `OfflineView`
+  re-renderiza do snapshot as telas Produtores, Priorização e Organizador
+  (sugestões) quando offline, com banner de modo offline. Ações que exigem
+  servidor (ficha completa, montar/otimizar roteiro) seguem online.
 - **O3 — Robustez.** Background Sync, idempotência (`uuid_offline` + migração),
   tratamento de sessão expirada, monitoramento de cota.
 
