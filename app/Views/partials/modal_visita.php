@@ -173,7 +173,7 @@
         <button type="button" class="btn btn-outline-secondary" id="btnEtapaAnterior" onclick="Visitas.etapaAnterior()" disabled><i class="bi bi-arrow-left me-1"></i>Anterior</button>
         <div>
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="button" class="btn btn-success" id="btnEtapaProxima" onclick="Visitas.proximaEtapa()">Próxima<i class="bi bi-arrow-right ms-1"></i></button>
+          <button type="button" class="btn btn-outline-success" id="btnEtapaProxima" onclick="Visitas.proximaEtapa()">Próxima<i class="bi bi-arrow-right ms-1"></i></button>
           <button type="submit" class="btn btn-success d-none" id="btnSalvarVisita"><i class="bi bi-check-lg me-1"></i>Salvar Visita</button>
         </div>
       </div>

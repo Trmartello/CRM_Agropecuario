@@ -147,8 +147,8 @@ body.menu-recolhido #btnRecolherMenu { background: #e8f0e9; }
 .dropzone-previa { width: 100%; max-height: 240px; object-fit: contain; display: block; border-radius: .5rem; }
 
 /* ---------- Wizard de visita ---------- */
-.etapas .nav-link { font-size: .9rem; }
-.etapas .nav-link.concluida { background: #c8e6c9; color: #1b5e20; }
+.etapas .nav-link { font-size: .9rem; cursor: pointer; }
+.etapas .nav-link.preenchida { background: #c8e6c9; color: #1b5e20; }
 
 /* Botões maiores no celular (uso em campo) */
 @media (max-width: 767.98px) {

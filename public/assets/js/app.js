@@ -487,19 +487,47 @@ const Visitas = {
         : '<p class="text-muted small mb-0">Nenhum pedido registrado.</p>'}`;
   },
 
+  // Campos de cada etapa — usados para marcar a aba como "preenchida" (independe da ordem).
+  CAMPOS_ETAPA: {
+    1: ['propriedade_id', 'talhao_id', 'cultura_id', 'objetivo'],
+    2: ['estagio_cultura', 'desenvolvimento', 'pragas', 'doencas', 'plantas_daninhas', 'deficiencia_nutricional', 'condicoes_climaticas', 'observacoes'],
+    3: ['recomendacao'],
+    4: ['concorrente', 'concorrente_familia_id', 'concorrente_condicoes'],
+  },
+
+  /** True se a etapa tem algum campo preenchido (etapa 4 também conta fotos). */
+  etapaPreenchida(n) {
+    const form = document.getElementById('formVisita');
+    if (!form) return false;
+    if (n === 4) {
+      const fotos = document.getElementById('visitaFotos');
+      if (fotos && fotos.files && fotos.files.length) return true;
+    }
+    return (Visitas.CAMPOS_ETAPA[n] || []).some(name => {
+      const el = form.querySelector(`[name="${name}"]`);
+      return el && String(el.value).trim() !== '';
+    });
+  },
+
+  /** Marca a aba ativa e, sem depender da ordem, as que já têm conteúdo. */
+  atualizarPills() {
+    document.querySelectorAll('#visitaEtapas .nav-link').forEach(btn => {
+      const e = Number(btn.dataset.etapa);
+      btn.classList.toggle('active', e === Visitas.etapa);
+      btn.classList.toggle('preenchida', e !== Visitas.etapa && Visitas.etapaPreenchida(e));
+    });
+  },
+
   irParaEtapa(n) {
     Visitas.etapa = n;
     document.querySelectorAll('#modalVisita .etapa').forEach(div => {
       div.classList.toggle('d-none', Number(div.dataset.etapa) !== n);
     });
-    document.querySelectorAll('#visitaEtapas .nav-link').forEach(btn => {
-      const e = Number(btn.dataset.etapa);
-      btn.classList.toggle('active', e === n);
-      btn.classList.toggle('concluida', e < n);
-    });
+    Visitas.atualizarPills();
     document.getElementById('btnEtapaAnterior').disabled = n === 1;
     document.getElementById('btnEtapaProxima').classList.toggle('d-none', n === 5);
-    document.getElementById('btnSalvarVisita').classList.toggle('d-none', n !== 5);
+    // Salvar fica sempre disponível: dá para finalizar de qualquer etapa.
+    document.getElementById('btnSalvarVisita').classList.remove('d-none');
   },
 
   proximaEtapa() {
@@ -553,6 +581,7 @@ const Visitas = {
       const faltando = Visitas.camposFaltando();
       det.textContent = faltando.length ? 'Falta preencher: ' + faltando.join(', ') : '';
     }
+    Visitas.atualizarPills();
   },
 
   previewFotos() {
