@@ -56,6 +56,25 @@ try {
 }
 Auth::iniciarSessao();
 
+// Endurecimento CSRF: escrita (POST) só a partir do próprio site. Navegadores
+// modernos mandam Sec-Fetch-Site; os demais mandam Origin em POSTs. Sem nenhum
+// dos dois (curl, clientes antigos) segue normalmente — os cookies SameSite=Lax
+// já impedem que outro site envie a sessão. Sem token: não quebra a fila offline
+// (o reenvio do service worker é same-origin e passa direto).
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
+    $fetchSite = strtolower($_SERVER['HTTP_SEC_FETCH_SITE'] ?? '');
+    $origem = $_SERVER['HTTP_ORIGIN'] ?? '';
+    $crossSite = ($fetchSite !== '' && !in_array($fetchSite, ['same-origin', 'same-site', 'none'], true));
+    if (!$crossSite && $fetchSite === '' && $origem !== '' && strtolower($origem) !== 'null') {
+        $hostOrigem = strtolower((string) parse_url($origem, PHP_URL_HOST));
+        $hostAtual = strtolower(explode(':', $_SERVER['HTTP_HOST'] ?? '')[0]);
+        $crossSite = ($hostOrigem !== '' && $hostAtual !== '' && $hostOrigem !== $hostAtual);
+    }
+    if ($crossSite) {
+        json_erro('Requisição de outra origem bloqueada.', 403);
+    }
+}
+
 $router = new Router();
 
 // Imagens personalizadas (logo/favicon do banco) — públicas, o login usa

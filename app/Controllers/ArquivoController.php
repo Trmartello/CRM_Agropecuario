@@ -54,9 +54,17 @@ class ArquivoController
                 exit;
             }
         }
-        $bases = [uploads_dir(), dirname(__DIR__, 2) . '/public/uploads'];
-        foreach ($bases as $base) {
-            $caminho = $base . '/' . $f;
+        // &mini=1: serve a miniatura (uploads/miniaturas/<f>) quando existir;
+        // fotos antigas não têm miniatura e caem no arquivo original.
+        $candidatos = [];
+        if ((string) ($_GET['mini'] ?? '') === '1') {
+            $candidatos[] = [uploads_dir(), 'miniaturas/' . $f];
+        }
+        foreach ([uploads_dir(), dirname(__DIR__, 2) . '/public/uploads'] as $base) {
+            $candidatos[] = [$base, $f];
+        }
+        foreach ($candidatos as [$base, $relativo]) {
+            $caminho = $base . '/' . $relativo;
             $real = realpath($caminho);
             if ($real === false || !is_file($real)) {
                 continue;

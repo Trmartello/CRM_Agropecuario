@@ -2,7 +2,7 @@
  * Cache do app e assets para abrir sem conexão (offline básico da Fase 1).
  */
 
-const CACHE = 'crm-coperdia-v30';
+const CACHE = 'crm-coperdia-v31';
 
 const ARQUIVOS_APP = [
   'assets/vendor/bootstrap.min.css',
@@ -147,7 +147,18 @@ self.addEventListener('fetch', ev => {
       caches.match(ev.request).then(resp => resp || fetch(ev.request).then(net => {
         if (net && net.ok) {
           const copia = net.clone();
-          caches.open(CACHE).then(c => c.put(ev.request, copia));
+          caches.open(CACHE).then(async c => {
+            // Poda versões antigas do MESMO asset (?v=<filemtime> anterior) —
+            // sem isso cada deploy deixava uma cópia morta no cache para sempre.
+            if (url.searchParams.has('v')) {
+              const chaves = await c.keys();
+              await Promise.all(chaves.filter(req => {
+                const u = new URL(req.url);
+                return u.pathname === url.pathname && u.search !== url.search;
+              }).map(req => c.delete(req)));
+            }
+            c.put(ev.request, copia);
+          });
         }
         return net;
       }))

@@ -88,6 +88,17 @@ function sync_limpar_antigos(int $dias = 90): void
     } catch (\Throwable $e) { /* tabela ainda não migrada: ignora */ }
 }
 
+/** Retenção da auditoria: apaga eventos mais antigos que N dias (padrão 1 ano). */
+function auditoria_limpar_antiga(int $dias = 365): void
+{
+    try {
+        \App\Core\Database::executar(
+            'DELETE FROM auditoria WHERE criado_em < (NOW() - INTERVAL ? DAY)',
+            [$dias]
+        );
+    } catch (\Throwable $e) { /* tabela ainda não migrada: ignora */ }
+}
+
 /**
  * Trilha de auditoria: registra quem fez o quê (best-effort — nunca quebra o fluxo).
  * Ex.: auditar('criar', 'visita', $id, 'Cliente Fulano');
@@ -119,10 +130,13 @@ function uploads_dir(): string
     return dirname(__DIR__) . '/dados/uploads';
 }
 
-/** URL autenticada para um arquivo enviado (foto, comprovante, documento). */
-function upload_url(string $arquivo): string
+/**
+ * URL autenticada para um arquivo enviado (foto, comprovante, documento).
+ * $miniatura = true serve a versão 320px (listagens), com fallback no original.
+ */
+function upload_url(string $arquivo, bool $miniatura = false): string
 {
-    return 'index.php?r=arquivo/upload&f=' . rawurlencode($arquivo);
+    return 'index.php?r=arquivo/upload&f=' . rawurlencode($arquivo) . ($miniatura ? '&mini=1' : '');
 }
 
 /** Formata valor em reais. */

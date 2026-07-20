@@ -6,6 +6,7 @@ use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Permissoes;
 use App\Services\DespesaService;
+use App\Services\ImagemService;
 use App\Services\PrestacaoService;
 
 /**
@@ -131,7 +132,15 @@ class DespesasController
         if (!is_dir($dir)) {
             mkdir($dir, 0775, true);
         }
-        $arquivo = sprintf('ref_%d_%s.%s', Auth::id(), bin2hex(random_bytes(6)), $ext);
+        $nomeBase = sprintf('ref_%d_%s', Auth::id(), bin2hex(random_bytes(6)));
+        if ($ext !== 'pdf') {
+            // Comprime fotos de comprovante no servidor; se não der, guarda o original
+            $comprimido = ImagemService::comprimirFoto($_FILES['comprovante']['tmp_name'], 'comprovantes/' . $nomeBase);
+            if ($comprimido !== null) {
+                return $comprimido;
+            }
+        }
+        $arquivo = $nomeBase . '.' . $ext;
         return move_uploaded_file($_FILES['comprovante']['tmp_name'], $dir . '/' . $arquivo) ? 'comprovantes/' . $arquivo : null;
     }
 

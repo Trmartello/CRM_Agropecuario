@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Core\Database;
 use App\Core\Permissoes;
+use App\Services\ImagemService;
 use App\Services\ReclamacaoService;
 
 class ReclamacoesController
@@ -112,13 +113,19 @@ class ReclamacoesController
             if (!in_array($ext, $permitidas, true)) {
                 continue;
             }
-            $arquivo = sprintf('reclamacao_%d_%s.%s', $reclamacaoId, bin2hex(random_bytes(6)), $ext);
-            if (move_uploaded_file($tmp, $dir . '/' . $arquivo)) {
-                Database::executar(
-                    'INSERT INTO reclamacao_fotos (reclamacao_id, arquivo) VALUES (?,?)',
-                    [$reclamacaoId, $arquivo]
-                );
+            $nomeBase = sprintf('reclamacao_%d_%s', $reclamacaoId, bin2hex(random_bytes(6)));
+            // Comprime no servidor (JPEG máx. 1600px + miniatura); se não der, guarda o original
+            $arquivo = ImagemService::comprimirFoto($tmp, $nomeBase);
+            if ($arquivo === null) {
+                $arquivo = $nomeBase . '.' . $ext;
+                if (!move_uploaded_file($tmp, $dir . '/' . $arquivo)) {
+                    continue;
+                }
             }
+            Database::executar(
+                'INSERT INTO reclamacao_fotos (reclamacao_id, arquivo) VALUES (?,?)',
+                [$reclamacaoId, $arquivo]
+            );
         }
     }
 }

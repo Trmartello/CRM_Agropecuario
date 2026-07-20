@@ -28,7 +28,7 @@
           <?php $fv = $fotosPorVisita[(int) $v['id']] ?? []; if ($fv): ?>
           <div class="d-flex gap-2 mt-2 flex-wrap">
             <?php foreach ($fv as $arq): ?>
-              <a href="<?= e(upload_url($arq)) ?>" target="_blank"><img src="<?= e(upload_url($arq)) ?>" class="foto-miniatura" alt="Foto da visita" loading="lazy" onerror="App.fotoIndisponivel(this)"></a>
+              <a href="<?= e(upload_url($arq)) ?>" target="_blank"><img src="<?= e(upload_url($arq, true)) ?>" class="foto-miniatura" alt="Foto da visita" loading="lazy" onerror="App.fotoIndisponivel(this)"></a>
             <?php endforeach; ?>
           </div>
           <?php endif; ?>
