@@ -130,6 +130,8 @@ CREATE TABLE propriedades (
   municipio VARCHAR(120),
   latitude DECIMAL(10,7),
   longitude DECIMAL(10,7),
+  contorno TEXT NULL COMMENT 'croqui: divisa da propriedade [[lat,lng],...] (Fase 6A)',
+  area_gps DECIMAL(10,2) NULL COMMENT 'área total (ha) calculada pelo contorno GPS',
   FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
@@ -1202,6 +1204,7 @@ INSERT INTO plantios (talhao_id, cultura_id, safra_id, data_plantio, cultivar, e
 -- São José (áreas calculadas pelo CroquiService a partir dos vértices)
 UPDATE talhoes SET contorno='[[-27.229,-52.033],[-27.2288,-52.021],[-27.2345,-52.0195],[-27.2388,-52.024],[-27.238,-52.0325]]', area_gps=124.55 WHERE id=1;
 UPDATE talhoes SET contorno='[[-27.2288,-52.0205],[-27.2282,-52.01],[-27.235,-52.009],[-27.2352,-52.019]]', area_gps=74.59 WHERE id=2;
+UPDATE propriedades SET contorno='[[-27.227,-52.0345],[-27.2262,-52.008],[-27.236,-52.0075],[-27.24,-52.025],[-27.2385,-52.034]]', area_gps=343.85 WHERE id=1;
 
 -- ---------------------------------------------------------------------------
 -- ENTREGAS FUTURAS (produtos contratados com retirada parcial)
@@ -1325,5 +1328,5 @@ CREATE TABLE sync_processados (
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','22')
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','23')
   ON DUPLICATE KEY UPDATE valor = '16';

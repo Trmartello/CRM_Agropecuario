@@ -274,31 +274,49 @@ class ClientesController
                 'nome' => $prop['nome'],
                 'latitude' => $prop['latitude'] !== null ? (float) $prop['latitude'] : null,
                 'longitude' => $prop['longitude'] !== null ? (float) $prop['longitude'] : null,
+                'area_ha' => (float) $prop['area_ha'],
+                'area_gps' => isset($prop['area_gps']) && $prop['area_gps'] !== null ? (float) $prop['area_gps'] : null,
+                'contorno' => $prop['contorno'] ?? null,
             ],
             'talhoes' => $talhoes,
+            // Imagem de satélite de fundo (provedor configurável; vazio = sem mapa)
+            'tiles' => [
+                'url' => \App\Services\ConfigService::obter('mapa_tiles_url',
+                    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'),
+                'atribuicao' => \App\Services\ConfigService::obter('mapa_tiles_atribuicao',
+                    'Imagens: Esri, Maxar, Earthstar Geographics'),
+            ],
         ]);
     }
 
-    /** Salva o contorno (croqui) de um talhão; área SEMPRE recalculada no servidor. */
+    /**
+     * Salva o contorno (croqui) de um TALHÃO ou da PROPRIEDADE (tipo=propriedade,
+     * área total da divisa); a área é SEMPRE recalculada no servidor.
+     */
     public function salvarCroqui(): void
     {
         Permissoes::exigirInterno();
         sync_iniciar($_POST['uuid_offline'] ?? null);
-        $talhaoId = (int) ($_POST['talhao_id'] ?? 0);
-        $talhao = Database::um(
-            'SELECT t.id, t.propriedade_id FROM talhoes t WHERE t.id = ?', [$talhaoId]
-        );
-        if (!$talhao) {
-            json_erro('Talhão não encontrado.', 404);
+        $ehPropriedade = ($_POST['tipo'] ?? 'talhao') === 'propriedade';
+        if ($ehPropriedade) {
+            $alvoId = (int) ($_POST['propriedade_id'] ?? 0);
+            $this->propriedadeDaCarteira($alvoId);
+            $tabela = 'propriedades';
+        } else {
+            $alvoId = (int) ($_POST['talhao_id'] ?? 0);
+            $talhao = Database::um('SELECT t.id, t.propriedade_id FROM talhoes t WHERE t.id = ?', [$alvoId]);
+            if (!$talhao) {
+                json_erro('Talhão não encontrado.', 404);
+            }
+            $this->propriedadeDaCarteira((int) $talhao['propriedade_id']);
+            $tabela = 'talhoes';
         }
-        $this->propriedadeDaCarteira((int) $talhao['propriedade_id']);
 
         $contornoJson = trim($_POST['contorno'] ?? '');
         if ($contornoJson === '' || $contornoJson === '[]') {
-            // Limpar o croqui do talhão
-            Database::executar('UPDATE talhoes SET contorno = NULL, area_gps = NULL WHERE id = ?', [$talhaoId]);
+            Database::executar("UPDATE {$tabela} SET contorno = NULL, area_gps = NULL WHERE id = ?", [$alvoId]);
             sync_confirmar($_POST['uuid_offline'] ?? null);
-            auditar('excluir', 'croqui', $talhaoId, 'contorno removido');
+            auditar('excluir', 'croqui', $alvoId, ($ehPropriedade ? 'propriedade' : 'talhão') . ' — contorno removido');
             json_ok(['area_gps' => null]);
         }
         try {
@@ -308,15 +326,15 @@ class ClientesController
         }
         $areaGps = \App\Services\CroquiService::areaHa($pontos);
         Database::executar(
-            'UPDATE talhoes SET contorno = ?, area_gps = ? WHERE id = ?',
-            [json_encode($pontos), $areaGps, $talhaoId]
+            "UPDATE {$tabela} SET contorno = ?, area_gps = ? WHERE id = ?",
+            [json_encode($pontos), $areaGps, $alvoId]
         );
-        // Opcional: assumir a área medida como a área oficial do talhão
+        // Opcional: assumir a área medida como a área oficial
         if ((int) ($_POST['usar_area'] ?? 0) === 1 && $areaGps > 0) {
-            Database::executar('UPDATE talhoes SET area_ha = ? WHERE id = ?', [$areaGps, $talhaoId]);
+            Database::executar("UPDATE {$tabela} SET area_ha = ? WHERE id = ?", [$areaGps, $alvoId]);
         }
         sync_confirmar($_POST['uuid_offline'] ?? null);
-        auditar('salvar', 'croqui', $talhaoId, count($pontos) . " pontos · {$areaGps} ha");
+        auditar('salvar', 'croqui', $alvoId, ($ehPropriedade ? 'propriedade' : 'talhão') . ' · ' . count($pontos) . " pontos · {$areaGps} ha");
         json_ok(['area_gps' => $areaGps]);
     }
 

@@ -286,9 +286,21 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
         <?php endforeach; ?>
       </ul>
       <?php endif; ?>
-      <?php $croquiSvg = \App\Services\CroquiService::svg($p['talhoes'] ?? []); ?>
+      <?php $croquiSvg = \App\Services\CroquiService::svg($p['talhoes'] ?? [], 340, 240, $p); ?>
       <?php if ($croquiSvg !== ''): ?>
-        <div class="card-body pt-2 pb-3 text-center"><?= $croquiSvg ?></div>
+        <div class="card-body pt-2 pb-3 text-center">
+          <?= $croquiSvg ?>
+          <?php
+            $plantioTotal = array_sum(array_map(
+                fn ($t) => (float) ($t['area_gps'] ?? 0) ?: (float) $t['area_ha'],
+                array_filter($p['talhoes'] ?? [], fn ($t) => !empty($t['contorno']))
+            ));
+          ?>
+          <div class="small text-muted mt-1">
+            <?php if (!empty($p['area_gps'])): ?>Propriedade (divisa medida): <strong><?= numero((float) $p['area_gps'], 1) ?> ha</strong> · <?php endif; ?>
+            <?php if ($plantioTotal > 0): ?>Área de plantio mapeada: <strong><?= numero($plantioTotal, 1) ?> ha</strong><?php endif; ?>
+          </div>
+        </div>
       <?php endif; ?>
     </div>
     <?php endforeach; ?>

@@ -238,7 +238,7 @@ $variacao = ($totalAnterior !== null && $totalAnterior > 0)
     <?php foreach ($croquis as $cq): ?>
       <div class="text-center">
         <?= $cq['svg'] ?>
-        <div class="small text-muted mt-1"><?= e($cq['propriedade']) ?></div>
+        <div class="small text-muted mt-1"><?= e($cq['propriedade']) ?><?= $cq['area_gps'] ? ' · divisa medida: ' . numero($cq['area_gps'], 1) . ' ha' : '' ?></div>
       </div>
     <?php endforeach; ?>
   </div>

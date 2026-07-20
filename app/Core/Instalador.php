@@ -293,6 +293,17 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '22'"
             );
         }
+        if ($versao < 23) {
+            // Croqui v2: divisa (área total) da PROPRIEDADE, além dos talhões
+            self::adicionarColuna('propriedades', 'contorno',
+                'contorno TEXT NULL COMMENT "croqui: divisa da propriedade [[lat,lng],...] (Fase 6A)" AFTER longitude');
+            self::adicionarColuna('propriedades', 'area_gps',
+                'area_gps DECIMAL(10,2) NULL COMMENT "área total (ha) calculada pelo contorno GPS" AFTER contorno');
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '23')
+                 ON DUPLICATE KEY UPDATE valor = '23'"
+            );
+        }
     }
 
     /** Fase 6E (refinamento): características fisiológicas por estágio (cartão ilustrado). */

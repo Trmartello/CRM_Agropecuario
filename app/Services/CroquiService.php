@@ -72,14 +72,21 @@ class CroquiService
      * coloridos com rótulo (nome + ha) + barra de escala. $talhoes precisa de
      * nome, contorno (JSON) e area_gps/area_ha.
      */
-    public static function svg(array $talhoes, int $largura = 340, int $altura = 240): string
+    public static function svg(array $talhoes, int $largura = 340, int $altura = 240, ?array $propriedade = null): string
     {
         $comContorno = array_values(array_filter($talhoes, fn ($t) => !empty($t['contorno'])));
-        if (!$comContorno) {
+        $divisa = null;
+        if ($propriedade && !empty($propriedade['contorno'])) {
+            $d = json_decode((string) $propriedade['contorno'], true);
+            if (is_array($d) && count($d) >= 3) {
+                $divisa = $d;
+            }
+        }
+        if (!$comContorno && !$divisa) {
             return '';
         }
         // Junta todos os pontos para calcular o enquadramento comum
-        $todos = [];
+        $todos = $divisa ?: [];
         $poligonos = [];
         foreach ($comContorno as $t) {
             $pontos = json_decode((string) $t['contorno'], true);
@@ -89,7 +96,7 @@ class CroquiService
             $poligonos[] = ['talhao' => $t, 'pontos' => $pontos];
             $todos = array_merge($todos, $pontos);
         }
-        if (!$poligonos) {
+        if (!$poligonos && !$divisa) {
             return '';
         }
         $xy = self::projetar($todos);
@@ -114,6 +121,12 @@ class CroquiService
         };
 
         $svg = '';
+        // Divisa da propriedade (área total) por baixo dos talhões
+        if ($divisa) {
+            $telaDiv = array_map($paraTela, $divisa);
+            $svg .= '<polygon points="' . implode(' ', array_map(fn ($p) => $p[0] . ',' . $p[1], $telaDiv)) . '"'
+                . ' fill="#8d6e2f" fill-opacity=".07" stroke="#8d6e2f" stroke-width="2.5" stroke-dasharray="8 5"/>';
+        }
         foreach ($poligonos as $i => $pol) {
             $cor = self::CORES[$i % count(self::CORES)];
             $tela = array_map($paraTela, $pol['pontos']);

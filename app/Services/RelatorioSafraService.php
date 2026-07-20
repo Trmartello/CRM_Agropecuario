@@ -148,18 +148,22 @@ class RelatorioSafraService
             [$clienteId, $inicio, $fim]
         );
 
-        // ---- Croquis (6A) por propriedade ----
+        // ---- Croquis (6A) por propriedade (divisa + talhões) ----
         $croquis = [];
         foreach (Database::todos(
-            'SELECT id, nome FROM propriedades WHERE cliente_id = ? ORDER BY nome', [$clienteId]
+            'SELECT * FROM propriedades WHERE cliente_id = ? ORDER BY nome', [$clienteId]
         ) as $prop) {
             $talhoes = Database::todos(
                 'SELECT nome, area_ha, area_gps, contorno FROM talhoes WHERE propriedade_id = ?',
                 [(int) $prop['id']]
             );
-            $svg = CroquiService::svg($talhoes, 420, 280);
+            $svg = CroquiService::svg($talhoes, 420, 280, $prop);
             if ($svg !== '') {
-                $croquis[] = ['propriedade' => $prop['nome'], 'svg' => $svg];
+                $croquis[] = [
+                    'propriedade' => $prop['nome'],
+                    'svg' => $svg,
+                    'area_gps' => isset($prop['area_gps']) && $prop['area_gps'] !== null ? (float) $prop['area_gps'] : null,
+                ];
             }
         }
 

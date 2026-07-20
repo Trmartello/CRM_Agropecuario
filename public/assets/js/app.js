@@ -627,15 +627,34 @@ const Plantios = {
 
 const Croqui = {
   CORES: ['#2e7d32', '#c05e11', '#00695c', '#9a7d0a', '#5d4037', '#455a64'],
+  COR_PROP: '#e6b400',
   prop: null,
   talhoes: [],
-  atualId: 0,
+  tiles: null,
+  atualId: 0,          // 0 = divisa da PROPRIEDADE; >0 = talhão
   pontos: [],
+  vista: null,         // {z, cx, cy} em coordenadas de mundo Web Mercator (0..1)
   watchId: null,
   _dirty: false,
-  _tfm: null,
   _arrasto: null,
+  _pan: null,
   _eventosOk: false,
+
+  /* --- Web Mercator (mesma projeção dos tiles de satélite) --- */
+  _wx(p) { return (Number(p[1]) + 180) / 360; },
+  _wy(p) { const s = Math.sin(Number(p[0]) * Math.PI / 180); return 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI); },
+  _geo(wx, wy) {
+    return [Math.atan(Math.sinh(Math.PI * (1 - 2 * wy))) * 180 / Math.PI, wx * 360 - 180];
+  },
+  _escala() { return 256 * Math.pow(2, this.vista.z); },
+  _paraTela(p, larg, alt) {
+    const e = this._escala();
+    return [(this._wx(p) - this.vista.cx) * e + larg / 2, (this._wy(p) - this.vista.cy) * e + alt / 2];
+  },
+  _paraGeo(x, y, larg, alt) {
+    const e = this._escala();
+    return this._geo(this.vista.cx + (x - larg / 2) / e, this.vista.cy + (y - alt / 2) / e);
+  },
 
   async abrir(propId) {
     let dados;
@@ -647,34 +666,74 @@ const Croqui = {
     }
     Croqui.prop = dados.propriedade;
     Croqui.talhoes = dados.talhoes;
+    Croqui.tiles = dados.tiles && dados.tiles.url ? dados.tiles : null;
     Croqui._dirty = false;
     document.getElementById('croquiPropNome').textContent = dados.propriedade.nome;
     const sel = document.getElementById('croquiTalhao');
-    sel.innerHTML = Croqui.talhoes.map(t =>
+    sel.innerHTML = '<option value="0">🏠 Propriedade — área total</option>' + Croqui.talhoes.map(t =>
       `<option value="${Number(t.id)}">${App.escapeHtml(t.nome)}${t.cultura ? ' (' + App.escapeHtml(t.cultura) + ')' : ''}</option>`).join('');
-    if (!Croqui.talhoes.length) { App.alerta('Cadastre um talhão nesta propriedade antes de desenhar o croqui.', 'warning'); return; }
-    Croqui.atualId = Number(Croqui.talhoes[0].id);
-    Croqui.pontos = Croqui._contornoDe(Croqui.atualId);
+    Croqui.atualId = 0; // começa pela divisa da propriedade (área total)
+    Croqui.pontos = Croqui._contornoDe(0);
     document.getElementById('croquiUsarArea').checked = false;
     document.getElementById('croquiModoManual').checked = true;
     Croqui._prepararEventos();
+    Croqui.vista = null; // recalcula o enquadramento ao abrir
     new bootstrap.Modal('#modalCroqui').show();
-    setTimeout(() => Croqui.render(), 250); // após o modal medir o palco
+    setTimeout(() => { Croqui._enquadrar(); Croqui.render(); }, 250);
   },
 
   _contornoDe(id) {
-    const t = Croqui.talhoes.find(x => Number(x.id) === Number(id));
-    try { return t && t.contorno ? JSON.parse(t.contorno) : []; } catch (e) { return []; }
+    const fonte = Number(id) === 0 ? Croqui.prop : Croqui.talhoes.find(x => Number(x.id) === Number(id));
+    try { return fonte && fonte.contorno ? JSON.parse(fonte.contorno) : []; } catch (e) { return []; }
+  },
+
+  _todosPontosBase() {
+    const todos = [];
+    const divisa = Croqui.atualId === 0 ? Croqui.pontos : Croqui._contornoDe(0);
+    todos.push(...divisa);
+    Croqui.talhoes.forEach(t => {
+      todos.push(...(Number(t.id) === Croqui.atualId ? Croqui.pontos : Croqui._contornoDe(t.id)));
+    });
+    if (!todos.length && Croqui.prop.latitude !== null) todos.push([Croqui.prop.latitude, Croqui.prop.longitude]);
+    return todos;
+  },
+
+  /** Enquadra a vista nos pontos existentes (ou centra na sede em zoom de fazenda). */
+  _enquadrar() {
+    const palco = document.getElementById('croquiPalco');
+    const larg = Math.max(300, palco.clientWidth), alt = Math.max(260, palco.clientHeight);
+    const todos = Croqui._todosPontosBase();
+    if (!todos.length) { Croqui.vista = null; return; }
+    const xs = todos.map(p => Croqui._wx(p)), ys = todos.map(p => Croqui._wy(p));
+    const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+    const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+    const spanX = Math.max(1e-9, Math.max(...xs) - Math.min(...xs));
+    const spanY = Math.max(1e-9, Math.max(...ys) - Math.min(...ys));
+    let z = 16; // padrão: escala de fazenda (~2 km de largura na tela)
+    if (todos.length > 1) {
+      z = Math.floor(Math.min(Math.log2(larg * 0.8 / (256 * spanX)), Math.log2(alt * 0.8 / (256 * spanY))));
+    }
+    Croqui.vista = { z: Math.max(3, Math.min(18, z)), cx, cy };
+  },
+
+  zoom(delta) {
+    if (!Croqui.vista) return;
+    Croqui.vista.z = Math.max(3, Math.min(19, Croqui.vista.z + delta));
+    Croqui.render();
   },
 
   trocarTalhao() {
-    if (Croqui._dirty && !confirm('Há pontos não salvos neste talhão — descartar e trocar?')) {
+    if (Croqui._dirty && !confirm('Há pontos não salvos — descartar e trocar?')) {
       document.getElementById('croquiTalhao').value = Croqui.atualId;
       return;
     }
     Croqui.atualId = Number(document.getElementById('croquiTalhao').value);
     Croqui.pontos = Croqui._contornoDe(Croqui.atualId);
     Croqui._dirty = false;
+    const rotulo = document.querySelector('label[for="croquiUsarArea"]');
+    if (rotulo) rotulo.textContent = Croqui.atualId === 0
+      ? 'Usar a área medida como área oficial da propriedade'
+      : 'Usar a área medida como área oficial do talhão';
     Croqui.render();
   },
 
@@ -697,6 +756,7 @@ const Croqui = {
       if (ultimo && Croqui._distM(ultimo, p) < 10) return; // anda ~10 m entre pontos
       Croqui.pontos.push(p);
       Croqui._dirty = true;
+      if (!Croqui.vista) { Croqui.vista = { z: 17, cx: Croqui._wx(p), cy: Croqui._wy(p) }; }
       Croqui.render();
     }, () => { status.textContent = 'GPS: sem sinal (permita a localização)'; },
     { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 });
@@ -719,7 +779,7 @@ const Croqui = {
 
   areaHa(pontos) {
     if (pontos.length < 3) return 0;
-    const lat0 = pontos.reduce((s, p) => s + p[0], 0) / pontos.length;
+    const lat0 = pontos.reduce((s, p) => s + Number(p[0]), 0) / pontos.length;
     const mLat = 110574, mLng = 111320 * Math.cos(lat0 * Math.PI / 180);
     let soma = 0;
     for (let i = 0; i < pontos.length; i++) {
@@ -729,134 +789,190 @@ const Croqui = {
     return Math.abs(soma) / 2 / 10000;
   },
 
-  /** Monta a transformação geo→tela cobrindo todos os contornos + pontos atuais. */
-  _transformar(larg, alt) {
-    const todos = [];
-    Croqui.talhoes.forEach(t => { if (Number(t.id) !== Croqui.atualId) todos.push(...Croqui._contornoDe(t.id)); });
-    todos.push(...Croqui.pontos);
-    if (!todos.length && Croqui.prop.latitude !== null) todos.push([Croqui.prop.latitude, Croqui.prop.longitude]);
-    if (!todos.length) return null;
-    const lat0 = todos.reduce((s, p) => s + p[0], 0) / todos.length;
-    const mLat = 110574, mLng = 111320 * Math.cos(lat0 * Math.PI / 180);
-    const xs = todos.map(p => p[1] * mLng), ys = todos.map(p => -p[0] * mLat);
-    const minX = Math.min(...xs), maxX = Math.max(...xs);
-    const minY = Math.min(...ys), maxY = Math.max(...ys);
-    const margem = 40;
-    let esc = Math.min((larg - 2 * margem) / Math.max(60, maxX - minX), (alt - 2 * margem) / Math.max(60, maxY - minY));
-    if (!isFinite(esc) || esc <= 0) esc = 1;
-    esc = Math.min(esc, 3); // no máx. 3 px por metro (1 ponto não “explode” o zoom)
-    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
-    return { mLat, mLng, esc, cx, cy, larg, alt };
-  },
-
-  _paraTela(p, t) { return [(p[1] * t.mLng - t.cx) * t.esc + t.larg / 2, (-p[0] * t.mLat - t.cy) * t.esc + t.alt / 2]; },
-  _paraGeo(x, y, t) { return [-(((y - t.alt / 2) / t.esc + t.cy) / t.mLat), ((x - t.larg / 2) / t.esc + t.cx) / t.mLng]; },
-
   render() {
     const palco = document.getElementById('croquiPalco');
     if (!palco) return;
     const larg = Math.max(300, palco.clientWidth), alt = Math.max(260, palco.clientHeight);
-    const t = Croqui._transformar(larg, alt);
-    Croqui._tfm = t;
-    if (!t) {
+    if (!Croqui.vista) Croqui._enquadrar();
+    if (!Croqui.vista) {
       palco.innerHTML = `<div class="d-flex h-100 align-items-center justify-content-center text-center text-muted p-4">
         Sem referência de localização ainda.<br>Use "Caminhar a divisa" para capturar o primeiro ponto por GPS.</div>`;
       Croqui._atualizarArea();
       return;
     }
+
+    // Camada de satélite (Web Mercator) — some offline; o desenho continua
+    let tilesHtml = '';
+    if (Croqui.tiles && navigator.onLine) {
+      const e = Croqui._escala();
+      const z = Croqui.vista.z, n = Math.pow(2, z);
+      const px0 = Croqui.vista.cx * e - larg / 2, py0 = Croqui.vista.cy * e - alt / 2;
+      const tx0 = Math.floor(px0 / 256), tx1 = Math.floor((px0 + larg) / 256);
+      const ty0 = Math.max(0, Math.floor(py0 / 256)), ty1 = Math.min(n - 1, Math.floor((py0 + alt) / 256));
+      for (let tx = tx0; tx <= tx1; tx++) {
+        for (let ty = ty0; ty <= ty1; ty++) {
+          const txn = ((tx % n) + n) % n; // dá a volta no antimeridiano
+          const url = Croqui.tiles.url.replace('{z}', z).replace('{x}', txn).replace('{y}', ty);
+          tilesHtml += `<img src="${App.escapeHtml(url)}" class="croqui-tile" loading="lazy" alt=""
+            style="left:${Math.round(tx * 256 - px0)}px;top:${Math.round(ty * 256 - py0)}px" onerror="this.remove()">`;
+        }
+      }
+    }
+
     let svg = '';
-    let idxCor = 0;
     const legenda = [];
-    Croqui.talhoes.forEach(tal => {
-      const cor = Croqui.CORES[idxCor % Croqui.CORES.length];
+    // Divisa da propriedade (amarela tracejada) — por baixo dos talhões
+    const divisa = Croqui.atualId === 0 ? Croqui.pontos : Croqui._contornoDe(0);
+    if (Croqui.atualId !== 0 && divisa.length >= 3) {
+      const tela = divisa.map(p => Croqui._paraTela(p, larg, alt));
+      svg += `<polygon points="${tela.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ')}"
+                fill="${Croqui.COR_PROP}" fill-opacity=".06" stroke="${Croqui.COR_PROP}" stroke-width="3" stroke-dasharray="9 6"/>`;
+      legenda.push(`<span><span class="croqui-cor" style="background:${Croqui.COR_PROP}"></span>Propriedade</span>`);
+    }
+    Croqui.talhoes.forEach((tal, i) => {
+      const cor = Croqui.CORES[i % Croqui.CORES.length];
       const pontos = Number(tal.id) === Croqui.atualId ? Croqui.pontos : Croqui._contornoDe(tal.id);
       if (pontos.length) legenda.push(`<span><span class="croqui-cor" style="background:${cor}"></span>${App.escapeHtml(tal.nome)}</span>`);
       if (Number(tal.id) !== Croqui.atualId && pontos.length >= 3) {
-        const tela = pontos.map(p => Croqui._paraTela(p, t));
+        const tela = pontos.map(p => Croqui._paraTela(p, larg, alt));
         svg += `<polygon points="${tela.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ')}"
-                  fill="${cor}" fill-opacity=".22" stroke="${cor}" stroke-width="2"/>`;
+                  fill="${cor}" fill-opacity=".25" stroke="${cor}" stroke-width="2"/>`;
         const cx = tela.reduce((s, p) => s + p[0], 0) / tela.length;
         const cy = tela.reduce((s, p) => s + p[1], 0) / tela.length;
         svg += `<text x="${cx.toFixed(1)}" y="${cy.toFixed(1)}" text-anchor="middle" class="croqui-rotulo">${App.escapeHtml(tal.nome)}</text>`;
       }
-      idxCor++;
     });
-    // Talhão em edição por cima (tracejado + vértices arrastáveis)
-    const corAtual = Croqui.CORES[Croqui.talhoes.findIndex(x => Number(x.id) === Croqui.atualId) % Croqui.CORES.length];
+    // Contorno em edição (tracejado + vértices arrastáveis)
+    const corAtual = Croqui.atualId === 0
+      ? Croqui.COR_PROP
+      : Croqui.CORES[Croqui.talhoes.findIndex(x => Number(x.id) === Croqui.atualId) % Croqui.CORES.length];
     if (Croqui.pontos.length) {
-      const tela = Croqui.pontos.map(p => Croqui._paraTela(p, t));
+      const tela = Croqui.pontos.map(p => Croqui._paraTela(p, larg, alt));
       const pts = tela.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
       svg += Croqui.pontos.length >= 3
-        ? `<polygon points="${pts}" fill="${corAtual}" fill-opacity=".3" stroke="${corAtual}" stroke-width="2.5" stroke-dasharray="7 5"/>`
-        : `<polyline points="${pts}" fill="none" stroke="${corAtual}" stroke-width="2.5" stroke-dasharray="7 5"/>`;
+        ? `<polygon points="${pts}" fill="${corAtual}" fill-opacity=".28" stroke="${corAtual}" stroke-width="3" stroke-dasharray="8 5"/>`
+        : `<polyline points="${pts}" fill="none" stroke="${corAtual}" stroke-width="3" stroke-dasharray="8 5"/>`;
       tela.forEach((p, i) => {
-        svg += `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="8" class="croqui-vertice" data-idx="${i}"
+        svg += `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="9" class="croqui-vertice" data-idx="${i}"
                   fill="${i === 0 ? '#fff' : corAtual}" stroke="${corAtual}" stroke-width="3"/>`;
       });
     }
-    // Cruz da sede da propriedade (referência)
+    // Sede como referência
     if (Croqui.prop.latitude !== null) {
-      const s = Croqui._paraTela([Croqui.prop.latitude, Croqui.prop.longitude], t);
-      svg += `<g transform="translate(${s[0].toFixed(1)},${s[1].toFixed(1)})" opacity=".65">
-        <path d="M-7,0 H7 M0,-7 V7" stroke="#8d6e2f" stroke-width="2"/>
-        <text y="-10" text-anchor="middle" class="croqui-rotulo" fill="#8d6e2f">sede</text></g>`;
+      const s = Croqui._paraTela([Croqui.prop.latitude, Croqui.prop.longitude], larg, alt);
+      svg += `<g transform="translate(${s[0].toFixed(1)},${s[1].toFixed(1)})" opacity=".9">
+        <path d="M-8,0 H8 M0,-8 V8" stroke="#fff" stroke-width="4"/><path d="M-8,0 H8 M0,-8 V8" stroke="#8d3c00" stroke-width="2"/>
+        <text y="-12" text-anchor="middle" class="croqui-rotulo">sede</text></g>`;
     }
     // Escala + norte
-    const alvoM = (larg / 4) / t.esc;
+    const lat0 = Croqui._geo(Croqui.vista.cx, Croqui.vista.cy)[0];
+    const mPorPx = 156543.03392 * Math.cos(lat0 * Math.PI / 180) / Math.pow(2, Croqui.vista.z);
+    const alvoM = (larg / 4) * mPorPx;
     const passo = Math.pow(10, Math.floor(Math.log10(Math.max(1, alvoM))));
     const escalaM = passo * Math.max(1, Math.floor(alvoM / passo));
-    const escalaPx = escalaM * t.esc;
-    svg += `<line x1="20" y1="${alt - 18}" x2="${(20 + escalaPx).toFixed(1)}" y2="${alt - 18}" stroke="#333" stroke-width="2"/>
-      <text x="${(20 + escalaPx / 2).toFixed(1)}" y="${alt - 24}" text-anchor="middle" class="croqui-rotulo">${escalaM >= 1000 ? (escalaM / 1000) + ' km' : escalaM + ' m'}</text>
-      <g transform="translate(${larg - 26},30)"><path d="M0,-12 L5,5 L0,1 L-5,5 Z" fill="#333"/><text y="-16" text-anchor="middle" class="croqui-rotulo">N</text></g>`;
+    const escalaPx = escalaM / mPorPx;
+    svg += `<g class="croqui-escala"><rect x="14" y="${alt - 34}" width="${(escalaPx + 14).toFixed(1)}" height="24" rx="5" fill="#fff" opacity=".75"/>
+      <line x1="20" y1="${alt - 16}" x2="${(20 + escalaPx).toFixed(1)}" y2="${alt - 16}" stroke="#222" stroke-width="2"/>
+      <text x="${(20 + escalaPx / 2).toFixed(1)}" y="${alt - 21}" text-anchor="middle" font-size="11" fill="#222">${escalaM >= 1000 ? (escalaM / 1000) + ' km' : escalaM + ' m'}</text></g>
+      <g transform="translate(${larg - 26},34)"><circle r="14" fill="#fff" opacity=".75"/><path d="M0,-9 L4,5 L0,2 L-4,5 Z" fill="#222"/><text y="-14" text-anchor="middle" font-size="10" fill="#fff" stroke="#333" stroke-width=".4">N</text></g>`;
 
-    palco.innerHTML = `<svg id="croquiSvg" viewBox="0 0 ${larg} ${alt}" width="${larg}" height="${alt}">${svg}</svg>`;
+    palco.innerHTML = `
+      <div class="croqui-tiles">${tilesHtml}</div>
+      <svg id="croquiSvg" viewBox="0 0 ${larg} ${alt}" width="${larg}" height="${alt}"></svg>
+      <div class="croqui-zoom">
+        <button type="button" class="btn btn-light btn-sm" onclick="Croqui.zoom(1)" title="Aproximar"><i class="bi bi-plus-lg"></i></button>
+        <button type="button" class="btn btn-light btn-sm" onclick="Croqui.zoom(-1)" title="Afastar"><i class="bi bi-dash-lg"></i></button>
+      </div>
+      ${Croqui.tiles && navigator.onLine ? `<div class="croqui-atribuicao">${App.escapeHtml(Croqui.tiles.atribuicao || '')}</div>` : ''}`;
+    palco.querySelector('#croquiSvg').innerHTML = svg;
     document.getElementById('croquiLegenda').innerHTML = legenda.join('');
     Croqui._atualizarArea();
   },
 
   _atualizarArea() {
-    const tal = Croqui.talhoes.find(x => Number(x.id) === Croqui.atualId) || {};
+    const ehProp = Croqui.atualId === 0;
+    const alvo = ehProp ? Croqui.prop : (Croqui.talhoes.find(x => Number(x.id) === Croqui.atualId) || {});
     const medida = Croqui.areaHa(Croqui.pontos);
+    const rotuloAlvo = ehProp ? 'Propriedade (área total)' : 'Talhão';
     document.getElementById('croquiArea').innerHTML = Croqui.pontos.length >= 3
-      ? `<strong>Área desenhada: ${medida.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha</strong>
-         <span class="text-muted">(cadastrada: ${Number(tal.area_ha || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ha)</span>`
+      ? `<strong>${rotuloAlvo}: ${medida.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha</strong>
+         <span class="text-muted">(cadastrada: ${Number(alvo.area_ha || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ha)</span>`
       : `<span class="text-muted">${Croqui.pontos.length} ponto(s) — marque pelo menos 3 para fechar a área</span>`;
+    // Resumo: divisa da propriedade × soma dos talhões mapeados
+    const areaProp = ehProp && Croqui.pontos.length >= 3 ? medida : Number(Croqui.prop.area_gps || 0);
+    let plantio = 0;
+    Croqui.talhoes.forEach(t => {
+      const pts = Number(t.id) === Croqui.atualId ? Croqui.pontos : Croqui._contornoDe(t.id);
+      if (pts.length >= 3) plantio += Number(t.id) === Croqui.atualId ? medida : Number(t.area_gps || t.area_ha || 0);
+    });
+    const totais = document.getElementById('croquiTotais');
+    if (totais) totais.innerHTML =
+      (areaProp > 0 ? `Propriedade: <strong>${areaProp.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ha</strong>` : '') +
+      (plantio > 0 ? `${areaProp > 0 ? ' · ' : ''}Plantio mapeado: <strong>${plantio.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ha</strong>` : '');
   },
 
   _prepararEventos() {
     if (Croqui._eventosOk) return;
     Croqui._eventosOk = true;
     const palco = document.getElementById('croquiPalco');
+    const pos = ev => {
+      const r = palco.getBoundingClientRect();
+      return [ev.clientX - r.left, ev.clientY - r.top, r.width, r.height];
+    };
     palco.addEventListener('pointerdown', ev => {
+      if (ev.target.closest('.croqui-zoom')) return;
       const v = ev.target.closest('.croqui-vertice');
-      if (v) { Croqui._arrasto = Number(v.dataset.idx); ev.preventDefault(); }
-    });
-    palco.addEventListener('pointermove', ev => {
-      if (Croqui._arrasto === null || !Croqui._tfm) return;
-      const r = palco.querySelector('#croquiSvg').getBoundingClientRect();
-      Croqui.pontos[Croqui._arrasto] = Croqui._paraGeo(ev.clientX - r.left, ev.clientY - r.top, Croqui._tfm);
-      Croqui._dirty = true;
-      Croqui.render();
+      if (v) { Croqui._arrasto = Number(v.dataset.idx); ev.preventDefault(); return; }
+      if (!Croqui.vista) return;
+      Croqui._pan = { x: ev.clientX, y: ev.clientY, cx0: Croqui.vista.cx, cy0: Croqui.vista.cy, moved: false };
       ev.preventDefault();
     });
-    ['pointerup', 'pointercancel'].forEach(n => palco.addEventListener(n, () => { Croqui._arrasto = null; }));
-    palco.addEventListener('click', ev => {
-      if (Croqui._arrasto !== null || ev.target.closest('.croqui-vertice')) return;
-      if (!document.getElementById('croquiModoManual').checked) return;
-      if (!Croqui._tfm) { App.alerta('Sem referência de localização — capture o 1º ponto com "Caminhar a divisa".', 'warning'); return; }
-      const r = palco.querySelector('#croquiSvg').getBoundingClientRect();
-      Croqui.pontos.push(Croqui._paraGeo(ev.clientX - r.left, ev.clientY - r.top, Croqui._tfm));
-      Croqui._dirty = true;
-      Croqui.render();
+    palco.addEventListener('pointermove', ev => {
+      if (Croqui._arrasto !== null && Croqui.vista) {
+        const [x, y, w, h] = pos(ev);
+        Croqui.pontos[Croqui._arrasto] = Croqui._paraGeo(x, y, w, h);
+        Croqui._dirty = true;
+        Croqui.render();
+        ev.preventDefault();
+        return;
+      }
+      if (Croqui._pan) {
+        const dx = ev.clientX - Croqui._pan.x, dy = ev.clientY - Croqui._pan.y;
+        if (Math.hypot(dx, dy) > 6) Croqui._pan.moved = true;
+        if (Croqui._pan.moved) {
+          const e = Croqui._escala();
+          Croqui.vista.cx = Croqui._pan.cx0 - dx / e;
+          Croqui.vista.cy = Croqui._pan.cy0 - dy / e;
+          Croqui.render();
+        }
+        ev.preventDefault();
+      }
     });
+    ['pointerup', 'pointercancel'].forEach(n => palco.addEventListener(n, ev => {
+      if (Croqui._arrasto !== null) { Croqui._arrasto = null; return; }
+      if (Croqui._pan) {
+        const foiClique = !Croqui._pan.moved;
+        Croqui._pan = null;
+        if (foiClique && document.getElementById('croquiModoManual').checked && Croqui.vista
+            && !ev.target.closest('.croqui-zoom')) {
+          const [x, y, w, h] = pos(ev);
+          Croqui.pontos.push(Croqui._paraGeo(x, y, w, h));
+          Croqui._dirty = true;
+          Croqui.render();
+        }
+      }
+    }));
+    palco.addEventListener('wheel', ev => {
+      ev.preventDefault();
+      Croqui.zoom(ev.deltaY < 0 ? 1 : -1);
+    }, { passive: false });
     window.addEventListener('resize', () => { if (document.querySelector('#modalCroqui.show')) Croqui.render(); });
   },
 
   desfazer() { Croqui.pontos.pop(); Croqui._dirty = true; Croqui.render(); },
 
   limpar() {
-    if (!confirm('Apagar todos os pontos do contorno deste talhão?')) return;
+    if (!confirm('Apagar todos os pontos deste contorno?')) return;
     Croqui.pontos = [];
     Croqui._dirty = true;
     Croqui.render();
@@ -867,20 +983,22 @@ const Croqui = {
       App.alerta('Marque pelo menos 3 pontos para fechar a área (ou Limpar para remover o croqui).', 'warning');
       return;
     }
-    const tal = Croqui.talhoes.find(x => Number(x.id) === Croqui.atualId);
+    const ehProp = Croqui.atualId === 0;
+    const alvo = ehProp ? Croqui.prop : Croqui.talhoes.find(x => Number(x.id) === Croqui.atualId);
     const fd = new FormData();
-    fd.append('talhao_id', Croqui.atualId);
-    fd.append('contorno', JSON.stringify(Croqui.pontos.map(p => [Number(p[0].toFixed(7)), Number(p[1].toFixed(7))])));
+    fd.append('tipo', ehProp ? 'propriedade' : 'talhao');
+    fd.append(ehProp ? 'propriedade_id' : 'talhao_id', ehProp ? Croqui.prop.id : Croqui.atualId);
+    fd.append('contorno', JSON.stringify(Croqui.pontos.map(p => [Number(Number(p[0]).toFixed(7)), Number(Number(p[1]).toFixed(7))])));
     fd.append('usar_area', document.getElementById('croquiUsarArea').checked ? '1' : '0');
     try {
       const r = await App.enviarFormOffline(fd, 'index.php?r=clientes/salvar-croqui',
-        { modulo: 'Croqui', rotulo: 'Croqui — ' + (tal ? tal.nome : 'talhão') });
-      tal.contorno = Croqui.pontos.length ? JSON.stringify(Croqui.pontos) : null;
-      tal.area_gps = r.area_gps ?? Croqui.areaHa(Croqui.pontos).toFixed(2);
-      if (document.getElementById('croquiUsarArea').checked && Croqui.pontos.length >= 3) tal.area_ha = tal.area_gps;
+        { modulo: 'Croqui', rotulo: 'Croqui — ' + (ehProp ? 'propriedade ' + Croqui.prop.nome : (alvo ? alvo.nome : 'talhão')) });
+      alvo.contorno = Croqui.pontos.length ? JSON.stringify(Croqui.pontos) : null;
+      alvo.area_gps = r.area_gps ?? Croqui.areaHa(Croqui.pontos).toFixed(2);
+      if (document.getElementById('croquiUsarArea').checked && Croqui.pontos.length >= 3) alvo.area_ha = alvo.area_gps;
       Croqui._dirty = false;
       App.alerta(r.offline ? 'Sem sinal: croqui salvo na fila — será enviado ao reconectar.'
-        : (Croqui.pontos.length ? `Croqui salvo — ${Number(tal.area_gps).toLocaleString('pt-BR')} ha medidos.` : 'Croqui removido.'),
+        : (Croqui.pontos.length ? `Croqui salvo — ${Number(alvo.area_gps).toLocaleString('pt-BR')} ha medidos.` : 'Croqui removido.'),
         r.offline ? 'info' : 'success');
       Croqui.render();
     } catch (e) { App.alerta(e.message, 'danger'); }

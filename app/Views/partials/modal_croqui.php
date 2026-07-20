@@ -27,14 +27,16 @@
         <div class="d-flex flex-wrap align-items-center gap-3">
           <div class="form-check form-check-sm mb-0">
             <input class="form-check-input" type="checkbox" id="croquiUsarArea">
-            <label class="form-check-label small" for="croquiUsarArea">Usar a área medida como área oficial do talhão</label>
+            <label class="form-check-label small" for="croquiUsarArea">Usar a área medida como área oficial da propriedade</label>
           </div>
+          <span id="croquiTotais" class="small text-muted"></span>
           <div id="croquiLegenda" class="d-flex flex-wrap gap-2 small ms-auto"></div>
         </div>
         <div class="small text-muted">
-          <i class="bi bi-info-circle me-1"></i><strong>Caminhar a divisa</strong>: ande pelo perímetro do talhão — o app marca um ponto
-          a cada ~10 m automaticamente. <strong>Manual</strong>: toque no mapa para marcar cada canto (arraste um ponto para ajustar).
-          Funciona sem sinal: o GPS não depende de internet e o salvar entra na fila de envio.
+          <i class="bi bi-info-circle me-1"></i>Escolha <strong>Propriedade</strong> para marcar a divisa (área total) ou um talhão para a
+          área de plantio. <strong>Manual</strong>: toque sobre a imagem de satélite para marcar cada canto (arraste o mapa para navegar,
+          use +/− ou a roda do mouse para o zoom, arraste um ponto para ajustar). <strong>Caminhar a divisa</strong>: ande pelo perímetro —
+          o app marca um ponto a cada ~10 m pelo GPS, mesmo sem sinal (a imagem some, o desenho continua; o salvar entra na fila).
         </div>
       </div>
     </div>
