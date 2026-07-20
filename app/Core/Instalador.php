@@ -249,6 +249,134 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '17'"
             );
         }
+        if ($versao < 18) {
+            self::migrarParaV18();
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '18')
+                 ON DUPLICATE KEY UPDATE valor = '18'"
+            );
+        }
+    }
+
+    /**
+     * Fase 6E: linha do tempo da cultura — plantios por talhão, estágios
+     * fenológicos de referência, manejos por fase e checklist da visita.
+     * Seeda só a REFERÊNCIA (fenologia/manejos); plantios são dados do usuário.
+     */
+    private static function migrarParaV18(): void
+    {
+        if (!self::temTabela('plantios')) {
+            Database::executar(
+                'CREATE TABLE plantios (
+                   id INT AUTO_INCREMENT PRIMARY KEY,
+                   talhao_id INT NOT NULL,
+                   cultura_id INT NOT NULL,
+                   safra_id INT,
+                   data_plantio DATE NOT NULL,
+                   cultivar VARCHAR(120),
+                   encerrado TINYINT(1) NOT NULL DEFAULT 0,
+                   colhido_em DATE NULL,
+                   produtividade DECIMAL(10,2) NULL COMMENT "sacas/ha colhidas (informada no encerramento)",
+                   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                   FOREIGN KEY (talhao_id) REFERENCES talhoes(id) ON DELETE CASCADE,
+                   FOREIGN KEY (cultura_id) REFERENCES culturas(id),
+                   FOREIGN KEY (safra_id) REFERENCES safras(id)
+                 ) ENGINE=InnoDB'
+            );
+        }
+        if (!self::temTabela('fenologia_estagios')) {
+            Database::executar(
+                'CREATE TABLE fenologia_estagios (
+                   id INT AUTO_INCREMENT PRIMARY KEY,
+                   cultura_id INT NOT NULL,
+                   codigo VARCHAR(12) NOT NULL,
+                   nome VARCHAR(120) NOT NULL,
+                   dias_inicio SMALLINT NOT NULL,
+                   dias_fim SMALLINT NOT NULL,
+                   descricao VARCHAR(255),
+                   ordem SMALLINT NOT NULL DEFAULT 0,
+                   FOREIGN KEY (cultura_id) REFERENCES culturas(id) ON DELETE CASCADE
+                 ) ENGINE=InnoDB'
+            );
+        }
+        if (!self::temTabela('manejos_fase')) {
+            Database::executar(
+                'CREATE TABLE manejos_fase (
+                   id INT AUTO_INCREMENT PRIMARY KEY,
+                   estagio_id INT NOT NULL,
+                   titulo VARCHAR(160) NOT NULL,
+                   familia_id INT NULL,
+                   orientacao VARCHAR(500),
+                   eh_checklist TINYINT(1) NOT NULL DEFAULT 1,
+                   FOREIGN KEY (estagio_id) REFERENCES fenologia_estagios(id) ON DELETE CASCADE,
+                   FOREIGN KEY (familia_id) REFERENCES familias_produto(id)
+                 ) ENGINE=InnoDB'
+            );
+        }
+        if (!self::temTabela('visita_checklist')) {
+            Database::executar(
+                'CREATE TABLE visita_checklist (
+                   id INT AUTO_INCREMENT PRIMARY KEY,
+                   visita_id INT NOT NULL,
+                   manejo_id INT NOT NULL,
+                   situacao ENUM("OK","Atenção","Crítico","N/A") NOT NULL,
+                   observacao VARCHAR(255),
+                   UNIQUE KEY uq_visita_manejo (visita_id, manejo_id),
+                   FOREIGN KEY (visita_id) REFERENCES visitas(id) ON DELETE CASCADE,
+                   FOREIGN KEY (manejo_id) REFERENCES manejos_fase(id) ON DELETE CASCADE
+                 ) ENGINE=InnoDB'
+            );
+        }
+        // Seed da referência (só se vazio — nunca sobrescreve ajustes locais)
+        if ((int) Database::valor('SELECT COUNT(*) FROM fenologia_estagios') === 0) {
+            Database::executar(
+                "INSERT INTO fenologia_estagios (id, cultura_id, codigo, nome, dias_inicio, dias_fim, descricao, ordem) VALUES
+                 (1,1,'VE','Emergência',0,10,'Da semeadura à emergência das plântulas',1),
+                 (2,1,'V2-V4','Desenvolvimento vegetativo',11,30,'2 a 4 trifólios — definição do estande',2),
+                 (3,1,'V5+','Fechamento das entrelinhas',31,44,'Crescimento vegetativo pleno',3),
+                 (4,1,'R1-R2','Florescimento',45,59,'Início e plena floração',4),
+                 (5,1,'R3-R4','Formação de vagens',60,74,'Canivetinho a vagem formada',5),
+                 (6,1,'R5','Enchimento de grãos',75,94,'Fase de maior demanda hídrica e nutricional',6),
+                 (7,1,'R6','Grão cheio',95,109,'Grãos com volume máximo',7),
+                 (8,1,'R7-R8','Maturação',110,135,'Maturação fisiológica à colheita',8),
+                 (9,2,'VE','Emergência',0,8,'Da semeadura à emergência',1),
+                 (10,2,'V3-V5','Definição da produtividade',9,25,'Estádio que define o número de fileiras da espiga',2),
+                 (11,2,'V6-V8','Desenvolvimento vegetativo',26,40,'Crescimento acelerado do colmo',3),
+                 (12,2,'V9-VT','Pré-pendoamento',41,60,'Emborrachamento ao pendoamento',4),
+                 (13,2,'R1','Polinização',61,75,'Embonecamento — fase mais sensível a estresse',5),
+                 (14,2,'R2-R4','Enchimento de grãos',76,105,'Grão leitoso a pastoso',6),
+                 (15,2,'R5-R6','Maturação',106,140,'Formação de dente à maturação fisiológica',7)"
+            );
+            Database::executar(
+                "INSERT INTO manejos_fase (estagio_id, titulo, familia_id, orientacao, eh_checklist) VALUES
+                 (1,'Avaliar estande e emergência',1,'Contar população de plantas por metro e comparar com a meta da cultivar; decidir replantio até V2.',1),
+                 (1,'Controle de daninhas em pós-emergência inicial',3,'Aplicar com as daninhas pequenas (até 4 folhas); atenção a buva e azevém resistentes.',1),
+                 (2,'Herbicida pós-emergente',3,'Completar o controle antes do fechamento; verificar falhas de aplicação.',1),
+                 (2,'Monitorar lagartas desfolhadoras',5,'Limite de desfolha na fase vegetativa: 30%.',1),
+                 (3,'Adubação foliar com micronutrientes',6,'Mn, Co e Mo conforme análise; aproveitar a entrada do fechamento.',1),
+                 (3,'Monitorar doenças de início de ciclo',4,'Oídio e manchas iniciais; registrar pressão para posicionar o programa.',1),
+                 (4,'1ª aplicação de fungicida (ferrugem asiática)',4,'Posicionamento preventivo no florescimento; reaplicar em 14–21 dias.',1),
+                 (4,'Monitorar percevejos — início',5,'Amostrar com pano de batida; registrar espécies e níveis.',1),
+                 (5,'2ª aplicação de fungicida',4,'Sequência do programa; rotacionar mecanismos de ação.',1),
+                 (5,'Inseticida para percevejos',5,'Nível de controle: 2 percevejos/pano (1 em campos de semente).',1),
+                 (6,'3ª aplicação de fungicida (se houver pressão)',4,'Avaliar pressão de ferrugem e clima antes de fechar o programa.',1),
+                 (6,'Percevejo — fase crítica do enchimento',5,'Dano direto no grão: rigor no monitoramento semanal.',1),
+                 (6,'Adubação foliar de enchimento',6,'Potássio/nitrogênio foliar conforme demanda.',1),
+                 (8,'Dessecação pré-colheita',3,'Aplicar em R7.3 quando indicado; respeitar o período de carência.',1),
+                 (8,'Planejar colheita: umidade e perdas',NULL,'Colher entre 13–15% de umidade; regular a plataforma para perdas < 1 sc/ha.',1),
+                 (9,'Avaliar estande e emergência',1,'População final define a produtividade; avaliar falhas e replantio.',1),
+                 (10,'Adubação nitrogenada de cobertura (1ª)',2,'Aplicar N em V3–V4 — estádio que define as fileiras da espiga.',1),
+                 (10,'Herbicida pós-emergente',3,'Milho é sensível à matocompetição inicial; controlar cedo.',1),
+                 (10,'Monitorar cigarrinha-do-milho',5,'Vetor dos enfezamentos: controle no início do ciclo.',1),
+                 (11,'2ª cobertura nitrogenada',2,'Completar o N até V8 conforme expectativa de produtividade.',1),
+                 (11,'Lagarta-do-cartucho',5,'Controlar com dano no cartucho acima de 20% das plantas.',1),
+                 (12,'1ª aplicação de fungicida',4,'Pré-pendoamento: proteger folha bandeira e colmo.',1),
+                 (12,'Adubação foliar',6,'Complementar micronutrientes no pré-pendoamento.',1),
+                 (13,'2ª aplicação de fungicida (doenças foliares)',4,'Proteger a polinização — fase mais sensível a estresse.',1),
+                 (14,'Monitorar percevejo barriga-verde e doenças de colmo',5,'Avaliar colmos e grãos; risco de tombamento.',1),
+                 (15,'Planejar colheita: umidade e perdas',NULL,'Acompanhar a dry-down; colher na janela para evitar grãos ardidos.',1)"
+            );
+        }
     }
 
     /** Fase 5: log de integração (ERP/CAPE). */

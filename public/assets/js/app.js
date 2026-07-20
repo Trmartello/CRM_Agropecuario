@@ -452,6 +452,51 @@ const Clientes = {
   },
 };
 
+/* ============================== PLANTIOS (Fase 6E) ============================== */
+
+const Plantios = {
+  abrir(talhaoId, culturaId, nomeTalhao) {
+    const form = document.getElementById('formPlantio');
+    if (!form) return;
+    form.reset();
+    form.querySelector('[name=talhao_id]').value = talhaoId;
+    if (culturaId) form.querySelector('[name=cultura_id]').value = culturaId;
+    document.getElementById('plantioTalhaoNome').textContent = nomeTalhao || '';
+    new bootstrap.Modal('#modalPlantio').show();
+  },
+
+  async salvar(ev) {
+    ev.preventDefault();
+    try {
+      await App.enviarForm(ev.target, 'index.php?r=plantios/salvar');
+      bootstrap.Modal.getInstance('#modalPlantio').hide();
+      App.alerta('Plantio registrado — linha do tempo da cultura ativada.');
+      if (typeof Clientes !== 'undefined' && Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId);
+    } catch (e) { App.alerta(e.message, 'danger'); }
+    return false;
+  },
+
+  colheita(plantioId, nomeTalhao) {
+    const form = document.getElementById('formColheita');
+    if (!form) return;
+    form.reset();
+    form.querySelector('[name=id]').value = plantioId;
+    document.getElementById('colheitaTalhaoNome').textContent = nomeTalhao || '';
+    new bootstrap.Modal('#modalColheita').show();
+  },
+
+  async salvarColheita(ev) {
+    ev.preventDefault();
+    try {
+      await App.enviarForm(ev.target, 'index.php?r=plantios/encerrar');
+      bootstrap.Modal.getInstance('#modalColheita').hide();
+      App.alerta('Colheita registrada — plantio encerrado.');
+      if (typeof Clientes !== 'undefined' && Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId);
+    } catch (e) { App.alerta(e.message, 'danger'); }
+    return false;
+  },
+};
+
 /* ============================== VISITAS ============================== */
 
 const Visitas = {
@@ -469,6 +514,8 @@ const Visitas = {
     document.getElementById('visitaPainelComercial').innerHTML = '<span class="text-muted small">Selecione o cliente na etapa 1 para carregar os dados comerciais.</span>';
     document.getElementById('visitaModelos').innerHTML = '<span class="text-muted small">Escolha a cultura na etapa 1 para listar os modelos.</span>';
     document.querySelectorAll('#formVisita textarea.auto-crescer').forEach(t => { delete t.dataset.alturaManual; t.style.height = ''; });
+    const fen = document.getElementById('visitaFenologia'); if (fen) fen.innerHTML = '';
+    const chk = document.getElementById('visitaChecklist'); if (chk) chk.innerHTML = '';
     Visitas.irParaEtapa(1);
     document.getElementById('visitaFotosPreview').innerHTML = '';
     Visitas.atualizarCompletude();
@@ -537,6 +584,8 @@ const Visitas = {
         if (el.tagName === 'TEXTAREA') App.autoCrescer(el);
       }
     });
+    // Linha do tempo + checklist já marcado na visita original
+    Visitas.renderFenologia(visita.checklist || []);
     Visitas.atualizarCompletude();
   },
 
@@ -546,6 +595,7 @@ const Visitas = {
     const [d = '', h = ''] = (input.value || '').split('T');
     form.querySelector('[name=data_visita]').value = d;
     form.querySelector('[name=hora]').value = h;
+    Visitas.renderFenologia(); // o DAP (e a fase) dependem da data da visita
   },
 
   async carregarApoio(clienteId) {
@@ -592,6 +642,8 @@ const Visitas = {
       propriedades: a.propriedades || [],
       talhoes: a.talhoes || [],
       painel: null, // dados comerciais não ficam no snapshot (indisponíveis offline)
+      plantios: snap.plantios || {},   // linha do tempo/checklist funcionam offline
+      fenologia: snap.fenologia || {},
       _pendente: !!(prod && prod.ultima_completude !== null && !prod.ultima_finalizada),
       _atualizado: snap.atualizado_em ? new Date(snap.atualizado_em).toLocaleString('pt-BR') : '',
     };
@@ -603,6 +655,7 @@ const Visitas = {
     const talhoes = Visitas.apoio.talhoes.filter(t => !propId || Number(t.propriedade_id) === propId);
     document.getElementById('visitaTalhao').innerHTML = '<option value="">—</option>' +
       talhoes.map(t => `<option value="${t.id}" data-cultura="${t.cultura_id || ''}">${t.nome}${t.cultura ? ' (' + t.cultura + ')' : ''}</option>`).join('');
+    Visitas.renderFenologia(); // talhão mudou/limpou: refaz (ou limpa) a linha do tempo
   },
 
   aoEscolherTalhao() {
@@ -611,6 +664,164 @@ const Visitas = {
     if (culturaId) {
       document.getElementById('visitaCultura').value = culturaId;
       Visitas.carregarModelos();
+    }
+    Visitas.renderFenologia();
+  },
+
+  /* ---------- Linha do tempo da cultura + checklist da lavoura (Fase 6E) ---------- */
+
+  /** Estágio estimado pela idade da lavoura (espelho do FenologiaService). */
+  _estagioPorDap(estagios, dap) {
+    let ultimo = null;
+    for (const e of estagios) {
+      if (dap >= Number(e.dias_inicio) && dap <= Number(e.dias_fim)) return e;
+      ultimo = e;
+    }
+    return (ultimo && dap > Number(ultimo.dias_fim)) ? ultimo : null;
+  },
+
+  /** Coleta o checklist já marcado no DOM (preserva as marcações ao re-renderizar). */
+  _checklistMarcado() {
+    const itens = [];
+    document.querySelectorAll('#visitaChecklist input[type=radio]:checked').forEach(r => {
+      const id = (r.name.match(/\[(\d+)\]/) || [])[1];
+      if (!id) return;
+      const obs = document.querySelector(`#visitaChecklist [name="checklist_obs[${id}]"]`);
+      itens.push({ manejo_id: Number(id), situacao: r.value, observacao: obs ? obs.value : '' });
+    });
+    return itens;
+  },
+
+  /** Desenha a linha do tempo do plantio do talhão e o checklist da fase. */
+  renderFenologia(checklistSalvo) {
+    const alvo = document.getElementById('visitaFenologia');
+    const alvoChk = document.getElementById('visitaChecklist');
+    if (!alvo) return;
+    const salvo = checklistSalvo || Visitas._checklistMarcado();
+    alvo.innerHTML = ''; if (alvoChk) alvoChk.innerHTML = '';
+
+    const talhaoId = Number(document.getElementById('visitaTalhao')?.value);
+    if (!talhaoId || !Visitas.apoio) return;
+    const plantio = Visitas.apoio.plantios ? Visitas.apoio.plantios[talhaoId] : null;
+
+    if (!plantio) {
+      // Sem plantio ativo: oferece o registro ali mesmo (ancora a linha do tempo)
+      alvo.innerHTML = `
+        <div class="card border-success-subtle">
+          <div class="card-body py-2 d-flex flex-wrap align-items-end gap-2">
+            <div><i class="bi bi-calendar-plus text-success me-1"></i><strong>Talhão sem plantio registrado.</strong>
+              <div class="small text-muted">Informe a data de plantio para acompanhar a fase da lavoura e o checklist.</div></div>
+            <div><label class="form-label mb-0 small">Data do plantio</label>
+              <input type="date" id="plantioData" class="form-control form-control-sm" max="${new Date().toISOString().slice(0, 10)}"></div>
+            <div><label class="form-label mb-0 small">Cultivar (opcional)</label>
+              <input id="plantioCultivar" class="form-control form-control-sm" placeholder="Ex.: 58I60 IPRO"></div>
+            <button type="button" class="btn btn-success btn-sm" onclick="Visitas.registrarPlantio(${talhaoId})">
+              <i class="bi bi-check-lg me-1"></i>Registrar plantio</button>
+          </div>
+        </div>`;
+      return;
+    }
+
+    const estagios = (Visitas.apoio.fenologia && Visitas.apoio.fenologia[plantio.cultura_id]) || [];
+    if (!estagios.length) return;
+    const dataRef = document.querySelector('#formVisita [name=data_visita]')?.value || new Date().toISOString().slice(0, 10);
+    const dap = Math.max(0, Math.floor((new Date(dataRef + 'T12:00') - new Date(plantio.data_plantio + 'T12:00')) / 864e5));
+    const atual = Visitas._estagioPorDap(estagios, dap);
+    const cicloTotal = Number(estagios[estagios.length - 1].dias_fim) + 1;
+
+    const segmentos = estagios.map(e => {
+      const largura = (Number(e.dias_fim) - Number(e.dias_inicio) + 1) / cicloTotal * 100;
+      const classe = atual && e.id === atual.id ? 'atual' : (dap > Number(e.dias_fim) ? 'passada' : '');
+      return `<div class="fenologia-seg ${classe}" style="width:${largura.toFixed(2)}%"
+                title="${App.escapeHtml(e.codigo)} — ${App.escapeHtml(e.nome)} (${e.dias_inicio}–${e.dias_fim} DAP)${e.descricao ? ': ' + App.escapeHtml(e.descricao) : ''}">${App.escapeHtml(e.codigo)}</div>`;
+    }).join('');
+
+    alvo.innerHTML = `
+      <div class="card border-success-subtle">
+        <div class="card-body py-2">
+          <div class="d-flex flex-wrap justify-content-between align-items-center mb-1 gap-2">
+            <div><i class="bi bi-flower1 text-success me-1"></i><strong>${App.escapeHtml(plantio.cultura)}</strong>
+              <span class="text-muted small">plantio ${new Date(plantio.data_plantio + 'T12:00').toLocaleDateString('pt-BR')}${plantio.cultivar ? ' · ' + App.escapeHtml(plantio.cultivar) : ''} · ${dap} dias</span></div>
+            ${atual ? `<span class="badge text-bg-success">Fase ${App.escapeHtml(atual.codigo)} — ${App.escapeHtml(atual.nome)}</span>` : ''}
+          </div>
+          <div class="fenologia-barra">${segmentos}</div>
+          ${atual && atual.descricao ? `<div class="small text-muted mt-1">${App.escapeHtml(atual.descricao)}</div>` : ''}
+        </div>
+      </div>`;
+
+    // Pré-preenche o estágio da visita com a fase estimada (sem sobrescrever o técnico)
+    const campoEstagio = document.querySelector('#formVisita [name=estagio_cultura]');
+    if (campoEstagio && !campoEstagio.value && atual) campoEstagio.value = atual.codigo + ' — ' + atual.nome;
+
+    Visitas.renderChecklist(atual, salvo);
+  },
+
+  /** Checklist da fase atual na etapa de Avaliação (OK/Atenção/Crítico/N.A.). */
+  renderChecklist(estagio, salvo) {
+    const alvo = document.getElementById('visitaChecklist');
+    if (!alvo) return;
+    const manejos = estagio && estagio.manejos ? estagio.manejos : [];
+    if (!manejos.length) { alvo.innerHTML = ''; return; }
+    const mapa = {};
+    (salvo || []).forEach(c => { mapa[Number(c.manejo_id)] = c; });
+    const cores = { 'OK': 'success', 'Atenção': 'warning', 'Crítico': 'danger', 'N/A': 'secondary' };
+
+    alvo.innerHTML = `
+      <div class="card border-success-subtle mb-3">
+        <div class="card-header py-2 bg-success-subtle">
+          <i class="bi bi-list-check me-1"></i><strong>Checklist da lavoura — fase ${App.escapeHtml(estagio.codigo)} (${App.escapeHtml(estagio.nome)})</strong>
+          <span class="text-muted small ms-1">opcional — marque o que avaliou</span>
+        </div>
+        <ul class="list-group list-group-flush">` +
+      manejos.map(m => {
+        const s = mapa[Number(m.id)];
+        const botoes = ['OK', 'Atenção', 'Crítico', 'N/A'].map(op => {
+          const idr = `chk_${m.id}_${op.replace(/\W/g, '')}`;
+          return `<input type="radio" class="btn-check" name="checklist[${m.id}]" id="${idr}" value="${op}"
+                    ${s && s.situacao === op ? 'checked' : ''} onchange="Visitas._obsChecklist(${m.id})">
+                  <label class="btn btn-sm btn-outline-${cores[op]}" for="${idr}">${op}</label>`;
+        }).join('');
+        const obs = s && s.observacao ? App.escapeHtml(s.observacao) : '';
+        return `<li class="list-group-item py-2">
+          <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div class="me-auto">
+              <div class="fw-semibold">${App.escapeHtml(m.titulo)}
+                ${m.familia ? `<span class="badge text-bg-light border text-dark ms-1">${App.escapeHtml(m.familia)}</span>` : ''}</div>
+              ${m.orientacao ? `<div class="small text-muted">${App.escapeHtml(m.orientacao)}</div>` : ''}
+            </div>
+            <div class="btn-group" role="group">${botoes}</div>
+          </div>
+          <input name="checklist_obs[${m.id}]" class="form-control form-control-sm mt-2 ${obs ? '' : 'd-none'}"
+                 placeholder="Observação do item…" value="${obs}">
+        </li>`;
+      }).join('') + '</ul></div>';
+  },
+
+  /** Mostra o campo de observação do item quando ele é marcado. */
+  _obsChecklist(manejoId) {
+    document.querySelector(`#visitaChecklist [name="checklist_obs[${manejoId}]"]`)?.classList.remove('d-none');
+  },
+
+  /** Registra o plantio do talhão direto do modal de visita. */
+  async registrarPlantio(talhaoId) {
+    const data = document.getElementById('plantioData')?.value;
+    const culturaId = Number(document.getElementById('visitaCultura')?.value);
+    if (!data) { App.alerta('Informe a data do plantio.', 'warning'); return; }
+    if (!culturaId) { App.alerta('Selecione a cultura (etapa 1) antes de registrar o plantio.', 'warning'); return; }
+    const fd = new FormData();
+    fd.append('talhao_id', talhaoId);
+    fd.append('cultura_id', culturaId);
+    fd.append('data_plantio', data);
+    fd.append('cultivar', document.getElementById('plantioCultivar')?.value || '');
+    try {
+      const resp = await (await fetch('index.php?r=plantios/salvar', { method: 'POST', body: fd })).json();
+      if (!resp.ok) throw new Error(resp.erro || 'Não foi possível registrar o plantio.');
+      if (!Visitas.apoio.plantios || Array.isArray(Visitas.apoio.plantios)) Visitas.apoio.plantios = {};
+      Visitas.apoio.plantios[talhaoId] = resp.plantio;
+      App.alerta('Plantio registrado — linha do tempo ativada.');
+      Visitas.renderFenologia();
+    } catch (e) {
+      App.alerta(navigator.onLine ? e.message : 'Sem conexão — registre o plantio quando estiver online.', 'warning');
     }
   },
 

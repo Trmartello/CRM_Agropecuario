@@ -166,3 +166,14 @@ textarea.auto-crescer { resize: vertical; overflow: hidden; min-height: 38px; li
   .btn { padding-top: .55rem; padding-bottom: .55rem; }
   .table { font-size: .92rem; }
 }
+
+/* Linha do tempo fenológica da cultura (Fase 6E) */
+.fenologia-barra { display: flex; height: 30px; border-radius: 8px; overflow: hidden; border: 1px solid #d8e2d8; }
+.fenologia-seg {
+  display: flex; align-items: center; justify-content: center;
+  font-size: .72rem; color: #5a6b5a; background: #eef3ee;
+  border-right: 1px solid #fff; white-space: nowrap; overflow: hidden; min-width: 0;
+}
+.fenologia-seg.passada { background: #a5c9a7; color: #274e2a; }
+.fenologia-seg.atual { background: #2e7d32; color: #fff; font-weight: 700; }
+.fenologia-seg:last-child { border-right: 0; }

@@ -185,6 +185,32 @@ class ClientesController
         }
         unset($p);
 
+        // Fase 6E: plantio ativo (com fase estimada) e última colheita por talhão
+        $plantiosAtivos = \App\Services\FenologiaService::plantiosAtivosPorCliente($id);
+        if ($plantiosAtivos) {
+            $catalogo = \App\Services\FenologiaService::catalogo(
+                array_map(fn ($pl) => (int) $pl['cultura_id'], $plantiosAtivos)
+            );
+            foreach ($plantiosAtivos as &$pl) {
+                $dap = (int) floor((time() - strtotime((string) $pl['data_plantio'])) / 86400);
+                $estagio = \App\Services\FenologiaService::estagioPorDap($catalogo[(int) $pl['cultura_id']] ?? [], $dap);
+                $pl['dap'] = $dap;
+                $pl['fase'] = $estagio ? $estagio['codigo'] . ' — ' . $estagio['nome'] : null;
+            }
+            unset($pl);
+        }
+        $colheitas = [];
+        foreach (Database::todos(
+            'SELECT p.* FROM plantios p
+               JOIN talhoes t ON t.id = p.talhao_id
+               JOIN propriedades pr ON pr.id = t.propriedade_id
+              WHERE pr.cliente_id = ? AND p.encerrado = 1
+              ORDER BY p.colhido_em DESC',
+            [$id]
+        ) as $co) {
+            $colheitas[(int) $co['talhao_id']] ??= $co;
+        }
+
         $contatos = Database::todos('SELECT * FROM cliente_contatos WHERE cliente_id = ? ORDER BY nome', [$id]);
         $painel = ComercialService::painelCliente($id);
         $historicoCompras = ComercialService::historicoCompras($id);
@@ -225,7 +251,8 @@ class ClientesController
 
         render_parcial('partials/cliente_ficha', compact(
             'cliente', 'propriedades', 'contatos', 'painel', 'potencial',
-            'demandaPlano', 'planos', 'historico', 'historicoCompras', 'culturas', 'documentos'
+            'demandaPlano', 'planos', 'historico', 'historicoCompras', 'culturas', 'documentos',
+            'plantiosAtivos', 'colheitas'
         ));
     }
 

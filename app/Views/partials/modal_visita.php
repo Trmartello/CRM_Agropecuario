@@ -73,10 +73,14 @@
               <input name="objetivo" class="form-control" placeholder="Ex.: acompanhamento fitossanitário">
             </div>
           </div>
+          <!-- Linha do tempo da cultura do talhão (plantio → fase atual) -->
+          <div id="visitaFenologia" class="mt-3"></div>
         </div>
 
         <!-- ETAPA 2: Avaliação técnica -->
         <div class="etapa d-none" data-etapa="2">
+          <!-- Checklist da lavoura (manejos da fase fenológica atual) -->
+          <div id="visitaChecklist"></div>
           <div class="row g-3">
             <div class="col-md-4">
               <label class="form-label">Estágio da cultura</label>

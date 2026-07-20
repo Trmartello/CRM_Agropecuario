@@ -254,10 +254,30 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
       <?php if ($p['talhoes']): ?>
       <ul class="list-group list-group-flush">
         <?php foreach ($p['talhoes'] as $t): ?>
-        <li class="list-group-item py-1 d-flex justify-content-between align-items-center">
+        <?php $pa = $plantiosAtivos[(int) $t['id']] ?? null; $co = $colheitas[(int) $t['id']] ?? null; ?>
+        <li class="list-group-item py-1 d-flex justify-content-between align-items-center flex-wrap gap-1">
           <span><i class="bi bi-grid-3x3-gap me-1 text-muted"></i><?= e($t['nome']) ?>
-            <span class="text-muted small">· <?= numero($t['area_ha'], 0) ?> ha<?= $t['cultura'] ? ' · ' . e($t['cultura']) : '' ?></span></span>
-          <button class="btn btn-sm btn-outline-secondary" onclick='Clientes.editarTalhao(<?= json_attr($t) ?>)'><i class="bi bi-pencil"></i></button>
+            <span class="text-muted small">· <?= numero($t['area_ha'], 0) ?> ha<?= $t['cultura'] ? ' · ' . e($t['cultura']) : '' ?></span>
+            <?php if ($pa): ?>
+              <span class="badge text-bg-success ms-1" title="<?= e($pa['cultura']) ?> plantado em <?= data_br($pa['data_plantio']) ?><?= $pa['cultivar'] ? ' (' . e($pa['cultivar']) . ')' : '' ?>">
+                <i class="bi bi-flower1 me-1"></i><?= e($pa['fase'] ?? 'Em ciclo') ?> · <?= (int) $pa['dap'] ?> d
+              </span>
+            <?php elseif ($co): ?>
+              <span class="badge text-bg-light border text-dark ms-1" title="Colhido em <?= data_br($co['colhido_em']) ?>">
+                <i class="bi bi-check2-circle me-1"></i>Colhido<?= $co['produtividade'] ? ': ' . numero($co['produtividade'], 1) . ' sc/ha' : '' ?>
+              </span>
+            <?php endif; ?>
+          </span>
+          <span class="btn-group">
+            <?php if ($pa): ?>
+              <button class="btn btn-sm btn-outline-success" title="Encerrar plantio registrando a colheita"
+                      onclick="Plantios.colheita(<?= (int) $pa['id'] ?>, '<?= e($t['nome']) ?>')"><i class="bi bi-basket me-1"></i>Colheita</button>
+            <?php else: ?>
+              <button class="btn btn-sm btn-outline-success" title="Registrar plantio (ativa a linha do tempo da cultura)"
+                      onclick="Plantios.abrir(<?= (int) $t['id'] ?>, <?= (int) ($t['cultura_id'] ?? 0) ?>, '<?= e($t['nome']) ?>')"><i class="bi bi-calendar-plus me-1"></i>Plantio</button>
+            <?php endif; ?>
+            <button class="btn btn-sm btn-outline-secondary" onclick='Clientes.editarTalhao(<?= json_attr($t) ?>)'><i class="bi bi-pencil"></i></button>
+          </span>
         </li>
         <?php endforeach; ?>
       </ul>

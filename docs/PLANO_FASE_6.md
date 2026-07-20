@@ -144,12 +144,12 @@ checklist de vistoria — assistência técnica padronizada e proativa.
 
 ## Ordem sugerida (valor × dependência)
 
-| # | Frente | Esforço | Motivo da posição |
-|---|--------|---------|-------------------|
-| 1º | 6C Segmentação | Pequeno | Dados já existem; valor imediato na priorização |
-| 2º | 6D Desempenho | Pequeno/médio | Só leitura; gestão passa a enxergar a equipe |
-| 3º | 6E Linha do tempo | Grande | Coração da assistência técnica; gera dados p/ 6B |
-| 4º | 6A Croqui | Médio | Campo/GPS; independe dos demais |
+| # | Frente | Esforço | Status |
+|---|--------|---------|--------|
+| 1º | 6C Segmentação | Pequeno | ✅ Entregue (schema v17) |
+| 2º | 6D Desempenho | Pequeno/médio | ✅ Entregue |
+| 3º | 6E Linha do tempo | Grande | ✅ Entregue (schema v18) |
+| 4º | 6A Croqui | Médio | Próxima |
 | 5º | 6B Relatório de safra | Médio | Por último de propósito: colhe 6A + 6E prontos |
 
 Cada frente: implementação → migração de schema → smoke/screenshot →

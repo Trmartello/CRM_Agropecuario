@@ -6,6 +6,7 @@ use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Permissoes;
 use App\Services\ComercialService;
+use App\Services\FenologiaService;
 use App\Services\ImagemService;
 use App\Services\PriorizacaoService;
 
@@ -106,7 +107,17 @@ class VisitasController
         $visitaPendente = ($ultima && !(int) $ultima['finalizada'])
             ? ['id' => (int) $ultima['id'], 'completude' => (int) $ultima['completude']]
             : null;
-        json_ok(compact('propriedades', 'talhoes', 'painel') + ['visita_pendente' => $visitaPendente]);
+        // Fase 6E: plantios ativos por talhão + catálogo de fenologia das culturas
+        $plantios = FenologiaService::plantiosAtivosPorCliente($clienteId);
+        $culturasIds = array_values(array_unique(array_merge(
+            array_map(fn ($t) => (int) $t['cultura_id'], array_filter($talhoes, fn ($t) => $t['cultura_id'])),
+            array_map(fn ($p) => (int) $p['cultura_id'], $plantios)
+        )));
+        json_ok(compact('propriedades', 'talhoes', 'painel') + [
+            'visita_pendente' => $visitaPendente,
+            'plantios' => $plantios ?: new \stdClass(),
+            'fenologia' => ($culturasIds ? FenologiaService::catalogo($culturasIds) : null) ?: new \stdClass(),
+        ]);
     }
 
     /** Modelos de recomendação por cultura (ou gerais). */
@@ -137,6 +148,10 @@ class VisitasController
         if (!$visita) {
             json_erro('Visita não encontrada.', 404);
         }
+        // Checklist da lavoura já marcado (para reabrir o modal preenchido)
+        $visita['checklist'] = Database::todos(
+            'SELECT manejo_id, situacao, observacao FROM visita_checklist WHERE visita_id = ?', [$id]
+        );
         json_ok(['visita' => $visita]);
     }
 
@@ -200,6 +215,7 @@ class VisitasController
             );
             $fotosIgnoradas = $this->salvarFotos($visitaId);
             $this->salvarConcorrencia($visitaId, $clienteId);
+            $this->salvarChecklist($visitaId);
             // Notifica o produtor só se a recomendação surgiu agora (não repete aviso)
             $notificar = trim($_POST['recomendacao'] ?? '') !== '' && trim((string) $anterior['recomendacao']) === '';
         } else {
@@ -231,6 +247,7 @@ class VisitasController
 
             $fotosIgnoradas = $this->salvarFotos($visitaId);
             $this->salvarConcorrencia($visitaId, $clienteId);
+            $this->salvarChecklist($visitaId);
 
             // Amarra automaticamente a quilometragem do dia (mesmo técnico/produtor) a esta visita
             \App\Services\DespesaService::vincularVisitaPorEvento($visitaId, Auth::id(), $clienteId, $data);
@@ -305,6 +322,28 @@ class VisitasController
         return $ignoradas;
     }
 
+    /** Grava o checklist da lavoura marcado na visita (substitui o anterior). */
+    private function salvarChecklist(int $visitaId): void
+    {
+        if (!isset($_POST['checklist']) || !is_array($_POST['checklist'])) {
+            return;
+        }
+        $validas = ['OK', 'Atenção', 'Crítico', 'N/A'];
+        Database::executar('DELETE FROM visita_checklist WHERE visita_id = ?', [$visitaId]);
+        foreach ($_POST['checklist'] as $manejoId => $situacao) {
+            if (!in_array($situacao, $validas, true)) {
+                continue;
+            }
+            $obs = trim((string) ($_POST['checklist_obs'][$manejoId] ?? '')) ?: null;
+            try {
+                Database::executar(
+                    'INSERT INTO visita_checklist (visita_id, manejo_id, situacao, observacao) VALUES (?,?,?,?)',
+                    [$visitaId, (int) $manejoId, $situacao, $obs !== null ? mb_substr($obs, 0, 255) : null]
+                );
+            } catch (\Throwable $e) { /* manejo removido do catálogo: ignora o item */ }
+        }
+    }
+
     private function salvarConcorrencia(int $visitaId, int $clienteId): void
     {
         $concorrente = trim($_POST['concorrente'] ?? '');
@@ -345,6 +384,14 @@ class VisitasController
             json_erro('Visita não encontrada.', 404);
         }
         $fotos = Database::todos('SELECT * FROM visita_fotos WHERE visita_id = ?', [$id]);
-        render_parcial('partials/visita_detalhe', compact('visita', 'fotos'));
+        $checklist = Database::todos(
+            'SELECT vc.situacao, vc.observacao, m.titulo, fe.codigo AS estagio
+               FROM visita_checklist vc
+               JOIN manejos_fase m ON m.id = vc.manejo_id
+               JOIN fenologia_estagios fe ON fe.id = m.estagio_id
+              WHERE vc.visita_id = ? ORDER BY vc.id',
+            [$id]
+        );
+        render_parcial('partials/visita_detalhe', compact('visita', 'fotos', 'checklist'));
     }
 }

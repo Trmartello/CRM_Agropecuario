@@ -40,6 +40,19 @@
   <div class="p-2 bg-success-subtle rounded small mb-3"><?= nl2br(e($visita['recomendacao'])) ?></div>
 <?php endif; ?>
 
+<?php if (!empty($checklist)): ?>
+  <h6 class="text-success"><i class="bi bi-list-check me-1"></i>Checklist da lavoura (fase <?= e($checklist[0]['estagio']) ?>)</h6>
+  <ul class="list-group mb-3">
+    <?php $corSit = ['OK' => 'success', 'Atenção' => 'warning', 'Crítico' => 'danger', 'N/A' => 'secondary']; ?>
+    <?php foreach ($checklist as $c): ?>
+      <li class="list-group-item py-1 small d-flex justify-content-between align-items-center gap-2">
+        <span><?= e($c['titulo']) ?><?= $c['observacao'] ? '<br><span class="text-muted">' . e($c['observacao']) . '</span>' : '' ?></span>
+        <span class="badge text-bg-<?= $corSit[$c['situacao']] ?? 'secondary' ?>"><?= e($c['situacao']) ?></span>
+      </li>
+    <?php endforeach; ?>
+  </ul>
+<?php endif; ?>
+
 <?php if ($fotos): ?>
   <h6 class="text-success">Fotos</h6>
   <div class="d-flex flex-wrap gap-2">

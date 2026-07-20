@@ -83,6 +83,21 @@ class OportunidadeService
                     $pendente
                 );
             }
+
+            // 4) Fenologia da lavoura (Fase 6E) — plantio em fase com manejo de
+            // família sem compra na safra (dedup pela mesma unique do calendário)
+            foreach (FenologiaService::gatilhosLavoura($clienteId, $safraId) as $g) {
+                $geradas += self::inserirAutomatica(
+                    $clienteId,
+                    'Calendário agronômico',
+                    $g['titulo'],
+                    (float) $g['valor_estimado'],
+                    $safraId,
+                    $g['familia_id'],
+                    null,
+                    $pendente
+                );
+            }
         }
 
         return $geradas;

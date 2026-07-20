@@ -103,6 +103,10 @@ if (Auth::logado() && !empty(Auth::usuario()['trocar_senha'])
 // Dashboard
 $router->registrar('dashboard', DashboardController::class, 'index');
 
+// Plantios por talhão (Fase 6E — linha do tempo da cultura)
+$router->registrar('plantios/salvar', \App\Controllers\PlantiosController::class, 'salvar');
+$router->registrar('plantios/encerrar', \App\Controllers\PlantiosController::class, 'encerrar');
+
 // Clientes
 $router->registrar('clientes', ClientesController::class, 'index');
 $router->registrar('clientes/obter', ClientesController::class, 'obter');

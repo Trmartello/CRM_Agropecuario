@@ -96,12 +96,32 @@ class SyncController
                FROM modelos_recomendacao WHERE ativo = 1 ORDER BY categoria, titulo'
         );
 
+        // Fase 6E: plantios ativos da carteira (talhao_id => plantio) + catálogo
+        // de fenologia — a linha do tempo e o checklist funcionam offline.
+        $plantios = [];
+        foreach (Database::todos(
+            "SELECT p.*, cu.nome AS cultura
+               FROM plantios p
+               JOIN culturas cu ON cu.id = p.cultura_id
+               JOIN talhoes t ON t.id = p.talhao_id
+               JOIN propriedades pr ON pr.id = t.propriedade_id
+               JOIN clientes c ON c.id = pr.cliente_id
+              WHERE c.ativo = 1 AND p.encerrado = 0 AND {$filtro}
+              ORDER BY p.data_plantio DESC",
+            $params
+        ) as $p) {
+            $plantios[(int) $p['talhao_id']] ??= $p;
+        }
+        $fenologia = \App\Services\FenologiaService::catalogo();
+
         json_ok([
             'atualizado_em' => date('c'),
             'produtores' => $produtores,
             'apoio' => $apoio,
             'culturas' => $culturas,
             'modelos' => $modelos,
+            'plantios' => $plantios ?: new \stdClass(),
+            'fenologia' => $fenologia ?: new \stdClass(),
         ]);
     }
 }
