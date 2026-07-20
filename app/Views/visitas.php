@@ -33,6 +33,7 @@
               <td><span class="badge rounded-pill text-bg-<?= $i < 3 ? 'danger' : 'success' ?> fs-6"><?= $i + 1 ?>º</span></td>
               <td>
                 <div class="fw-semibold"><?= e($p['nome']) ?>
+                  <span class="ms-1"><?= selo_segmento($p['segmento_manual'] ?? null, $p['segmento'] ?? null, true) ?></span>
                   <?php if ($p['risco_churn']): ?><span class="badge text-bg-danger ms-1">Churn −<?= $p['queda_percentual'] ?>%</span><?php endif; ?>
                 </div>
                 <div class="small text-muted"><?= e($p['municipio'] ?? '') ?></div>

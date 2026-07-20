@@ -26,6 +26,9 @@ class GerencialController
             [$inicioMes, $inicioMes, $inicioMes]
         );
 
+        // Segmentação da carteira (distribuição por segmento efetivo)
+        $segmentacao = \App\Services\SegmentacaoService::distribuicao('1=1', []);
+
         // Vendas por família (mês)
         $porFamilia = Database::todos(
             "SELECT f.nome AS familia,
@@ -105,7 +108,7 @@ class GerencialController
                 ? round($potencial['realizado'] / $potencial['potencial'] * 100) : null,
         ];
 
-        render('gerencial', compact('equipe', 'porFamilia', 'funil', 'reclamacoes', 'despesas', 'totais', 'kpis')
+        render('gerencial', compact('equipe', 'porFamilia', 'funil', 'reclamacoes', 'despesas', 'totais', 'kpis', 'segmentacao')
             + ['titulo' => 'Painel Gerencial']);
     }
 }

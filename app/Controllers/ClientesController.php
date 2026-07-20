@@ -7,6 +7,7 @@ use App\Core\Database;
 use App\Core\Permissoes;
 use App\Services\ComercialService;
 use App\Services\PotencialService;
+use App\Services\SegmentacaoService;
 
 class ClientesController
 {
@@ -21,6 +22,14 @@ class ClientesController
             $where .= ' AND (c.nome LIKE ? OR c.municipio LIKE ? OR c.cpf_cnpj LIKE ?)';
             $like = "%{$busca}%";
             array_push($params, $like, $like, $like);
+        }
+        // Filtro por segmento efetivo (manual do gestor prevalece sobre o calculado)
+        $segmentoFiltro = trim($_GET['segmento'] ?? '');
+        if (isset(SegmentacaoService::ROTULOS[$segmentoFiltro])) {
+            $where .= " AND COALESCE(NULLIF(c.segmento_manual, ''), c.segmento) = ?";
+            $params[] = $segmentoFiltro;
+        } else {
+            $segmentoFiltro = '';
         }
 
         $clientes = Database::todos(
@@ -39,7 +48,7 @@ class ClientesController
         );
         $culturas = Database::todos('SELECT * FROM culturas ORDER BY nome');
 
-        render('clientes', compact('clientes', 'filiais', 'responsaveis', 'culturas', 'busca') + ['titulo' => 'Clientes']);
+        render('clientes', compact('clientes', 'filiais', 'responsaveis', 'culturas', 'busca', 'segmentoFiltro') + ['titulo' => 'Clientes']);
     }
 
     /** Dados de um cliente para preencher o modal de edição (AJAX). */
@@ -99,6 +108,16 @@ class ClientesController
                 $dados
             );
             $id = Database::ultimoId();
+        }
+        // Segmento manual: só gestor fixa/limpa ('' = voltar ao automático)
+        if (Permissoes::ehGestor() && array_key_exists('segmento_manual', $_POST)) {
+            $seg = trim($_POST['segmento_manual']);
+            if ($seg === '' || isset(SegmentacaoService::ROTULOS[$seg])) {
+                Database::executar(
+                    'UPDATE clientes SET segmento_manual = ? WHERE id = ?',
+                    [$seg !== '' ? $seg : null, $id]
+                );
+            }
         }
         auditar(((int) ($_POST['id'] ?? 0)) > 0 ? 'editar' : 'criar', 'cliente', $id, $nome);
         json_ok(['id' => $id]);

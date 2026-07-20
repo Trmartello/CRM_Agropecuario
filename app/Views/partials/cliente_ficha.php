@@ -15,6 +15,7 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
       </div>
     </div>
     <div class="d-flex gap-2">
+      <span class="fs-6"><?= selo_segmento($cliente['segmento_manual'] ?? null, $cliente['segmento'] ?? null) ?></span>
       <span class="badge fs-6 text-bg-<?= $corInad ?>" title="<?= $inad['inadimplente'] ? moeda($inad['valor_vencido']) . ' vencido há ' . $inad['dias_atraso'] . ' dias' : 'Sem títulos vencidos' ?>">
         <?= e($inad['grau']) ?>
       </span>

@@ -88,6 +88,23 @@ function sync_limpar_antigos(int $dias = 90): void
     } catch (\Throwable $e) { /* tabela ainda não migrada: ignora */ }
 }
 
+/**
+ * Selo (badge) do segmento do cliente. Usa o segmento efetivo (manual do
+ * gestor prevalece); devolve '' se o cliente ainda não foi segmentado.
+ */
+function selo_segmento(?string $manual, ?string $auto, bool $compacto = false): string
+{
+    $seg = \App\Services\SegmentacaoService::efetivo($manual, $auto);
+    if ($seg === null || !isset(\App\Services\SegmentacaoService::ROTULOS[$seg])) {
+        return '';
+    }
+    $cor = \App\Services\SegmentacaoService::CORES[$seg];
+    $rotulo = $compacto ? $seg : \App\Services\SegmentacaoService::ROTULOS[$seg];
+    $titulo = \App\Services\SegmentacaoService::DESCRICOES[$seg]
+        . (trim((string) $manual) !== '' ? ' (fixado pelo gestor)' : '');
+    return '<span class="badge text-bg-' . $cor . '" title="' . e($titulo) . '">' . e($rotulo) . '</span>';
+}
+
 /** Retenção da auditoria: apaga eventos mais antigos que N dias (padrão 1 ano). */
 function auditoria_limpar_antiga(int $dias = 365): void
 {

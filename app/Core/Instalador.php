@@ -238,6 +238,17 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '16'"
             );
         }
+        if ($versao < 17) {
+            // Fase 6C: segmentação da carteira (calculada + override manual do gestor)
+            self::adicionarColuna('clientes', 'segmento',
+                "segmento CHAR(1) NULL COMMENT 'segmento calculado (A/B/C/D/P) — cache do SegmentacaoService' AFTER prospecto");
+            self::adicionarColuna('clientes', 'segmento_manual',
+                "segmento_manual CHAR(1) NULL COMMENT 'segmento fixado pelo gestor (prevalece sobre o calculado)' AFTER segmento");
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '17')
+                 ON DUPLICATE KEY UPDATE valor = '17'"
+            );
+        }
     }
 
     /** Fase 5: log de integração (ERP/CAPE). */

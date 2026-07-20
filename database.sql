@@ -105,6 +105,8 @@ CREATE TABLE clientes (
   potencial_venda DECIMAL(14,2) NOT NULL DEFAULT 0,
   limite_credito DECIMAL(14,2) NOT NULL DEFAULT 0,
   prospecto TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'pré-cadastro (cliente em prospecção)',
+  segmento CHAR(1) NULL COMMENT 'segmento calculado (A/B/C/D/P) — cache do SegmentacaoService',
+  segmento_manual CHAR(1) NULL COMMENT 'segmento fixado pelo gestor (prevalece sobre o calculado)',
   ativo TINYINT(1) NOT NULL DEFAULT 1,
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (filial_id) REFERENCES filiais(id),
@@ -1165,5 +1167,5 @@ CREATE TABLE sync_processados (
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','16')
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','17')
   ON DUPLICATE KEY UPDATE valor = '16';

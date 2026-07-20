@@ -31,6 +31,7 @@ class LoginController
         if (Auth::tentar($email, $senha)) {
             sync_limpar_antigos();      // manutenção leve: poda uuids de idempotência antigos
             auditoria_limpar_antiga();  // retenção da auditoria: eventos > 1 ano
+            \App\Services\SegmentacaoService::atualizarTodos(); // recalcula a segmentação (máx. 1x/12h)
             auditar('login', 'sessao', Auth::id());
             if (!empty(Auth::usuario()['trocar_senha'])) {
                 header('Location: ' . url('login/trocar-senha'));

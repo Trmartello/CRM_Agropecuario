@@ -6,6 +6,12 @@
     <div class="input-group">
       <span class="input-group-text"><i class="bi bi-search"></i></span>
       <input type="search" name="busca" class="form-control" placeholder="Buscar por nome, município ou CPF/CNPJ…" value="<?= e($busca) ?>">
+      <select name="segmento" class="form-select" style="max-width:170px" onchange="this.form.submit()" title="Filtrar por segmento">
+        <option value="">Segmento: todos</option>
+        <?php foreach (\App\Services\SegmentacaoService::ROTULOS as $sig => $rot): ?>
+          <option value="<?= $sig ?>" <?= $segmentoFiltro === $sig ? 'selected' : '' ?>><?= e($rot) ?></option>
+        <?php endforeach; ?>
+      </select>
       <button class="btn btn-outline-secondary">Buscar</button>
     </div>
   </form>
@@ -20,6 +26,7 @@
       <thead class="table-light">
         <tr>
           <th>Produtor</th>
+          <th class="d-none d-md-table-cell">Segmento</th>
           <th class="d-none d-md-table-cell">Município</th>
           <th class="d-none d-md-table-cell">Situação</th>
           <th class="d-none d-lg-table-cell">Nível tec.</th>
@@ -29,16 +36,18 @@
       </thead>
       <tbody id="tabelaClientes">
         <?php if (!$clientes): ?>
-          <tr><td colspan="6" class="text-center text-muted py-4">Nenhum cliente encontrado.</td></tr>
+          <tr><td colspan="7" class="text-center text-muted py-4">Nenhum cliente encontrado.</td></tr>
         <?php endif; ?>
         <?php foreach ($clientes as $c): ?>
         <tr>
           <td>
             <div class="fw-semibold"><?= e($c['nome']) ?>
               <?php if (!empty($c['prospecto'])): ?><span class="badge text-bg-warning ms-1"><i class="bi bi-star-half me-1"></i>Prospecto</span><?php endif; ?>
+              <span class="d-md-none ms-1"><?= selo_segmento($c['segmento_manual'] ?? null, $c['segmento'] ?? null, true) ?></span>
             </div>
             <div class="small text-muted d-md-none"><?= e($c['municipio'] ?? '') ?></div>
           </td>
+          <td class="d-none d-md-table-cell"><?= selo_segmento($c['segmento_manual'] ?? null, $c['segmento'] ?? null) ?: '<span class="text-muted">—</span>' ?></td>
           <td class="d-none d-md-table-cell"><?= e($c['municipio'] ?? '—') ?></td>
           <td class="d-none d-md-table-cell">
             <span class="badge text-bg-<?= $c['situacao'] === 'Associado' ? 'success' : 'secondary' ?>"><?= e($c['situacao']) ?></span>

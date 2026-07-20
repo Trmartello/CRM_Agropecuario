@@ -54,6 +54,26 @@
       </div>
     </div>
     <div class="card">
+      <div class="card-header"><i class="bi bi-pie-chart me-2 text-success"></i><strong>Segmentação da carteira</strong></div>
+      <div class="card-body">
+        <?php
+          $totalSeg = array_sum($segmentacao['distribuicao']);
+          $dadosSeg = [];
+          foreach ($segmentacao['distribuicao'] as $sig => $qtd) {
+              $dadosSeg[] = ['sigla' => $sig, 'rotulo' => \App\Services\SegmentacaoService::ROTULOS[$sig], 'total' => $qtd];
+          }
+        ?>
+        <?php if ($totalSeg === 0): ?>
+          <span class="text-muted small">Carteira ainda não segmentada — o cálculo roda no primeiro login do dia.</span>
+        <?php else: ?>
+          <canvas id="chartSegmentos" height="170" data-segmentos='<?= json_attr($dadosSeg) ?>'></canvas>
+          <?php if ($segmentacao['sem_segmento'] > 0): ?>
+            <div class="small text-muted mt-2"><?= numero($segmentacao['sem_segmento']) ?> cliente(s) ainda sem segmento calculado.</div>
+          <?php endif; ?>
+        <?php endif; ?>
+      </div>
+    </div>
+    <div class="card">
       <div class="card-header"><i class="bi bi-funnel me-2 text-success"></i><strong>Funil</strong></div>
       <div class="card-body d-flex flex-wrap gap-3">
         <?php if (!$funil): ?><span class="text-muted small">Sem oportunidades abertas.</span><?php endif; ?>
@@ -94,6 +114,19 @@ document.addEventListener('DOMContentLoaded', function () {
     });
     chart.$rotulo = { formatter: v => 'R$ ' + Math.round(v/1000) + 'k', color: '#1b5e20' };
     chart.update();
+  }
+  const cvSeg = document.getElementById('chartSegmentos');
+  if (cvSeg && typeof Chart !== 'undefined') {
+    const seg = JSON.parse(cvSeg.dataset.segmentos || '[]').filter(s => s.total > 0);
+    const cores = { A: '#2e7d32', B: '#1565c0', C: '#78909c', D: '#c62828', P: '#f9a825' };
+    new Chart(cvSeg, {
+      type: 'doughnut',
+      data: {
+        labels: seg.map(s => s.rotulo),
+        datasets: [{ data: seg.map(s => Number(s.total)), backgroundColor: seg.map(s => cores[s.sigla] || '#999') }],
+      },
+      options: { plugins: { legend: { position: 'right' } } },
+    });
   }
 });
 </script>

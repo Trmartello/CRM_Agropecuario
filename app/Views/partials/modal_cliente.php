@@ -103,6 +103,15 @@
               <?php endforeach; ?>
             </select>
           </div>
+          <div class="col-md-6">
+            <label class="form-label">Segmento (fixado pelo gestor)</label>
+            <select name="segmento_manual" class="form-select">
+              <option value="">Automático (calculado pelo sistema)</option>
+              <?php foreach (\App\Services\SegmentacaoService::ROTULOS as $sig => $rot): ?>
+                <option value="<?= $sig ?>"><?= e($rot) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
           <?php endif; ?>
         </div>
       </div>
