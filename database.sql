@@ -50,6 +50,18 @@ CREATE TABLE login_tentativas (
   atualizado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+-- Web Push: assinaturas de notificação por aparelho (Android/iPhone com PWA instalado)
+DROP TABLE IF EXISTS push_assinaturas;
+CREATE TABLE push_assinaturas (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  usuario_id INT NOT NULL,
+  endpoint_hash CHAR(64) NOT NULL UNIQUE,
+  endpoint TEXT NOT NULL,
+  p256dh VARCHAR(255) NULL,
+  auth VARCHAR(64) NULL,
+  criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
 
 CREATE TABLE filiais (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -1153,5 +1165,5 @@ CREATE TABLE sync_processados (
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','15')
-  ON DUPLICATE KEY UPDATE valor = '15';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','16')
+  ON DUPLICATE KEY UPDATE valor = '16';

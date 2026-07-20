@@ -58,7 +58,18 @@ Guarde o arquivo fora do Railway (Drive, S3 etc.). Repita ao menos semanalmente.
 - 5 tentativas falhas em 30 min bloqueiam o e-mail por 15 min.
 - Resposta de falha propositalmente lenta (dificulta robôs).
 
-## 5. Conferências rápidas finais
+## 5. Notificações push no aparelho — teste após o deploy
+
+1. Abra o app no celular (Android: Chrome; **iPhone: instale antes pela opção
+   "Adicionar à Tela de Início"** — exigência do iOS 16.4+).
+2. Toque no sino → **"Ativar notificações neste aparelho"** → permita.
+3. Peça a outro usuário para gerar um evento (ex.: faturar um pedido seu, ou
+   registrar uma recomendação para o produtor) — a notificação deve chegar no
+   aparelho mesmo com o app fechado (Android) ou em segundo plano.
+4. As chaves VAPID são geradas automaticamente no primeiro uso e ficam no banco
+   (`configuracoes`) — nenhuma configuração externa é necessária.
+
+## 6. Conferências rápidas finais
 
 - [ ] HTTPS ativo (Railway já fornece; cookies `Secure` são automáticos).
 - [ ] Volume montado (item 1) e backup agendado (item 2).

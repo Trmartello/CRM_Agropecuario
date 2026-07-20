@@ -177,6 +177,9 @@ $logoRaio = (int) ConfigService::obter('logo_borda_raio', '10');
             <strong class="small">Notificações</strong>
             <button class="btn btn-sm btn-link p-0 text-decoration-none" onclick="Notificacoes.lerTodas(event)">Marcar todas</button>
           </div>
+          <button class="dropdown-item small text-success border-bottom" id="btnAtivarPush" onclick="Notificacoes.ativarPush()">
+            <i class="bi bi-phone-vibrate me-1"></i>Ativar notificações neste aparelho
+          </button>
           <div id="sinoItens"><div class="text-muted small text-center py-3">Carregando…</div></div>
         </div>
       </div>

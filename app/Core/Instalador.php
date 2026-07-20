@@ -218,6 +218,26 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '15'"
             );
         }
+        if ($versao < 16) {
+            // Web Push: assinaturas por aparelho
+            if (!self::temTabela('push_assinaturas')) {
+                Database::executar(
+                    'CREATE TABLE push_assinaturas (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        usuario_id INT NOT NULL,
+                        endpoint_hash CHAR(64) NOT NULL UNIQUE,
+                        endpoint TEXT NOT NULL,
+                        p256dh VARCHAR(255) NULL,
+                        auth VARCHAR(64) NULL,
+                        criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                     ) ENGINE=InnoDB'
+                );
+            }
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '16')
+                 ON DUPLICATE KEY UPDATE valor = '16'"
+            );
+        }
     }
 
     /** Fase 5: log de integração (ERP/CAPE). */

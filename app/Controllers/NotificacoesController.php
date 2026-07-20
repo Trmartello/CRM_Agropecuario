@@ -17,6 +17,19 @@ class NotificacoesController
         ]);
     }
 
+    /** Última notificação não lida — usada pelo service worker ao receber um push. */
+    public function ultima(): void
+    {
+        Auth::exigirLogin();
+        $itens = NotificacaoService::listar(Auth::id(), 1);
+        $ultima = $itens && !$itens[0]['lida'] ? $itens[0] : null;
+        json_ok(['notificacao' => $ultima ? [
+            'titulo' => $ultima['titulo'],
+            'texto' => $ultima['texto'],
+            'link' => $ultima['link'],
+        ] : null]);
+    }
+
     public function ler(): void
     {
         Auth::exigirLogin();

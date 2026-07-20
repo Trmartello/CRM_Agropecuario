@@ -2,7 +2,7 @@
  * Cache do app e assets para abrir sem conexão (offline básico da Fase 1).
  */
 
-const CACHE = 'crm-coperdia-v29';
+const CACHE = 'crm-coperdia-v30';
 
 const ARQUIVOS_APP = [
   'assets/vendor/bootstrap.min.css',
@@ -87,6 +87,42 @@ async function sincronizarFilaSW() {
     if (dados && dados.ok) await removerSW(db, reg.id);
   }
 }
+// ---- Web Push: o push chega SEM payload; buscamos a última notificação para exibir ----
+self.addEventListener('push', ev => {
+  ev.waitUntil((async () => {
+    let titulo = 'CRM AGRO — Copérdia';
+    let corpo = 'Você tem novidades.';
+    let link = 'index.php?r=dashboard';
+    try {
+      const r = await fetch('index.php?r=notificacoes/ultima', { headers: { 'X-Requested-With': 'fetch' } });
+      const d = await r.json();
+      if (d.ok && d.notificacao) {
+        titulo = d.notificacao.titulo || titulo;
+        corpo = d.notificacao.texto || '';
+        if (d.notificacao.link && /^index\.php/.test(d.notificacao.link)) link = d.notificacao.link;
+      }
+    } catch (e) { /* offline/sessão: usa o texto genérico */ }
+    await self.registration.showNotification(titulo, {
+      body: corpo,
+      icon: 'assets/icons/icone-192.png',
+      badge: 'assets/icons/icone-192.png',
+      data: { link },
+      tag: 'crm-coperdia', // agrupa (a mais nova substitui)
+    });
+  })());
+});
+
+self.addEventListener('notificationclick', ev => {
+  ev.notification.close();
+  const link = (ev.notification.data && ev.notification.data.link) || 'index.php?r=dashboard';
+  ev.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => {
+    for (const c of cs) {
+      if ('focus' in c) { c.navigate(link); return c.focus(); }
+    }
+    return self.clients.openWindow(link);
+  }));
+});
+
 self.addEventListener('sync', ev => {
   if (ev.tag === 'sync-fila') {
     ev.waitUntil((async () => {

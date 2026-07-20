@@ -162,6 +162,10 @@ $router->registrar('agenda/buscar-produtor', \App\Controllers\AgendaController::
 
 // Notificações (Fase 4)
 $router->registrar('notificacoes/listar', \App\Controllers\NotificacoesController::class, 'listar');
+$router->registrar('notificacoes/ultima', \App\Controllers\NotificacoesController::class, 'ultima');
+$router->registrar('push/chave', \App\Controllers\PushController::class, 'chave');
+$router->registrar('push/registrar', \App\Controllers\PushController::class, 'registrar');
+$router->registrar('push/desregistrar', \App\Controllers\PushController::class, 'desregistrar');
 $router->registrar('notificacoes/ler', \App\Controllers\NotificacoesController::class, 'ler');
 $router->registrar('notificacoes/ler-todas', \App\Controllers\NotificacoesController::class, 'lerTodas');
 

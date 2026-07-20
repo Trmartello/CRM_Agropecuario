@@ -13,6 +13,10 @@ class NotificacaoService
             'INSERT INTO notificacoes (usuario_id, tipo, titulo, texto, link) VALUES (?,?,?,?,?)',
             [$usuarioId, $tipo, mb_substr($titulo, 0, 160), $texto ? mb_substr($texto, 0, 255) : null, $link]
         );
+        // Acorda os aparelhos do usuário (Web Push, best-effort — nunca quebra o fluxo)
+        try {
+            PushService::enviarParaUsuario($usuarioId);
+        } catch (\Throwable $e) { /* sem assinaturas/rede: ignora */ }
     }
 
     /** Evita duplicar a mesma notificação (mesmo tipo+link) ainda não lida. */

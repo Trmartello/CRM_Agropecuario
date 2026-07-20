@@ -256,6 +256,53 @@ const Notificacoes = {
       Notificacoes.abrir();
     } catch (e) { App.alerta('Erro ao marcar notificações.', 'danger'); }
   },
+
+  /** Ativa as notificações push neste aparelho (Android; iPhone com o app instalado). */
+  async ativarPush() {
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        App.alerta('Este navegador não suporta notificações. No iPhone, instale o app pela opção "Adicionar à Tela de Início".', 'warning');
+        return;
+      }
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') { App.alerta('Permissão de notificação não concedida.', 'warning'); return; }
+      const reg = await navigator.serviceWorker.ready;
+      const { chave } = await App.json('index.php?r=push/chave');
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: Notificacoes._b64ParaBytes(chave),
+      });
+      const r = await fetch('index.php?r=push/registrar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
+        body: JSON.stringify(sub.toJSON()),
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.erro || 'Falha ao registrar.');
+      App.alerta('Notificações ativadas neste aparelho.');
+      Notificacoes._atualizarBotaoPush();
+    } catch (e) {
+      App.alerta('Não foi possível ativar as notificações: ' + e.message, 'danger');
+    }
+  },
+
+  _b64ParaBytes(b64) {
+    const pad = '='.repeat((4 - b64.length % 4) % 4);
+    const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+    return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+  },
+
+  /** Esconde o botão quando o aparelho já está assinado (ou não há suporte). */
+  async _atualizarBotaoPush() {
+    const btn = document.getElementById('btnAtivarPush');
+    if (!btn) return;
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return; // deixa visível com a dica do iPhone
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      btn.classList.toggle('d-none', !!sub);
+    } catch (e) { /* mantém visível */ }
+  },
 };
 
 /* ============================== CLIENTES ============================== */
@@ -1070,6 +1117,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   atualizarIndicador();
   if (typeof Offline !== 'undefined') { Pendencias.atualizar(); OfflineView.aplicar(); }
+  Notificacoes._atualizarBotaoPush();
 });
 
 /* ===================== PENDÊNCIAS DE ENVIO (offline) ===================== */
