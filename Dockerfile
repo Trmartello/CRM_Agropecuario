@@ -13,8 +13,10 @@ RUN apt-get update \
 WORKDIR /var/www/html
 COPY . .
 
-# Uploads persistentes: monte um volume em /var/www/html/public/uploads
-RUN mkdir -p public/uploads
+# Uploads persistentes: monte um volume em /var/www/html/dados/uploads
+# (fora do docroot — servidos pela rota autenticada arquivo/upload).
+# public/uploads permanece só para ler arquivos legados.
+RUN mkdir -p dados/uploads public/uploads
 
 # Vários workers para atender requisições em paralelo
 ENV PHP_CLI_SERVER_WORKERS=8

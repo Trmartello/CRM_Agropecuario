@@ -29,8 +29,9 @@ Nada a fazer: na **primeira execução** a aplicação detecta o banco vazio e i
 
 ## 4. Uploads persistentes
 
-No serviço da aplicação: **Settings → Volumes → Add Volume** montado em `/var/www/html/public/uploads`.
-Sem o volume, as fotos somem a cada deploy.
+No serviço da aplicação: **Settings → Volumes → Add Volume** montado em
+**`/var/www/html/dados/uploads`** (o Dockerfile usa `WORKDIR /var/www/html`;
+não é `/app`). Sem o volume, as fotos somem a cada deploy.
 
 ## 5. Testar no celular
 

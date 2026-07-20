@@ -4,18 +4,21 @@ Itens de segurança/confiabilidade para rodar o sistema com dados reais.
 Os passos 1 e 2 são **configuração no painel do Railway** (não dá para
 resolver por código). Os demais já estão implementados no app.
 
-## 1. Volume para os uploads (`/app/dados/uploads`) — OBRIGATÓRIO
+## 1. Volume para os uploads (`/var/www/html/dados/uploads`) — OBRIGATÓRIO
 
 Sem volume, **fotos/comprovantes/documentos são apagados a cada redeploy**
 (o banco guarda o registro, mas o arquivo some — a miniatura vira "abrir foto").
 
 > Desde a versão com uploads autenticados, os arquivos ficam FORA do docroot,
-> em **`/app/dados/uploads`** (não use mais `/app/public/uploads`). Tudo é
-> servido pela rota autenticada `arquivo/upload` — sem URL pública direta.
+> em **`dados/uploads`** (não use mais `public/uploads`). Tudo é servido pela
+> rota autenticada `arquivo/upload` — sem URL pública direta.
+> **Atenção ao caminho absoluto**: o Dockerfile usa `WORKDIR /var/www/html`,
+> então o mount é `/var/www/html/dados/uploads` (NÃO `/app/...` — `/app` é o
+> padrão do Railway sem Dockerfile, que não é o nosso caso).
 
 1. No Railway, abra o serviço da **aplicação** (não o MySQL).
 2. Aba **Settings → Volumes → Add Volume** (ou botão direito no serviço → *Attach volume*).
-3. **Mount path**: `/app/dados/uploads`
+3. **Mount path**: `/var/www/html/dados/uploads`
 4. Salve — o Railway reinicia o serviço com o volume montado.
 5. Teste: envie uma foto numa visita, faça um redeploy e confira que a foto continua abrindo.
 
@@ -34,7 +37,7 @@ acidente (delete errado, corrupção, exclusão do serviço) perde tudo.
 2. Clique em **"Baixar backup agora"** — baixa um `.sql` completo (estrutura + dados).
 3. Guarde o arquivo fora do servidor (Drive, pendrive) — ao menos **1x por semana**.
 4. Restauração: `mysql -u <usuario> -p <banco> < arquivo.sql`.
-5. Atenção: as **fotos/documentos** ficam no volume (`/app/dados/uploads`) e não
+5. Atenção: as **fotos/documentos** ficam no volume (`/var/www/html/dados/uploads`) e não
    entram nesse arquivo — o volume as preserva entre deploys.
 
 **Opção B — Backups automáticos do Railway (aba "Backups" no volume do MySQL):**
