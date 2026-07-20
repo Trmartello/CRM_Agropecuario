@@ -209,6 +209,15 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '14'"
             );
         }
+        if ($versao < 15) {
+            // Trilha de auditoria ampliada (a tabela existe desde a Fase 1; ganha perfil e ip)
+            self::adicionarColuna('auditoria', 'perfil', 'perfil VARCHAR(30) NULL AFTER usuario_id');
+            self::adicionarColuna('auditoria', 'ip', 'ip VARCHAR(45) NULL AFTER dados');
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '15')
+                 ON DUPLICATE KEY UPDATE valor = '15'"
+            );
+        }
     }
 
     /** Fase 5: log de integração (ERP/CAPE). */

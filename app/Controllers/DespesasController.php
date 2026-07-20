@@ -97,6 +97,7 @@ class DespesasController
             json_erro($e->getMessage());
         }
         sync_confirmar($_POST['uuid_offline'] ?? null);
+        auditar('criar', 'quilometragem', (int) ($r['id'] ?? 0) ?: null, 'valor ' . moeda($r['valor'] ?? 0));
         json_ok($r);
     }
 
@@ -112,6 +113,7 @@ class DespesasController
             json_erro($e->getMessage());
         }
         sync_confirmar($_POST['uuid_offline'] ?? null);
+        auditar('criar', 'refeicao', (int) ($r['id'] ?? 0) ?: null, 'reembolso ' . moeda($r['valor_reembolso'] ?? 0));
         json_ok($r);
     }
 
@@ -141,6 +143,7 @@ class DespesasController
         } catch (\RuntimeException $e) {
             json_erro($e->getMessage());
         }
+        auditar('excluir', 'quilometragem', (int) ($_POST['id'] ?? 0));
         json_ok();
     }
 
@@ -152,6 +155,7 @@ class DespesasController
         } catch (\RuntimeException $e) {
             json_erro($e->getMessage());
         }
+        auditar('excluir', 'refeicao', (int) ($_POST['id'] ?? 0));
         json_ok();
     }
 
@@ -165,6 +169,7 @@ class DespesasController
         } catch (\Exception $e) {
             json_erro($e->getMessage());
         }
+        auditar('gerar', 'prestacao', $id, sprintf('%04d-%02d', $ano, $mes));
         json_ok(['id' => $id]);
     }
 
@@ -176,6 +181,7 @@ class DespesasController
         } catch (\RuntimeException $e) {
             json_erro($e->getMessage());
         }
+        auditar('enviar', 'prestacao', (int) ($_POST['id'] ?? 0));
         json_ok();
     }
 
@@ -193,6 +199,7 @@ class DespesasController
         } catch (\RuntimeException $e) {
             json_erro($e->getMessage());
         }
+        auditar($aprovar ? 'aprovar' : 'rejeitar', 'prestacao', (int) ($_POST['id'] ?? 0));
         json_ok();
     }
 

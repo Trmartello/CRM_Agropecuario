@@ -50,6 +50,7 @@ CREATE TABLE login_tentativas (
   atualizado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+
 CREATE TABLE filiais (
   id INT AUTO_INCREMENT PRIMARY KEY,
   nome VARCHAR(120) NOT NULL,
@@ -703,11 +704,14 @@ CREATE TABLE configuracoes (
 CREATE TABLE auditoria (
   id INT AUTO_INCREMENT PRIMARY KEY,
   usuario_id INT,
+  perfil VARCHAR(30) NULL,
   acao VARCHAR(40) NOT NULL,
   tabela VARCHAR(60) NOT NULL,
   registro_id INT,
   dados TEXT,
+  ip VARCHAR(45) NULL,
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_aud_quando (criado_em),
   FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
 ) ENGINE=InnoDB;
 
@@ -1149,5 +1153,5 @@ CREATE TABLE sync_processados (
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','14')
-  ON DUPLICATE KEY UPDATE valor = '14';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','15')
+  ON DUPLICATE KEY UPDATE valor = '15';

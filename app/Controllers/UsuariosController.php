@@ -67,6 +67,8 @@ class UsuariosController
             );
             $id = Database::ultimoId();
         }
+        auditar(((int) ($_POST['id'] ?? 0)) > 0 ? 'editar' : 'criar', 'usuario', $id,
+            $email . ($senha !== '' ? ' (senha redefinida)' : ''));
         json_ok(['id' => $id]);
     }
 }

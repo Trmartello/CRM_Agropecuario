@@ -226,6 +226,7 @@ class VisitasController
 
         // Confirma a transação idempotente: uuid + visita + fotos/vínculos juntos.
         sync_confirmar($_POST['uuid_offline'] ?? null);
+        auditar(((int) ($_POST['id'] ?? 0)) > 0 ? 'completar' : 'criar', 'visita', $visitaId, 'cliente #' . $clienteId . " · {$completude}%");
         json_ok([
             'id' => $visitaId,
             'finalizada' => $finalizada,

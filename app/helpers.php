@@ -89,6 +89,28 @@ function sync_limpar_antigos(int $dias = 90): void
 }
 
 /**
+ * Trilha de auditoria: registra quem fez o quê (best-effort — nunca quebra o fluxo).
+ * Ex.: auditar('criar', 'visita', $id, 'Cliente Fulano');
+ */
+function auditar(string $acao, string $entidade, ?int $entidadeId = null, string $detalhe = ''): void
+{
+    try {
+        \App\Core\Database::executar(
+            'INSERT INTO auditoria (usuario_id, perfil, acao, tabela, registro_id, dados, ip) VALUES (?,?,?,?,?,?,?)',
+            [
+                \App\Core\Auth::id() ?: null,
+                \App\Core\Auth::perfil() ?: null,
+                mb_substr($acao, 0, 40),
+                mb_substr($entidade, 0, 60),
+                $entidadeId,
+                mb_substr($detalhe, 0, 255) ?: null,
+                mb_substr($_SERVER['REMOTE_ADDR'] ?? '', 0, 45) ?: null,
+            ]
+        );
+    } catch (\Throwable $e) { /* colunas ainda não migradas: ignora */ }
+}
+
+/**
  * Diretório de uploads FORA do docroot (fotos/comprovantes/documentos não são
  * acessíveis por URL direta; tudo passa pela rota autenticada arquivo/upload).
  */

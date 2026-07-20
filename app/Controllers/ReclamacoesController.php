@@ -60,6 +60,7 @@ class ReclamacoesController
         }
         $this->salvarFotos($id);
         sync_confirmar($_POST['uuid_offline'] ?? null); // commit atômico (uuid + reclamação + fotos)
+        auditar('criar', 'reclamacao', $id, 'cliente #' . $clienteId);
         json_ok(['id' => $id]);
     }
 
@@ -75,6 +76,7 @@ class ReclamacoesController
         } catch (\RuntimeException $e) {
             json_erro($e->getMessage());
         }
+        auditar('mover', 'reclamacao', $id, $novoStatus);
         json_ok();
     }
 

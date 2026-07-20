@@ -30,6 +30,7 @@ class LoginController
 
         if (Auth::tentar($email, $senha)) {
             sync_limpar_antigos(); // manutenção leve: poda uuids de idempotência antigos
+            auditar('login', 'sessao', Auth::id());
             if (!empty(Auth::usuario()['trocar_senha'])) {
                 header('Location: ' . url('login/trocar-senha'));
                 exit;
@@ -71,6 +72,7 @@ class LoginController
         }
 
         Auth::definirNovaSenha($nova);
+        auditar('trocar-senha', 'usuario', Auth::id());
         header('Location: ' . url(Auth::perfil() === 'Produtor' ? 'portal' : 'dashboard'));
         exit;
     }

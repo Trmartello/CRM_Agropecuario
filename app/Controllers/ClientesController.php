@@ -100,7 +100,7 @@ class ClientesController
             );
             $id = Database::ultimoId();
         }
-        $this->auditar($id > 0 ? 'salvar' : 'criar', 'clientes', $id);
+        auditar(((int) ($_POST['id'] ?? 0)) > 0 ? 'editar' : 'criar', 'cliente', $id, $nome);
         json_ok(['id' => $id]);
     }
 
@@ -139,7 +139,7 @@ class ClientesController
             ]
         );
         $id = Database::ultimoId();
-        $this->auditar('pre-cadastro', 'clientes', $id);
+        auditar('pre-cadastro', 'clientes', $id);
         json_ok(['id' => $id, 'nome' => $nome]);
     }
 
@@ -257,7 +257,9 @@ class ClientesController
                 (int) ($_FILES['arquivo']['size'] ?? 0),
             ]
         );
-        json_ok(['id' => Database::ultimoId()]);
+        $docId = Database::ultimoId();
+        auditar('anexar', 'documento', $docId, 'cliente #' . $clienteId);
+        json_ok(['id' => $docId]);
     }
 
     /** Baixa um documento (autenticado, restrito à carteira ou ao próprio produtor). */
@@ -293,6 +295,7 @@ class ClientesController
             }
         }
         Database::executar('DELETE FROM documentos WHERE id = ?', [(int) $doc['id']]);
+        auditar('excluir', 'documento', (int) $doc['id']);
         json_ok();
     }
 
@@ -415,11 +418,4 @@ class ClientesController
         return $cliente;
     }
 
-    private function auditar(string $acao, string $tabela, int $registroId): void
-    {
-        Database::executar(
-            'INSERT INTO auditoria (usuario_id, acao, tabela, registro_id) VALUES (?,?,?,?)',
-            [Auth::id(), $acao, $tabela, $registroId]
-        );
-    }
 }

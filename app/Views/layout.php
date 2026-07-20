@@ -77,6 +77,9 @@ $logoRaio = (int) ConfigService::obter('logo_borda_raio', '10');
           if ($ehGestao) {
               $gestao[] = ['gerencial', 'bi-graph-up-arrow', 'Gerencial'];
           }
+          if (in_array(Auth::perfil(), ['Administrador', 'Gestor Comercial', 'Gestor Técnico'], true)) {
+              $gestao[] = ['auditoria', 'bi-journal-check', 'Auditoria'];
+          }
           if ($ehAdmin) {
               $gestao[] = ['usuarios', 'bi-person-gear', 'Usuários'];
               $gestao[] = ['integracao', 'bi-hdd-network', 'Integração'];

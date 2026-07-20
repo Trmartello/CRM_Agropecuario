@@ -159,6 +159,7 @@ class PedidosController
             "UPDATE pedidos SET status = 'Aprovado', aprovado_por = ? WHERE id = ? AND status = 'Pendente de aprovação'",
             [Auth::id(), $id]
         );
+        auditar('aprovar', 'pedido', $id);
         json_ok();
     }
 
@@ -171,6 +172,7 @@ class PedidosController
         } catch (\RuntimeException $e) {
             json_erro($e->getMessage());
         }
+        auditar('faturar', 'pedido', (int) ($_POST['id'] ?? 0));
         json_ok();
     }
 
@@ -186,6 +188,7 @@ class PedidosController
               WHERE pe.id = ? AND pe.status IN ('Rascunho','Pendente de aprovação','Aprovado') AND {$filtro}",
             array_merge([$id], $params)
         );
+        auditar('cancelar', 'pedido', $id);
         json_ok();
     }
 
