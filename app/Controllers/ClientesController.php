@@ -256,6 +256,85 @@ class ClientesController
         ));
     }
 
+    /** Dados da propriedade para o editor de croqui (talhões + contornos). */
+    public function croquiDados(): void
+    {
+        Permissoes::exigirInterno();
+        $propId = (int) ($_GET['propriedade_id'] ?? 0);
+        $prop = $this->propriedadeDaCarteira($propId);
+        $talhoes = Database::todos(
+            'SELECT t.id, t.nome, t.area_ha, t.area_gps, t.contorno, cu.nome AS cultura
+               FROM talhoes t LEFT JOIN culturas cu ON cu.id = t.cultura_id
+              WHERE t.propriedade_id = ? ORDER BY t.nome',
+            [$propId]
+        );
+        json_ok([
+            'propriedade' => [
+                'id' => (int) $prop['id'],
+                'nome' => $prop['nome'],
+                'latitude' => $prop['latitude'] !== null ? (float) $prop['latitude'] : null,
+                'longitude' => $prop['longitude'] !== null ? (float) $prop['longitude'] : null,
+            ],
+            'talhoes' => $talhoes,
+        ]);
+    }
+
+    /** Salva o contorno (croqui) de um talhão; área SEMPRE recalculada no servidor. */
+    public function salvarCroqui(): void
+    {
+        Permissoes::exigirInterno();
+        sync_iniciar($_POST['uuid_offline'] ?? null);
+        $talhaoId = (int) ($_POST['talhao_id'] ?? 0);
+        $talhao = Database::um(
+            'SELECT t.id, t.propriedade_id FROM talhoes t WHERE t.id = ?', [$talhaoId]
+        );
+        if (!$talhao) {
+            json_erro('Talhão não encontrado.', 404);
+        }
+        $this->propriedadeDaCarteira((int) $talhao['propriedade_id']);
+
+        $contornoJson = trim($_POST['contorno'] ?? '');
+        if ($contornoJson === '' || $contornoJson === '[]') {
+            // Limpar o croqui do talhão
+            Database::executar('UPDATE talhoes SET contorno = NULL, area_gps = NULL WHERE id = ?', [$talhaoId]);
+            sync_confirmar($_POST['uuid_offline'] ?? null);
+            auditar('excluir', 'croqui', $talhaoId, 'contorno removido');
+            json_ok(['area_gps' => null]);
+        }
+        try {
+            $pontos = \App\Services\CroquiService::validarContorno($contornoJson);
+        } catch (\InvalidArgumentException $e) {
+            json_erro($e->getMessage());
+        }
+        $areaGps = \App\Services\CroquiService::areaHa($pontos);
+        Database::executar(
+            'UPDATE talhoes SET contorno = ?, area_gps = ? WHERE id = ?',
+            [json_encode($pontos), $areaGps, $talhaoId]
+        );
+        // Opcional: assumir a área medida como a área oficial do talhão
+        if ((int) ($_POST['usar_area'] ?? 0) === 1 && $areaGps > 0) {
+            Database::executar('UPDATE talhoes SET area_ha = ? WHERE id = ?', [$areaGps, $talhaoId]);
+        }
+        sync_confirmar($_POST['uuid_offline'] ?? null);
+        auditar('salvar', 'croqui', $talhaoId, count($pontos) . " pontos · {$areaGps} ha");
+        json_ok(['area_gps' => $areaGps]);
+    }
+
+    /** Garante que a propriedade pertence a um cliente da carteira do usuário. */
+    private function propriedadeDaCarteira(int $propId): array
+    {
+        [$filtro, $params] = Permissoes::filtroCarteira();
+        $prop = Database::um(
+            "SELECT p.* FROM propriedades p JOIN clientes c ON c.id = p.cliente_id
+              WHERE p.id = ? AND {$filtro}",
+            array_merge([$propId], $params)
+        );
+        if (!$prop) {
+            json_erro('Propriedade não encontrada na sua carteira.', 404);
+        }
+        return $prop;
+    }
+
     /** Tipos de documento e extensões aceitas na gestão documental. */
     private const DOC_EXT = ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'heic', 'doc', 'docx', 'xls', 'xlsx'];
     private const DOC_TIPOS = ['Foto', 'Laudo', 'Receita', 'Contrato', 'Nota fiscal', 'PDF', 'Outro'];

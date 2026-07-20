@@ -247,6 +247,8 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
       <div class="card-header py-2 d-flex justify-content-between align-items-center">
         <div><strong><?= e($p['nome']) ?></strong> <span class="text-muted small"><?= numero($p['area_ha'], 0) ?> ha · <?= e($p['municipio'] ?? '—') ?></span></div>
         <div class="btn-group">
+          <button class="btn btn-sm btn-outline-success" title="Croqui da propriedade: marcar os contornos dos talhões no campo"
+                  onclick="Croqui.abrir(<?= (int) $p['id'] ?>)"><i class="bi bi-bounding-box-circles me-1"></i>Croqui</button>
           <button class="btn btn-sm btn-outline-secondary" onclick='Clientes.editarPropriedade(<?= json_attr($p) ?>)'><i class="bi bi-pencil"></i></button>
           <button class="btn btn-sm btn-outline-success" onclick="Clientes.novoTalhao(<?= $p['id'] ?>)"><i class="bi bi-plus-lg"></i> Talhão</button>
         </div>
@@ -281,6 +283,10 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
         </li>
         <?php endforeach; ?>
       </ul>
+      <?php endif; ?>
+      <?php $croquiSvg = \App\Services\CroquiService::svg($p['talhoes'] ?? []); ?>
+      <?php if ($croquiSvg !== ''): ?>
+        <div class="card-body pt-2 pb-3 text-center"><?= $croquiSvg ?></div>
       <?php endif; ?>
     </div>
     <?php endforeach; ?>

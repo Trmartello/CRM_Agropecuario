@@ -125,6 +125,8 @@ $router->registrar('clientes/pre-cadastro', ClientesController::class, 'preCadas
 $router->registrar('clientes/ficha', ClientesController::class, 'ficha');
 $router->registrar('clientes/salvar-propriedade', ClientesController::class, 'salvarPropriedade');
 $router->registrar('clientes/salvar-talhao', ClientesController::class, 'salvarTalhao');
+$router->registrar('clientes/croqui-dados', ClientesController::class, 'croquiDados');
+$router->registrar('clientes/salvar-croqui', ClientesController::class, 'salvarCroqui');
 $router->registrar('clientes/salvar-plano-safra', ClientesController::class, 'salvarPlanoSafra');
 $router->registrar('clientes/salvar-documento', ClientesController::class, 'salvarDocumento');
 $router->registrar('clientes/baixar-documento', ClientesController::class, 'baixarDocumento');

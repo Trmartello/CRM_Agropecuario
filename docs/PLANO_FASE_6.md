@@ -149,8 +149,8 @@ checklist de vistoria — assistência técnica padronizada e proativa.
 | 1º | 6C Segmentação | Pequeno | ✅ Entregue (schema v17) |
 | 2º | 6D Desempenho | Pequeno/médio | ✅ Entregue |
 | 3º | 6E Linha do tempo | Grande | ✅ Entregue (schema v18) |
-| 4º | 6A Croqui | Médio | Próxima |
-| 5º | 6B Relatório de safra | Médio | Por último de propósito: colhe 6A + 6E prontos |
+| 4º | 6A Croqui | Médio | ✅ Entregue (schema v22) |
+| 5º | 6B Relatório de safra | Médio | Próxima — colhe 6A + 6E prontos |
 
 Cada frente: implementação → migração de schema → smoke/screenshot →
 validação com o usuário antes da próxima.

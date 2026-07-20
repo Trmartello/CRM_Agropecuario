@@ -1,0 +1,42 @@
+<!-- Modal: croqui da propriedade (Fase 6A) — marcar contornos dos talhões -->
+<div class="modal fade" id="modalCroqui" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-fullscreen">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h5 class="modal-title"><i class="bi bi-bounding-box-circles me-2 text-success"></i>Croqui — <span id="croquiPropNome"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" onclick="Croqui.fechar()"></button>
+      </div>
+      <div class="modal-body d-flex flex-column p-2 gap-2">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <select id="croquiTalhao" class="form-select form-select-sm" style="max-width:230px" onchange="Croqui.trocarTalhao()"></select>
+          <div class="btn-group btn-group-sm" role="group" title="Como marcar os pontos">
+            <input type="radio" class="btn-check" name="croquiModo" id="croquiModoGps" value="gps" onchange="Croqui.trocarModo()">
+            <label class="btn btn-outline-success" for="croquiModoGps"><i class="bi bi-geo-alt me-1"></i>Caminhar a divisa</label>
+            <input type="radio" class="btn-check" name="croquiModo" id="croquiModoManual" value="manual" checked onchange="Croqui.trocarModo()">
+            <label class="btn btn-outline-success" for="croquiModoManual"><i class="bi bi-hand-index-thumb me-1"></i>Manual (toque)</label>
+          </div>
+          <span id="croquiGpsStatus" class="badge text-bg-light border d-none"></span>
+          <div class="ms-auto d-flex flex-wrap gap-2 align-items-center">
+            <span class="small" id="croquiArea"></span>
+            <button class="btn btn-sm btn-outline-secondary" onclick="Croqui.desfazer()" title="Remover o último ponto"><i class="bi bi-arrow-counterclockwise"></i> Desfazer</button>
+            <button class="btn btn-sm btn-outline-danger" onclick="Croqui.limpar()" title="Apagar o contorno deste talhão"><i class="bi bi-trash"></i> Limpar</button>
+            <button class="btn btn-sm btn-success" onclick="Croqui.salvar()"><i class="bi bi-check-lg me-1"></i>Salvar croqui</button>
+          </div>
+        </div>
+        <div id="croquiPalco" class="croqui-palco flex-grow-1"></div>
+        <div class="d-flex flex-wrap align-items-center gap-3">
+          <div class="form-check form-check-sm mb-0">
+            <input class="form-check-input" type="checkbox" id="croquiUsarArea">
+            <label class="form-check-label small" for="croquiUsarArea">Usar a área medida como área oficial do talhão</label>
+          </div>
+          <div id="croquiLegenda" class="d-flex flex-wrap gap-2 small ms-auto"></div>
+        </div>
+        <div class="small text-muted">
+          <i class="bi bi-info-circle me-1"></i><strong>Caminhar a divisa</strong>: ande pelo perímetro do talhão — o app marca um ponto
+          a cada ~10 m automaticamente. <strong>Manual</strong>: toque no mapa para marcar cada canto (arraste um ponto para ajustar).
+          Funciona sem sinal: o GPS não depende de internet e o salvar entra na fila de envio.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

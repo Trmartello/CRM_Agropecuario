@@ -246,3 +246,15 @@ textarea.auto-crescer { resize: vertical; overflow: hidden; min-height: 38px; li
   font-size: .68rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
   color: #2e7d32; margin-bottom: .15rem;
 }
+
+/* Croqui das propriedades (Fase 6A) */
+.croqui-palco {
+  background: linear-gradient(180deg, #f6faf6, #eef5ee);
+  border: 1px solid #dbe7db; border-radius: 12px; overflow: hidden;
+  min-height: 300px; touch-action: none; cursor: crosshair; position: relative;
+}
+.croqui-palco svg { display: block; }
+.croqui-vertice { cursor: grab; }
+.croqui-vertice:active { cursor: grabbing; }
+.croqui-rotulo { font-size: 11px; font-weight: 600; fill: #35503a; }
+.croqui-cor { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }

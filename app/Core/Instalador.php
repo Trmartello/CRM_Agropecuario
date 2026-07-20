@@ -282,6 +282,17 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '21'"
             );
         }
+        if ($versao < 22) {
+            // Fase 6A: croqui das propriedades — contorno GPS por talhão
+            self::adicionarColuna('talhoes', 'contorno',
+                'contorno TEXT NULL COMMENT "croqui: vértices [[lat,lng],...] marcados no campo (Fase 6A)" AFTER cultura_id');
+            self::adicionarColuna('talhoes', 'area_gps',
+                'area_gps DECIMAL(10,2) NULL COMMENT "área (ha) calculada pelo contorno GPS" AFTER contorno');
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '22')
+                 ON DUPLICATE KEY UPDATE valor = '22'"
+            );
+        }
     }
 
     /** Fase 6E (refinamento): características fisiológicas por estágio (cartão ilustrado). */

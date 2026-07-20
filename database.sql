@@ -139,6 +139,8 @@ CREATE TABLE talhoes (
   nome VARCHAR(120) NOT NULL,
   area_ha DECIMAL(10,2) NOT NULL DEFAULT 0,
   cultura_id INT,
+  contorno TEXT NULL COMMENT 'croqui: vértices [[lat,lng],...] marcados no campo (Fase 6A)',
+  area_gps DECIMAL(10,2) NULL COMMENT 'área (ha) calculada pelo contorno GPS',
   FOREIGN KEY (propriedade_id) REFERENCES propriedades(id) ON DELETE CASCADE,
   FOREIGN KEY (cultura_id) REFERENCES culturas(id)
 ) ENGINE=InnoDB;
@@ -1196,6 +1198,11 @@ INSERT INTO plantios (talhao_id, cultura_id, safra_id, data_plantio, cultivar) V
 INSERT INTO plantios (talhao_id, cultura_id, safra_id, data_plantio, cultivar, encerrado, colhido_em, produtividade) VALUES
 (5,1,2,DATE_SUB(CURDATE(), INTERVAL 170 DAY),'M5947 IPRO',1,DATE_SUB(CURDATE(), INTERVAL 35 DAY),68.50);
 
+-- Croquis de demonstração (Fase 6A): contornos dos talhões 1 e 2 da Fazenda
+-- São José (áreas calculadas pelo CroquiService a partir dos vértices)
+UPDATE talhoes SET contorno='[[-27.229,-52.033],[-27.2288,-52.021],[-27.2345,-52.0195],[-27.2388,-52.024],[-27.238,-52.0325]]', area_gps=124.55 WHERE id=1;
+UPDATE talhoes SET contorno='[[-27.2288,-52.0205],[-27.2282,-52.01],[-27.235,-52.009],[-27.2352,-52.019]]', area_gps=74.59 WHERE id=2;
+
 -- ---------------------------------------------------------------------------
 -- ENTREGAS FUTURAS (produtos contratados com retirada parcial)
 -- ---------------------------------------------------------------------------
@@ -1318,5 +1325,5 @@ CREATE TABLE sync_processados (
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','21')
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','22')
   ON DUPLICATE KEY UPDATE valor = '16';
