@@ -39,6 +39,21 @@ class PortalController
               WHERE v.cliente_id = ? ORDER BY v.data_visita DESC LIMIT 20",
             [$clienteId]
         );
+        // Fotos das visitas listadas (uma consulta só)
+        $fotosPorVisita = [];
+        if ($visitas) {
+            $ids = implode(',', array_map(fn ($v) => (int) $v['id'], $visitas));
+            foreach (Database::todos("SELECT visita_id, arquivo FROM visita_fotos WHERE visita_id IN ({$ids}) ORDER BY id") as $f) {
+                $fotosPorVisita[(int) $f['visita_id']][] = $f['arquivo'];
+            }
+        }
+        $entregas = Database::todos(
+            'SELECT ef.*, p.nome AS produto, p.unidade,
+                    (ef.quantidade_contratada - ef.quantidade_retirada) AS quantidade_pendente
+               FROM entregas_futuras ef JOIN produtos p ON p.id = ef.produto_id
+              WHERE ef.cliente_id = ? ORDER BY ef.previsao_entrega',
+            [$clienteId]
+        );
         $titulos = Database::todos(
             "SELECT * FROM titulos_financeiros WHERE cliente_id = ? ORDER BY vencimento DESC LIMIT 30",
             [$clienteId]
@@ -52,7 +67,7 @@ class PortalController
             [$clienteId]
         );
 
-        render('portal', compact('cliente', 'painel', 'historicoCompras', 'visitas', 'titulos', 'documentos', 'pedidos')
+        render('portal', compact('cliente', 'painel', 'historicoCompras', 'visitas', 'titulos', 'documentos', 'pedidos', 'fotosPorVisita', 'entregas')
             + ['semVinculo' => false, 'titulo' => 'Meu Portal']);
     }
 }

@@ -2,7 +2,8 @@
 
 namespace App\Controllers;
 
-use App\Core\Permissoes;
+use App\Core\Auth;
+use App\Core\Database;
 use App\Services\ConfigService;
 
 /**
@@ -33,12 +34,25 @@ class ArquivoController
      */
     public function upload(): void
     {
-        Permissoes::exigirInterno();
+        Auth::exigirLogin();
         $f = (string) ($_GET['f'] ?? '');
         // Só nomes seguros (subpastas comprovantes/, documentos/); nunca ".." ou absoluto
         if ($f === '' || !preg_match('#^[A-Za-z0-9][A-Za-z0-9._/-]*$#', $f) || str_contains($f, '..')) {
             http_response_code(404);
             exit;
+        }
+        if (Auth::perfil() === 'Produtor') {
+            // Produtor só acessa fotos das PRÓPRIAS visitas (portal); o resto é interno
+            $clienteId = (int) Database::valor('SELECT cliente_id FROM usuarios WHERE id = ?', [Auth::id()]);
+            $pertence = $clienteId > 0 && Database::valor(
+                'SELECT 1 FROM visita_fotos vf JOIN visitas v ON v.id = vf.visita_id
+                  WHERE vf.arquivo = ? AND v.cliente_id = ?',
+                [$f, $clienteId]
+            );
+            if (!$pertence) {
+                http_response_code(404);
+                exit;
+            }
         }
         $bases = [uploads_dir(), dirname(__DIR__, 2) . '/public/uploads'];
         foreach ($bases as $base) {

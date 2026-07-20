@@ -25,6 +25,13 @@
           <div class="d-flex justify-content-between"><strong><?= data_br($v['data_visita']) ?></strong><span class="small text-muted"><?= e($v['tecnico']) ?></span></div>
           <div class="small text-muted"><?= e($v['propriedade'] ?? '') ?><?= $v['cultura'] ? ' · ' . e($v['cultura']) : '' ?></div>
           <?php if ($v['recomendacao']): ?><div class="small mt-1 p-2 bg-success-subtle rounded"><i class="bi bi-file-earmark-medical me-1"></i><?= nl2br(e($v['recomendacao'])) ?></div><?php endif; ?>
+          <?php $fv = $fotosPorVisita[(int) $v['id']] ?? []; if ($fv): ?>
+          <div class="d-flex gap-2 mt-2 flex-wrap">
+            <?php foreach ($fv as $arq): ?>
+              <a href="<?= e(upload_url($arq)) ?>" target="_blank"><img src="<?= e(upload_url($arq)) ?>" class="foto-miniatura" alt="Foto da visita" loading="lazy" onerror="App.fotoIndisponivel(this)"></a>
+            <?php endforeach; ?>
+          </div>
+          <?php endif; ?>
         </div>
         <?php endforeach; ?>
       </div>
@@ -42,6 +49,24 @@
           <tr><td><?= data_br($p['criado_em']) ?></td><td class="small"><?= e($p['tipo']) ?></td>
             <td><span class="badge text-bg-light border text-dark"><?= e($p['status']) ?></span></td>
             <td class="text-end"><?= moeda($p['valor_total']) ?></td></tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><i class="bi bi-truck me-2 text-success"></i><strong>Minhas entregas futuras</strong></div>
+      <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+        <thead class="table-light"><tr><th>Produto</th><th class="text-end">Contratado</th><th class="text-end">Pendente</th><th>Previsão</th></tr></thead>
+        <tbody>
+          <?php if (empty($entregas)): ?><tr><td colspan="4" class="text-muted small">Sem contratos de entrega futura.</td></tr><?php endif; ?>
+          <?php foreach ($entregas ?? [] as $ef): ?>
+          <tr>
+            <td class="small"><?= e($ef['produto']) ?></td>
+            <td class="text-end small"><?= numero($ef['quantidade_contratada'], 0) ?> <?= e($ef['unidade'] ?? '') ?></td>
+            <td class="text-end fw-semibold small"><?= numero($ef['quantidade_pendente'], 0) ?></td>
+            <td class="small"><?= $ef['previsao_entrega'] ? data_br($ef['previsao_entrega']) : '—' ?></td>
+          </tr>
           <?php endforeach; ?>
         </tbody>
       </table></div>

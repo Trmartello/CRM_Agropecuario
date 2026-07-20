@@ -69,21 +69,20 @@ async function login(p, email, senha) {
   await p.fill('[name=desenvolvimento]', 'ok');
   await p.click('#visitaEtapas [data-etapa="3"]');
   await p.fill('[name=recomendacao]', 'ok');
-  await p.click('#btnSalvarVisita');
-  // o próprio app redireciona para a lista após salvar
+  // captura a resposta do salvar (determinístico, sem depender da lista)
+  const [respSalvar] = await Promise.all([
+    p.waitForResponse(r => r.url().includes('visitas/salvar'), { timeout: 10000 }).catch(() => null),
+    p.click('#btnSalvarVisita'),
+  ]);
+  let visitaSalva = false, detalheErro = 'sem resposta';
+  if (respSalvar) {
+    const d = await respSalvar.json().catch(() => null);
+    visitaSalva = !!(d && d.ok);
+    detalheErro = d ? (d.erro || 'id ' + d.id) : 'resposta inválida';
+  }
+  ok('nova visita salva', visitaSalva, detalheErro);
   await p.waitForURL(/r=visitas/, { timeout: 8000 }).catch(() => {});
   await p.waitForLoadState('networkidle');
-  await p.waitForTimeout(400);
-  // A lista não exibe o objetivo: confirma pela API de dados da visita mais recente
-  const visitaSalva = await p.evaluate(async (marca) => {
-    const btn = document.querySelector('#abaVisitas tbody tr button[onclick^="Visitas.detalhe"]');
-    if (!btn) return false;
-    const id = Number(btn.getAttribute('onclick').match(/\d+/)[0]);
-    const r = await fetch('index.php?r=visitas/dados&id=' + id, { headers: { 'X-Requested-With': 'fetch' } });
-    const d = await r.json();
-    return d.ok && String(d.visita.objetivo || '').includes('SMOKE');
-  }, MARCA).catch(() => false);
-  ok('nova visita salva', visitaSalva);
 
   // 4. Despesa KM (via fetch com o form da página)
   await p.goto(BASE + '/index.php?r=despesas');

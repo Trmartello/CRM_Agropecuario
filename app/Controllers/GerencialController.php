@@ -67,7 +67,45 @@ class GerencialController
             [$inicioMes, $inicioMes]
         );
 
-        render('gerencial', compact('equipe', 'porFamilia', 'funil', 'reclamacoes', 'despesas', 'totais')
+        // KPIs adicionais -----------------------------------------------------
+        // Atingimento CAP médio da equipe (metas vigentes)
+        $cap = Database::um(
+            "SELECT AVG(LEAST(r.realizado / m.meta, 1.5)) AS atingimento
+               FROM metas_cap m
+               JOIN (SELECT meta_id, COALESCE(SUM(valor),0) AS realizado FROM realizado_cap GROUP BY meta_id) r
+                 ON r.meta_id = m.id
+              WHERE m.meta > 0 AND CURDATE() BETWEEN m.periodo_inicio AND m.periodo_fim"
+        );
+        // Conversão do funil (histórico de oportunidades fechadas)
+        $conversao = Database::um(
+            "SELECT SUM(estagio = 'Ganha') AS ganhas, SUM(estagio = 'Perdida') AS perdidas
+               FROM oportunidades WHERE estagio IN ('Ganha','Perdida')"
+        );
+        // Clientes em risco de churn (cálculo em lote — rápido mesmo com carteira grande)
+        $idsAtivos = array_map(fn ($c) => (int) $c['id'], Database::todos('SELECT id FROM clientes WHERE ativo = 1'));
+        $quedas = \App\Services\ComercialService::quedaCompraLote($idsAtivos);
+        $emChurn = count(array_filter($quedas, fn ($q) => $q['risco_churn']));
+        // Aproveitamento do potencial na safra atual (realizado ÷ potencial)
+        $safraAtual = \App\Services\ComercialService::safraAtual();
+        $potencial = $safraAtual ? Database::um(
+            'SELECT COALESCE(SUM(pc.valor_potencial),0) AS potencial,
+                    (SELECT COALESCE(SUM(co.valor_total),0) FROM compras co WHERE co.safra_id = ?) AS realizado
+               FROM potencial_compra pc WHERE pc.safra_id = ?',
+            [(int) $safraAtual['id'], (int) $safraAtual['id']]
+        ) : null;
+
+        $kpis = [
+            'cap_atingimento' => $cap && $cap['atingimento'] !== null ? round($cap['atingimento'] * 100) : null,
+            'funil_ganhas' => (int) ($conversao['ganhas'] ?? 0),
+            'funil_perdidas' => (int) ($conversao['perdidas'] ?? 0),
+            'funil_conversao' => ((int) ($conversao['ganhas'] ?? 0) + (int) ($conversao['perdidas'] ?? 0)) > 0
+                ? round($conversao['ganhas'] / ($conversao['ganhas'] + $conversao['perdidas']) * 100) : null,
+            'clientes_churn' => $emChurn,
+            'potencial_pct' => $potencial && (float) $potencial['potencial'] > 0
+                ? round($potencial['realizado'] / $potencial['potencial'] * 100) : null,
+        ];
+
+        render('gerencial', compact('equipe', 'porFamilia', 'funil', 'reclamacoes', 'despesas', 'totais', 'kpis')
             + ['titulo' => 'Painel Gerencial']);
     }
 }

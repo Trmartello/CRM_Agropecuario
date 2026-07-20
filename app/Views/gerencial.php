@@ -4,6 +4,25 @@
   <div class="col-6 col-md-3"><div class="card indicador h-100"><div class="card-body"><div class="text-muted small">Visitas no mês</div><div class="fs-3 fw-bold"><?= numero($totais['visitas']) ?></div><i class="bi bi-clipboard2-pulse icone-fundo"></i></div></div></div>
   <div class="col-6 col-md-3"><div class="card indicador h-100"><div class="card-body"><div class="text-muted small">Vendido no mês</div><div class="fs-5 fw-bold"><?= moeda($totais['vendido']) ?></div><i class="bi bi-currency-dollar icone-fundo"></i></div></div></div>
   <div class="col-6 col-md-3"><div class="card indicador h-100 <?= $totais['reclamacoes_abertas'] > 0 ? 'border-warning' : '' ?>"><div class="card-body"><div class="text-muted small">Reclamações abertas</div><div class="fs-3 fw-bold"><?= numero($totais['reclamacoes_abertas']) ?></div><i class="bi bi-exclamation-octagon icone-fundo"></i></div></div></div>
+
+  <!-- KPIs estratégicos -->
+  <div class="col-6 col-md-3"><div class="card indicador h-100"><div class="card-body">
+    <div class="text-muted small">Atingimento CAP (equipe)</div>
+    <div class="fs-3 fw-bold"><?= $kpis['cap_atingimento'] !== null ? $kpis['cap_atingimento'] . '%' : '—' ?></div>
+    <i class="bi bi-trophy icone-fundo"></i></div></div></div>
+  <div class="col-6 col-md-3"><div class="card indicador h-100"><div class="card-body">
+    <div class="text-muted small">Conversão do funil</div>
+    <div class="fs-3 fw-bold"><?= $kpis['funil_conversao'] !== null ? $kpis['funil_conversao'] . '%' : '—' ?></div>
+    <div class="small text-muted"><?= $kpis['funil_ganhas'] ?> ganhas · <?= $kpis['funil_perdidas'] ?> perdidas</div>
+    <i class="bi bi-funnel icone-fundo"></i></div></div></div>
+  <div class="col-6 col-md-3"><div class="card indicador h-100 <?= $kpis['clientes_churn'] > 0 ? 'border-danger' : '' ?>"><div class="card-body">
+    <div class="text-muted small">Clientes em risco de churn</div>
+    <div class="fs-3 fw-bold text-<?= $kpis['clientes_churn'] > 0 ? 'danger' : 'body' ?>"><?= numero($kpis['clientes_churn']) ?></div>
+    <i class="bi bi-graph-down-arrow icone-fundo"></i></div></div></div>
+  <div class="col-6 col-md-3"><div class="card indicador h-100"><div class="card-body">
+    <div class="text-muted small">Aproveitamento do potencial (safra)</div>
+    <div class="fs-3 fw-bold"><?= $kpis['potencial_pct'] !== null ? $kpis['potencial_pct'] . '%' : '—' ?></div>
+    <i class="bi bi-bar-chart-line icone-fundo"></i></div></div></div>
 </div>
 
 <div class="row g-3">
