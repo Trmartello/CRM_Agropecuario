@@ -107,6 +107,9 @@ $router->registrar('dashboard', DashboardController::class, 'index');
 $router->registrar('plantios/salvar', \App\Controllers\PlantiosController::class, 'salvar');
 $router->registrar('plantios/encerrar', \App\Controllers\PlantiosController::class, 'encerrar');
 
+// Relatórios (Fase 6B — fechamento de safra)
+$router->registrar('relatorios/safra', \App\Controllers\RelatoriosController::class, 'safra');
+
 // Administração da fenologia (Configurações → fases, imagens e recomendações)
 $router->registrar('arquivo/estagio', \App\Controllers\ArquivoController::class, 'estagio');
 $router->registrar('fenologia/estagios', \App\Controllers\FenologiaController::class, 'estagios');

@@ -258,3 +258,13 @@ textarea.auto-crescer { resize: vertical; overflow: hidden; min-height: 38px; li
 .croqui-vertice:active { cursor: grabbing; }
 .croqui-rotulo { font-size: 11px; font-weight: 600; fill: #35503a; }
 .croqui-cor { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+
+/* ---------- Impressão (relatório de safra, roteiro, listagens) ---------- */
+@media print {
+  .sidebar, .topo, .d-print-none, #alertas { display: none !important; }
+  body { background: #fff; }
+  .conteudo { padding: 0 !important; }
+  .card { border: 1px solid #bbb; break-inside: avoid; box-shadow: none !important; }
+  .badge, .progress-bar { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .relatorio-assinaturas { margin-top: 5rem !important; }
+}

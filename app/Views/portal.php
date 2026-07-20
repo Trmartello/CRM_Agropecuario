@@ -8,9 +8,13 @@
       <h5 class="mb-0"><i class="bi bi-person-badge me-2 text-success"></i><?= e($cliente['nome']) ?></h5>
       <div class="small text-muted"><?= e($cliente['municipio'] ?? '') ?><?= $cliente['estado'] ? '/' . e($cliente['estado']) : '' ?> · <?= e($cliente['situacao']) ?></div>
     </div>
-    <?php $inad = $painel['inadimplencia'] ?? null; if ($inad): ?>
-    <span class="badge fs-6 text-bg-<?= $inad['grau'] === 'Adimplente' ? 'success' : ($inad['grau'] === 'Grave' ? 'danger' : 'warning') ?>"><?= e($inad['grau']) ?></span>
-    <?php endif; ?>
+    <div class="d-flex gap-2 align-items-center">
+      <a class="btn btn-sm btn-outline-success" href="<?= url('relatorios/safra') ?>" title="Relatório de fechamento da safra atual (imprimível)">
+        <i class="bi bi-file-earmark-bar-graph me-1"></i>Fechamento de safra</a>
+      <?php $inad = $painel['inadimplencia'] ?? null; if ($inad): ?>
+      <span class="badge fs-6 text-bg-<?= $inad['grau'] === 'Adimplente' ? 'success' : ($inad['grau'] === 'Grave' ? 'danger' : 'warning') ?>"><?= e($inad['grau']) ?></span>
+      <?php endif; ?>
+    </div>
   </div>
 </div>
 

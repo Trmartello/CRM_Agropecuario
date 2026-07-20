@@ -14,7 +14,9 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
         <?= $cliente['cpf_cnpj'] ? ' · ' . e($cliente['cpf_cnpj']) : '' ?>
       </div>
     </div>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+      <a class="btn btn-sm btn-outline-success" target="_blank" title="Relatório de fechamento de safra (imprimível)"
+         href="<?= url('relatorios/safra') ?>&cliente=<?= (int) $cliente['id'] ?>"><i class="bi bi-file-earmark-bar-graph me-1"></i>Fechamento de safra</a>
       <span class="fs-6"><?= selo_segmento($cliente['segmento_manual'] ?? null, $cliente['segmento'] ?? null) ?></span>
       <span class="badge fs-6 text-bg-<?= $corInad ?>" title="<?= $inad['inadimplente'] ? moeda($inad['valor_vencido']) . ' vencido há ' . $inad['dias_atraso'] . ' dias' : 'Sem títulos vencidos' ?>">
         <?= e($inad['grau']) ?>
