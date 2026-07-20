@@ -101,8 +101,9 @@ Login seed: admin@coperdia.com.br / senha definida no seed de `database.sql`. H�
 
 1. `php -l` em todos os arquivos PHP alterados.
 2. Subir o servidor e percorrer o fluxo afetado manualmente (login → tela → modal → salvar → conferir persistência).
-3. Se `database.sql` mudou, reimportar do zero e conferir que o seed carrega sem erro.
-4. Testar com perfil sem permissão para confirmar o bloqueio de acesso.
+3. **Smoke test automatizado**: `NODE_PATH=<dir com playwright-core> BASE_URL=http://127.0.0.1:8000 CHROMIUM=/opt/pw-browsers/chromium node tests/smoke.js` — cobre login, priorização, nova visita, KM, agenda, reclamação, offline (fila+sync), auditoria e logout. Cria registros "SMOKE" (nunca rodar contra produção); reimportar o banco depois se quiser zerar.
+4. Se `database.sql` mudou, reimportar do zero e conferir que o seed carrega sem erro.
+5. Testar com perfil sem permissão para confirmar o bloqueio de acesso.
 
 ## Git
 
