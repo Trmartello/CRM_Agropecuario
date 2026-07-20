@@ -10,6 +10,7 @@
 
       <div class="modal-body">
         <input type="hidden" name="id" value="0">
+        <input type="hidden" name="finalizar_definitivo" value="0">
         <input type="hidden" name="latitude"><input type="hidden" name="longitude">
 
         <!-- Navegação das etapas (clique para preencher em qualquer ordem) -->
@@ -175,6 +176,7 @@
         <button type="button" class="btn btn-outline-secondary" id="btnEtapaAnterior" onclick="Visitas.etapaAnterior()" disabled><i class="bi bi-arrow-left me-1"></i>Anterior</button>
         <div>
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-outline-warning d-none" id="btnFinalizarDefinitivo" onclick="Visitas.finalizarDefinitivo()" title="Encerra a visita mesmo com o cadastro incompleto"><i class="bi bi-flag-checkered me-1"></i>Finalizar assim mesmo</button>
           <button type="button" class="btn btn-outline-success" id="btnEtapaProxima" onclick="Visitas.proximaEtapa()">Próxima<i class="bi bi-arrow-right ms-1"></i></button>
           <button type="submit" class="btn btn-success d-none" id="btnSalvarVisita"><i class="bi bi-check-lg me-1"></i>Salvar Visita</button>
         </div>

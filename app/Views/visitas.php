@@ -40,7 +40,7 @@
                   <?php if (($p['ultima_completude'] ?? null) === null): ?>
                     <span class="badge rounded-pill text-bg-light border text-muted" title="Nenhuma visita registrada"><i class="bi bi-clipboard-x me-1"></i>sem visita</span>
                   <?php elseif ($p['ultima_finalizada']): ?>
-                    <span class="badge rounded-pill text-bg-success" title="Preenchimento do cadastro da última visita"><i class="bi bi-clipboard-check me-1"></i>Cadastro 100%</span>
+                    <span class="badge rounded-pill text-bg-success" title="Última visita finalizada (<?= (int) $p['ultima_completude'] ?>% do cadastro)"><i class="bi bi-clipboard-check me-1"></i>Cadastro <?= (int) $p['ultima_completude'] ?>%</span>
                   <?php else: ?>
                     <span class="badge rounded-pill text-bg-warning text-dark" title="Cadastro da última visita não finalizado"><i class="bi bi-clipboard-check me-1"></i>Cadastro <?= (int) $p['ultima_completude'] ?>%</span>
                   <?php endif; ?>
@@ -136,5 +136,11 @@ document.addEventListener('DOMContentLoaded', () => {
   <?php elseif (isset($_GET['editar'])): ?>
     Visitas.editar(<?= (int) $_GET['editar'] ?>);
   <?php endif; ?>
+
+  // Duplo clique na linha do produtor executa a ação disponível (Visitar ou Completar)
+  document.getElementById('tabelaPriorizacao')?.addEventListener('dblclick', ev => {
+    if (ev.target.closest('button, a')) return; // clique já foi no próprio botão
+    ev.target.closest('tr')?.querySelector('td:last-child button')?.click();
+  });
 });
 </script>

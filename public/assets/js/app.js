@@ -474,6 +474,7 @@ const Visitas = {
     Visitas.atualizarCompletude();
     const t = document.getElementById('visitaModalTitulo');
     if (t) t.textContent = titulo;
+    document.getElementById('btnFinalizarDefinitivo')?.classList.add('d-none');
     new bootstrap.Modal('#modalVisita').show();
     return form;
   },
@@ -507,6 +508,7 @@ const Visitas = {
     const form = Visitas._prepararModal('Completar Visita Técnica');
     // Mantém a localização registrada na visita original (não recaptura GPS)
     document.getElementById('visitaGeoStatus').innerHTML = '<i class="bi bi-geo-alt-fill me-1 text-success"></i>local original mantido';
+    document.getElementById('btnFinalizarDefinitivo')?.classList.remove('d-none');
     form.querySelector('[name=id]').value = visita.id;
     form.querySelector('[name=latitude]').value = visita.latitude ?? '';
     form.querySelector('[name=longitude]').value = visita.longitude ?? '';
@@ -555,7 +557,21 @@ const Visitas = {
       // Offline/erro de rede: usa o snapshot da carteira salvo no aparelho
       dados = await Visitas.apoioOffline(clienteId);
       if (!dados) { App.alerta('Sem conexão e sem carteira salva no aparelho para este produtor.', 'warning'); return; }
+      // Offline não dá para completar a visita pendente — bloqueia a nova (seria recusada no sync)
+      const fv = document.getElementById('formVisita');
+      if (fv && Number(fv.querySelector('[name=id]').value) === 0 && dados._pendente) {
+        App.alerta('Este produtor tem uma visita com cadastro incompleto. Complete-a quando tiver conexão antes de registrar uma nova.', 'warning');
+        return;
+      }
       App.alerta('Modo offline: usando a carteira salva' + (dados._atualizado ? ' de ' + dados._atualizado : '') + '.', 'info');
+    }
+    // Nova visita para produtor com visita pendente → troca direto para "completar"
+    const formVisita = document.getElementById('formVisita');
+    const criandoNova = formVisita && Number(formVisita.querySelector('[name=id]').value) === 0;
+    if (criandoNova && dados.visita_pendente) {
+      App.alerta(`Este produtor tem uma visita com cadastro incompleto (${dados.visita_pendente.completude}%) — abrindo para completar.`, 'info');
+      Visitas.editar(dados.visita_pendente.id);
+      return;
     }
     Visitas.apoio = dados;
     const selProp = document.getElementById('visitaPropriedade');
@@ -571,10 +587,12 @@ const Visitas = {
     const snap = typeof Offline !== 'undefined' ? await Offline.lerSnapshot() : null;
     const a = snap && snap.apoio ? snap.apoio[clienteId] : null;
     if (!a) return null;
+    const prod = (snap.produtores || []).find(pr => Number(pr.id) === Number(clienteId));
     return {
       propriedades: a.propriedades || [],
       talhoes: a.talhoes || [],
       painel: null, // dados comerciais não ficam no snapshot (indisponíveis offline)
+      _pendente: !!(prod && prod.ultima_completude !== null && !prod.ultima_finalizada),
       _atualizado: snap.atualizado_em ? new Date(snap.atualizado_em).toLocaleString('pt-BR') : '',
     };
   },
@@ -704,6 +722,21 @@ const Visitas = {
     document.getElementById('btnSalvarVisita').classList.remove('d-none');
   },
 
+  /** Encerra a visita em edição mesmo com o cadastro incompleto (não poderá mais ser editada). */
+  finalizarDefinitivo() {
+    const pct = Visitas.completude();
+    const faltando = Visitas.camposFaltando();
+    const msg = pct >= 100
+      ? 'Finalizar esta visita?'
+      : `Finalizar DEFINITIVAMENTE com ${pct}% do cadastro preenchido` +
+        (faltando.length ? ` (sem: ${faltando.join(', ')})` : '') +
+        '?\n\nDepois disso a visita não poderá mais ser editada.';
+    if (!confirm(msg)) return;
+    const form = document.getElementById('formVisita');
+    form.querySelector('[name=finalizar_definitivo]').value = '1';
+    form.requestSubmit(document.getElementById('btnSalvarVisita'));
+  },
+
   proximaEtapa() {
     if (Visitas.etapa < 5) Visitas.irParaEtapa(Visitas.etapa + 1);
   },
@@ -778,12 +811,13 @@ const Visitas = {
       Visitas.irParaEtapa(1);
       return false;
     }
+    const definitivo = form.querySelector('[name=finalizar_definitivo]')?.value === '1';
     const pct = Visitas.completude();
-    if (pct < 100) {
+    if (pct < 100 && !definitivo) { // no fluxo definitivo a confirmação já foi feita
       const faltando = Visitas.camposFaltando();
       const msg = `Falta ${100 - pct}% do cadastro para finalizar` +
         (faltando.length ? ` (${faltando.join(', ')})` : '') + '.\n\n' +
-        'Deseja finalizar assim mesmo? A visita ficará marcada como NÃO FINALIZADA e poderá ser completada depois.';
+        'Deseja salvar assim mesmo? A visita ficará marcada como NÃO FINALIZADA e poderá ser completada depois.';
       if (!confirm(msg)) return false;
     }
     try {
@@ -796,7 +830,8 @@ const Visitas = {
         App.alerta('Sem conexão: visita guardada no aparelho. Será enviada quando a internet voltar.', 'info');
       } else {
         App.alerta(editando
-          ? (r.finalizada ? 'Cadastro da visita completado (100%).' : 'Visita atualizada — cadastro ainda incompleto.')
+          ? (definitivo && r.completude < 100 ? 'Visita finalizada definitivamente (' + r.completude + '%).'
+            : (r.finalizada ? 'Cadastro da visita completado (100%).' : 'Visita atualizada — cadastro ainda incompleto.'))
           : 'Visita registrada com sucesso.');
         if (r.aviso) App.alerta(r.aviso, 'warning');
         setTimeout(() => location.href = 'index.php?r=visitas', r.aviso ? 2500 : 700);
@@ -1214,7 +1249,7 @@ const OfflineView = {
       return '<span class="badge rounded-pill text-bg-light border text-muted">sem visita</span>';
     }
     return p.ultima_finalizada
-      ? '<span class="badge rounded-pill text-bg-success">Cadastro 100%</span>'
+      ? `<span class="badge rounded-pill text-bg-success">Cadastro ${Number(p.ultima_completude)}%</span>`
       : `<span class="badge rounded-pill text-bg-warning text-dark">Cadastro ${Number(p.ultima_completude)}%</span>`;
   },
 

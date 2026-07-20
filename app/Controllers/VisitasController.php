@@ -96,7 +96,16 @@ class VisitasController
             [$clienteId]
         );
         $painel = ComercialService::painelCliente($clienteId);
-        json_ok(compact('propriedades', 'talhoes', 'painel'));
+        // Última visita não finalizada (o modal de nova visita troca para "completar")
+        $ultima = Database::um(
+            'SELECT id, completude, finalizada FROM visitas WHERE cliente_id = ?
+              ORDER BY data_visita DESC, id DESC LIMIT 1',
+            [$clienteId]
+        );
+        $visitaPendente = ($ultima && !(int) $ultima['finalizada'])
+            ? ['id' => (int) $ultima['id'], 'completude' => (int) $ultima['completude']]
+            : null;
+        json_ok(compact('propriedades', 'talhoes', 'painel') + ['visita_pendente' => $visitaPendente]);
     }
 
     /** Modelos de recomendação por cultura (ou gerais). */
@@ -175,7 +184,11 @@ class VisitasController
                 json_erro('Visita não encontrada.', 404);
             }
             if ((int) $anterior['finalizada'] === 1) {
-                json_erro('Esta visita já está com o cadastro 100% preenchido — registre uma nova visita.');
+                json_erro('Esta visita já está finalizada — registre uma nova visita.');
+            }
+            // Finalização definitiva: encerra a visita mesmo com o cadastro incompleto
+            if ((int) ($_POST['finalizar_definitivo'] ?? 0) === 1) {
+                $finalizada = 1;
             }
             Database::executar(
                 'UPDATE visitas SET cliente_id=?, propriedade_id=?, talhao_id=?, cultura_id=?, data_visita=?, hora=?,
@@ -189,6 +202,16 @@ class VisitasController
             // Notifica o produtor só se a recomendação surgiu agora (não repete aviso)
             $notificar = trim($_POST['recomendacao'] ?? '') !== '' && trim((string) $anterior['recomendacao']) === '';
         } else {
+            // Não permite iniciar uma NOVA visita enquanto a última não estiver finalizada
+            $ultima = Database::um(
+                'SELECT id, completude, finalizada FROM visitas WHERE cliente_id = ?
+                  ORDER BY data_visita DESC, id DESC LIMIT 1',
+                [$clienteId]
+            );
+            if ($ultima && (int) $ultima['finalizada'] === 0) {
+                json_erro('Este produtor tem uma visita com cadastro incompleto (' . (int) $ultima['completude']
+                    . '%). Complete-a (botão Completar) ou finalize-a antes de registrar uma nova visita.');
+            }
             Database::executar(
                 'INSERT INTO visitas (cliente_id, propriedade_id, talhao_id, cultura_id, usuario_id, data_visita, hora,
                         objetivo, estagio_cultura, desenvolvimento, pragas, doencas, plantas_daninhas,
@@ -226,7 +249,11 @@ class VisitasController
 
         // Confirma a transação idempotente: uuid + visita + fotos/vínculos juntos.
         sync_confirmar($_POST['uuid_offline'] ?? null);
-        auditar(((int) ($_POST['id'] ?? 0)) > 0 ? 'completar' : 'criar', 'visita', $visitaId, 'cliente #' . $clienteId . " · {$completude}%");
+        $acaoAud = 'criar';
+        if (((int) ($_POST['id'] ?? 0)) > 0) {
+            $acaoAud = (int) ($_POST['finalizar_definitivo'] ?? 0) === 1 ? 'finalizar' : 'completar';
+        }
+        auditar($acaoAud, 'visita', $visitaId, 'cliente #' . $clienteId . " · {$completude}%");
         json_ok([
             'id' => $visitaId,
             'finalizada' => $finalizada,
