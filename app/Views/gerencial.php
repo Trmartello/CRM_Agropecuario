@@ -1,4 +1,8 @@
 <?php $statusCor = ['Registrada'=>'secondary','Em análise'=>'info','Procedente'=>'success','Improcedente'=>'dark','Jurídico'=>'warning','Indenização'=>'primary','Encerrada'=>'light']; ?>
+<ul class="nav nav-tabs mb-3">
+  <li class="nav-item"><a class="nav-link active"><i class="bi bi-speedometer2 me-1"></i>Painel</a></li>
+  <li class="nav-item"><a class="nav-link" href="<?= url('gerencial/desempenho') ?>"><i class="bi bi-trophy me-1"></i>Desempenho</a></li>
+</ul>
 <div class="row g-3 mb-3">
   <div class="col-6 col-md-3"><div class="card indicador h-100"><div class="card-body"><div class="text-muted small">Clientes ativos</div><div class="fs-3 fw-bold"><?= numero($totais['clientes']) ?></div><i class="bi bi-people icone-fundo"></i></div></div></div>
   <div class="col-6 col-md-3"><div class="card indicador h-100"><div class="card-body"><div class="text-muted small">Visitas no mês</div><div class="fs-3 fw-bold"><?= numero($totais['visitas']) ?></div><i class="bi bi-clipboard2-pulse icone-fundo"></i></div></div></div>

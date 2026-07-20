@@ -111,4 +111,23 @@ class GerencialController
         render('gerencial', compact('equipe', 'porFamilia', 'funil', 'reclamacoes', 'despesas', 'totais', 'kpis', 'segmentacao')
             + ['titulo' => 'Painel Gerencial']);
     }
+
+    /** Fase 6D: análise de desempenho da equipe por período. */
+    public function desempenho(): void
+    {
+        Permissoes::exigir(['Administrador', 'Gestor Comercial', 'Gestor Técnico', 'Analista']);
+
+        // Período = um mês (input type=month); padrão: mês corrente
+        $mes = preg_match('/^\d{4}-\d{2}$/', $_GET['mes'] ?? '') ? $_GET['mes'] : date('Y-m');
+        $inicio = $mes . '-01';
+        $fim = date('Y-m-t', strtotime($inicio));
+
+        render('desempenho', [
+            'linhas' => \App\Services\DesempenhoService::equipe($inicio, $fim),
+            'evolucao' => \App\Services\DesempenhoService::evolucaoMensal(6),
+            'mes' => $mes,
+            'diasConversao' => \App\Services\DesempenhoService::DIAS_CONVERSAO,
+            'titulo' => 'Desempenho da Equipe',
+        ]);
+    }
 }
