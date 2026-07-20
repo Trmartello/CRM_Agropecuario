@@ -188,3 +188,35 @@
     </form>
   </div>
 </div>
+
+<!-- Modal: identificação visual do estágio fenológico (abre ao clicar num estágio da timeline) -->
+<div class="modal fade" id="modalEstagio" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h5 class="modal-title d-flex align-items-center gap-2">
+          <span class="fen2-selo" id="estagioSelo"></span>
+          <span id="estagioNome"></span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-2">
+        <div class="d-flex align-items-center gap-2">
+          <button type="button" class="btn btn-outline-success feno-nav" id="estagioAnterior"
+                  onclick="Visitas.navegarEstagio(-1)" title="Fase anterior (menos avançada)"><i class="bi bi-chevron-left"></i></button>
+          <div class="feno-figura flex-grow-1" id="estagioFigura"></div>
+          <button type="button" class="btn btn-outline-success feno-nav" id="estagioProximo"
+                  onclick="Visitas.navegarEstagio(1)" title="Próxima fase (mais avançada)"><i class="bi bi-chevron-right"></i></button>
+        </div>
+        <div class="text-center small text-muted mt-1" id="estagioJanela"></div>
+        <div class="feno-carac mt-2" id="estagioCarac"></div>
+      </div>
+      <div class="modal-footer py-2 justify-content-between align-items-center">
+        <span class="small text-muted"><i class="bi bi-arrow-left-right me-1"></i>Use as setas para comparar com a lavoura</span>
+        <button type="button" class="btn btn-success btn-sm" onclick="Visitas.usarEstagio()">
+          <i class="bi bi-check-lg me-1"></i>A lavoura está nesta fase
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

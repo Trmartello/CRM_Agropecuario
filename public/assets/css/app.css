@@ -226,3 +226,23 @@ textarea.auto-crescer { resize: vertical; overflow: hidden; min-height: 38px; li
 .fen2-manejo { display: flex; gap: .5rem; align-items: baseline; padding: .22rem 0; border-bottom: 1px solid #f1f5f1; font-size: .84rem; }
 .fen2-manejo:last-child { border-bottom: 0; }
 .fen2-manejo .bi { color: #2e7d32; }
+.fen2-chip { cursor: pointer; }
+.fen2-chip:hover { filter: brightness(.94); }
+.fen2-chip.estimada { outline: 2px dashed var(--z-forte); outline-offset: -2px; }
+.fen2-ajustada { font-size: .72rem; color: #9a6a12; }
+
+/* Cartão de identificação do estágio (ilustração + características) */
+.feno-figura {
+  background: linear-gradient(180deg, #f2f9f2 0%, #e9f3e9 100%);
+  border: 1px solid #dbe7db; border-radius: 14px; padding: .4rem;
+}
+.feno-figura svg { display: block; width: 100%; height: auto; max-height: 240px; }
+.feno-nav { border-radius: 50%; width: 40px; height: 40px; padding: 0; flex: 0 0 40px; }
+.feno-carac {
+  background: #f7faf7; border-left: 4px solid #2e7d32; border-radius: 0 10px 10px 0;
+  padding: .55rem .75rem; font-size: .86rem;
+}
+.feno-carac .feno-carac-titulo {
+  font-size: .68rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: #2e7d32; margin-bottom: .15rem;
+}

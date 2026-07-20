@@ -408,6 +408,7 @@ CREATE TABLE fenologia_estagios (
   descricao VARCHAR(255),
   ordem SMALLINT NOT NULL DEFAULT 0,
   grupo VARCHAR(40) NULL COMMENT 'macrofase exibida como faixa (ex.: Vegetativo, Reprodutivo, Afilhamento)',
+  caracteristicas VARCHAR(600) NULL COMMENT 'características fisiológicas para identificar a fase no campo',
   FOREIGN KEY (cultura_id) REFERENCES culturas(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
@@ -1117,31 +1118,31 @@ INSERT INTO calendario_agronomico (cultura_id, atividade, familia_id, mes_inicio
 -- regionais médias — ajustáveis por cultura no piloto.
 -- ---------------------------------------------------------------------------
 
-INSERT INTO fenologia_estagios (id, cultura_id, codigo, nome, dias_inicio, dias_fim, descricao, ordem, grupo) VALUES
+INSERT INTO fenologia_estagios (id, cultura_id, codigo, nome, dias_inicio, dias_fim, descricao, ordem, grupo, caracteristicas) VALUES
 -- Soja (ciclo ~130 dias, escala de Fehr)
-(1,1,'VE','Emergência',0,10,'Da semeadura à emergência das plântulas',1,'Vegetativo'),
-(2,1,'V2-V4','Desenvolvimento vegetativo',11,30,'2 a 4 trifólios — definição do estande',2,'Vegetativo'),
-(3,1,'V5+','Fechamento das entrelinhas',31,44,'Crescimento vegetativo pleno',3,'Vegetativo'),
-(4,1,'R1-R2','Florescimento',45,59,'Início e plena floração',4,'Reprodutivo'),
-(5,1,'R3-R4','Formação de vagens',60,74,'Canivetinho a vagem formada',5,'Reprodutivo'),
-(6,1,'R5','Enchimento de grãos',75,94,'Fase de maior demanda hídrica e nutricional',6,'Reprodutivo'),
-(7,1,'R6','Grão cheio',95,109,'Grãos com volume máximo',7,'Reprodutivo'),
-(8,1,'R7-R8','Maturação',110,135,'Maturação fisiológica à colheita',8,'Reprodutivo'),
+(1,1,'VE','Emergência',0,10,'Da semeadura à emergência das plântulas',1,'Vegetativo','Cotilédones acima do solo e folhas unifolioladas abrindo. Estande ainda em definição — conte plantas por metro.'),
+(2,1,'V2-V4','Desenvolvimento vegetativo',11,30,'2 a 4 trifólios — definição do estande',2,'Vegetativo','Conte os trifólios completamente desenvolvidos: entre 2 e 4. Planta com 15–30 cm, nós bem visíveis.'),
+(3,1,'V5+','Fechamento das entrelinhas',31,44,'Crescimento vegetativo pleno',3,'Vegetativo','5 ou mais trifólios; copa fechando as entrelinhas. Crescimento vegetativo intenso, sem estruturas reprodutivas.'),
+(4,1,'R1-R2','Florescimento',45,59,'Início e plena floração',4,'Reprodutivo','Flores abertas em qualquer nó (R1) até floração plena com flores nos nós superiores (R2). Flores brancas ou roxas.'),
+(5,1,'R3-R4','Formação de vagens',60,74,'Canivetinho a vagem formada',5,'Reprodutivo','Vagens de 0,5 cm ("canivetinho", R3) a 2 cm (R4) nos 4 nós superiores da haste principal.'),
+(6,1,'R5','Enchimento de grãos',75,94,'Fase de maior demanda hídrica e nutricional',6,'Reprodutivo','Grãos perceptíveis ao tato dentro das vagens (1–10 mm). Maior demanda de água e nutrientes do ciclo.'),
+(7,1,'R6','Grão cheio',95,109,'Grãos com volume máximo',7,'Reprodutivo','Vagens com grãos verdes preenchendo toda a cavidade. Folhas ainda verdes, início do amarelecimento embaixo.'),
+(8,1,'R7-R8','Maturação',110,135,'Maturação fisiológica à colheita',8,'Reprodutivo','Uma vagem madura na haste principal (R7) até 95% das vagens maduras (R8). Folhas caindo, planta dourada.'),
 -- Milho (ciclo ~140 dias, estádios V/R)
-(9,2,'VE','Emergência',0,8,'Da semeadura à emergência',1,'Vegetativo'),
-(10,2,'V3-V5','Definição da produtividade',9,25,'Estádio que define o número de fileiras da espiga',2,'Vegetativo'),
-(11,2,'V6-V8','Desenvolvimento vegetativo',26,40,'Crescimento acelerado do colmo',3,'Vegetativo'),
-(12,2,'V9-VT','Pré-pendoamento',41,60,'Emborrachamento ao pendoamento',4,'Vegetativo'),
-(13,2,'R1','Polinização',61,75,'Embonecamento — fase mais sensível a estresse',5,'Reprodutivo'),
-(14,2,'R2-R4','Enchimento de grãos',76,105,'Grão leitoso a pastoso',6,'Reprodutivo'),
-(15,2,'R5-R6','Maturação',106,140,'Formação de dente à maturação fisiológica',7,'Reprodutivo'),
+(9,2,'VE','Emergência',0,8,'Da semeadura à emergência',1,'Vegetativo','Coleóptilo rompendo o solo; plântula com até 2 folhas. Uniformidade de emergência define o potencial.'),
+(10,2,'V3-V5','Definição da produtividade',9,25,'Estádio que define o número de fileiras da espiga',2,'Vegetativo','3 a 5 folhas com colar visível. Ponto de crescimento ainda abaixo do solo — fase que define fileiras da espiga.'),
+(11,2,'V6-V8','Desenvolvimento vegetativo',26,40,'Crescimento acelerado do colmo',3,'Vegetativo','6 a 8 folhas com colar; colmo alongando rápido. Espiga em definição de tamanho.'),
+(12,2,'V9-VT','Pré-pendoamento',41,60,'Emborrachamento ao pendoamento',4,'Vegetativo','Folhas superiores enroladas (emborrachamento) até o pendão totalmente visível (VT).'),
+(13,2,'R1','Polinização',61,75,'Embonecamento — fase mais sensível a estresse',5,'Reprodutivo','Cabelos (estilo-estigmas) visíveis fora da espiga — polinização em curso. Fase mais sensível a estresse.'),
+(14,2,'R2-R4','Enchimento de grãos',76,105,'Grão leitoso a pastoso',6,'Reprodutivo','Grão de bolha d\'água (R2) a pastoso (R4); linha do leite avançando no grão.'),
+(15,2,'R5-R6','Maturação',106,140,'Formação de dente à maturação fisiológica',7,'Reprodutivo','Grão dentado (R5) até a camada preta na base do grão (R6) — maturação fisiológica; planta secando.'),
 -- Trigo (ciclo ~135 dias, escala Feekes-Large)
-(16,3,'F1-3','Afilhamento inicial',0,30,'Emergência ao início do afilhamento — estabelecimento do estande',1,'Afilhamento'),
-(17,3,'F4-5','Afilhamento pleno',31,45,'Perfilhos formados — define o nº de espigas por planta',2,'Afilhamento'),
-(18,3,'F6-10','Alongamento do colmo',46,70,'Crescimento do colmo e da espiga — proteção da folha bandeira',3,'Alongamento'),
-(19,3,'F10.1-10.5','Espigamento e florescimento',71,85,'Espiga emergida e floração — janela crítica da giberela',4,'Espigamento'),
-(20,3,'F11.1-11.2','Enchimento de grãos',86,110,'Grão leitoso a massa mole — define o peso do grão',5,'Enchimento'),
-(21,3,'F11.3-11.4','Maturação',111,135,'Massa dura à maturação de colheita',6,'Maturação');
+(16,3,'F1-3','Afilhamento inicial',0,30,'Emergência ao início do afilhamento — estabelecimento do estande',1,'Afilhamento','Plântulas com 1 a 3 folhas; início da emissão de perfilhos. Conte plantas/m² para avaliar o estande.'),
+(17,3,'F4-5','Afilhamento pleno',31,45,'Perfilhos formados — define o nº de espigas por planta',2,'Afilhamento','Touceira formada com perfilhos eretos; pseudocolmo alongando. Nº de perfilhos define espigas por planta.'),
+(18,3,'F6-10','Alongamento do colmo',46,70,'Crescimento do colmo e da espiga — proteção da folha bandeira',3,'Alongamento','1º e 2º nós visíveis no colmo; folha bandeira emergindo até o emborrachamento (bota).'),
+(19,3,'F10.1-10.5','Espigamento e florescimento',71,85,'Espiga emergida e floração — janela crítica da giberela',4,'Espigamento','Espiga emergindo da bainha até floração plena — anteras amarelas visíveis. Janela crítica para giberela.'),
+(20,3,'F11.1-11.2','Enchimento de grãos',86,110,'Grão leitoso a massa mole — define o peso do grão',5,'Enchimento','Grão leitoso a massa mole; espiga verde clareando. Peso do grão em definição.'),
+(21,3,'F11.3-11.4','Maturação',111,135,'Massa dura à maturação de colheita',6,'Maturação','Grão duro; planta dourada e nós escurecidos. Ponto de colheita — atenção à umidade e chuvas.');
 
 INSERT INTO manejos_fase (estagio_id, titulo, familia_id, orientacao, eh_checklist) VALUES
 -- Soja
@@ -1315,5 +1316,5 @@ CREATE TABLE sync_processados (
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','19')
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','20')
   ON DUPLICATE KEY UPDATE valor = '16';

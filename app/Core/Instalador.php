@@ -263,6 +263,49 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '19'"
             );
         }
+        if ($versao < 20) {
+            self::migrarParaV20();
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '20')
+                 ON DUPLICATE KEY UPDATE valor = '20'"
+            );
+        }
+    }
+
+    /** Fase 6E (refinamento): características fisiológicas por estágio (cartão ilustrado). */
+    private static function migrarParaV20(): void
+    {
+        self::adicionarColuna('fenologia_estagios', 'caracteristicas',
+            "caracteristicas VARCHAR(600) NULL COMMENT 'características fisiológicas para identificar a fase no campo' AFTER grupo");
+        $textos = [
+            [1, 'VE', 'Cotilédones acima do solo e folhas unifolioladas abrindo. Estande ainda em definição — conte plantas por metro.'],
+            [1, 'V2-V4', 'Conte os trifólios completamente desenvolvidos: entre 2 e 4. Planta com 15–30 cm, nós bem visíveis.'],
+            [1, 'V5+', '5 ou mais trifólios; copa fechando as entrelinhas. Crescimento vegetativo intenso, sem estruturas reprodutivas.'],
+            [1, 'R1-R2', 'Flores abertas em qualquer nó (R1) até floração plena com flores nos nós superiores (R2). Flores brancas ou roxas.'],
+            [1, 'R3-R4', 'Vagens de 0,5 cm ("canivetinho", R3) a 2 cm (R4) nos 4 nós superiores da haste principal.'],
+            [1, 'R5', 'Grãos perceptíveis ao tato dentro das vagens (1–10 mm). Maior demanda de água e nutrientes do ciclo.'],
+            [1, 'R6', 'Vagens com grãos verdes preenchendo toda a cavidade. Folhas ainda verdes, início do amarelecimento embaixo.'],
+            [1, 'R7-R8', 'Uma vagem madura na haste principal (R7) até 95% das vagens maduras (R8). Folhas caindo, planta dourada.'],
+            [2, 'VE', 'Coleóptilo rompendo o solo; plântula com até 2 folhas. Uniformidade de emergência define o potencial.'],
+            [2, 'V3-V5', '3 a 5 folhas com colar visível. Ponto de crescimento ainda abaixo do solo — fase que define fileiras da espiga.'],
+            [2, 'V6-V8', '6 a 8 folhas com colar; colmo alongando rápido. Espiga em definição de tamanho.'],
+            [2, 'V9-VT', 'Folhas superiores enroladas (emborrachamento) até o pendão totalmente visível (VT).'],
+            [2, 'R1', 'Cabelos (estilo-estigmas) visíveis fora da espiga — polinização em curso. Fase mais sensível a estresse.'],
+            [2, 'R2-R4', "Grão de bolha d'água (R2) a pastoso (R4); linha do leite avançando no grão."],
+            [2, 'R5-R6', 'Grão dentado (R5) até a camada preta na base do grão (R6) — maturação fisiológica; planta secando.'],
+            [3, 'F1-3', 'Plântulas com 1 a 3 folhas; início da emissão de perfilhos. Conte plantas/m² para avaliar o estande.'],
+            [3, 'F4-5', 'Touceira formada com perfilhos eretos; pseudocolmo alongando. Nº de perfilhos define espigas por planta.'],
+            [3, 'F6-10', '1º e 2º nós visíveis no colmo; folha bandeira emergindo até o emborrachamento (bota).'],
+            [3, 'F10.1-10.5', 'Espiga emergindo da bainha até floração plena — anteras amarelas visíveis. Janela crítica para giberela.'],
+            [3, 'F11.1-11.2', 'Grão leitoso a massa mole; espiga verde clareando. Peso do grão em definição.'],
+            [3, 'F11.3-11.4', 'Grão duro; planta dourada e nós escurecidos. Ponto de colheita — atenção à umidade e chuvas.'],
+        ];
+        foreach ($textos as [$cultura, $codigo, $texto]) {
+            Database::executar(
+                'UPDATE fenologia_estagios SET caracteristicas = ? WHERE cultura_id = ? AND codigo = ? AND caracteristicas IS NULL',
+                [$texto, $cultura, $codigo]
+            );
+        }
     }
 
     /**

@@ -452,6 +452,132 @@ const Clientes = {
   },
 };
 
+/* ============ ILUSTRAÇÕES FENOLÓGICAS (SVG local — funciona offline) ============ */
+
+const FenologiaArte = {
+  C: {
+    talo: '#2e6b33', folha: '#3f9144', folhaClara: '#67ae6c', dourado: '#c9a13b',
+    douradoEscuro: '#8d6e2f', flor: '#8e6cd0', grao: '#e3c26a', solo: '#a98352', cabelo: '#b06e2a',
+  },
+
+  /** SVG do estágio (estilizado): a cultura define o "tipo" de planta desenhada. */
+  svg(culturaId, estagio) {
+    const ordem = Math.max(1, Number(estagio.ordem) || 1);
+    let corpo;
+    if (Number(culturaId) === 2) corpo = this._milho(ordem);
+    else if (Number(culturaId) === 3) corpo = this._trigo(ordem);
+    else corpo = this._soja(ordem); // soja e demais dicotiledôneas
+    return `<svg viewBox="0 0 240 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Ilustração do estágio">
+      <path d="M24,180 H216" stroke="${this.C.solo}" stroke-width="5" stroke-linecap="round"/>
+      <path d="M40,186 h14 M72,186 h10 M160,186 h14 M196,186 h9" stroke="${this.C.solo}" stroke-width="3" stroke-linecap="round" opacity=".5"/>
+      ${corpo}</svg>`;
+  },
+
+  _trifolio(x, y, lado, esc, cor) {
+    const dx = 26 * esc * lado;
+    const fx = x + dx, fy = y - 3 * esc;
+    return `<path d="M${x},${y} Q${x + dx / 2},${y - 6 * esc} ${fx},${fy}" stroke="${this.C.talo}" stroke-width="2" fill="none"/>
+      <ellipse cx="${fx + 7 * lado * esc}" cy="${fy}" rx="${9 * esc}" ry="${5.5 * esc}" fill="${cor}"/>
+      <ellipse cx="${fx}" cy="${fy - 6 * esc}" rx="${7 * esc}" ry="${4.5 * esc}" fill="${cor}" transform="rotate(${-30 * lado} ${fx} ${fy - 6 * esc})"/>
+      <ellipse cx="${fx}" cy="${fy + 6 * esc}" rx="${7 * esc}" ry="${4.5 * esc}" fill="${cor}" transform="rotate(${30 * lado} ${fx} ${fy + 6 * esc})"/>`;
+  },
+
+  _vagem(x, y, lado, esc, cor) {
+    return `<rect x="${x - 3}" y="${y}" width="6" height="${16 * esc}" rx="3" fill="${cor}"
+              transform="rotate(${18 * lado} ${x} ${y})"/>`;
+  },
+
+  _soja(ordem) {
+    const p = {
+      1: { alt: 30, folhas: 0 }, 2: { alt: 62, folhas: 3 }, 3: { alt: 96, folhas: 5 },
+      4: { alt: 112, folhas: 5, flores: 1 }, 5: { alt: 122, folhas: 6, flores: 1, vag: .7 },
+      6: { alt: 126, folhas: 6, vag: 1 }, 7: { alt: 126, folhas: 6, vag: 1.25 },
+      8: { alt: 118, folhas: 4, vag: 1.25, seca: 1 },
+    }[ordem] || { alt: 90, folhas: 4 };
+    const folha = p.seca ? this.C.dourado : this.C.folha;
+    const vagemCor = p.seca ? this.C.douradoEscuro : this.C.folhaClara;
+    let s = `<path d="M120,180 Q116,${180 - p.alt * .55} 120,${180 - p.alt}" stroke="${p.seca ? this.C.douradoEscuro : this.C.talo}" stroke-width="4" fill="none" stroke-linecap="round"/>`;
+    if (!p.folhas) { // emergência: cotilédones
+      s += `<ellipse cx="112" cy="${178 - p.alt}" rx="8" ry="5" fill="${this.C.folhaClara}"/>
+            <ellipse cx="128" cy="${178 - p.alt}" rx="8" ry="5" fill="${this.C.folhaClara}"/>`;
+      return s;
+    }
+    for (let i = 0; i < p.folhas; i++) {
+      const t = (i + 1) / (p.folhas + .6);
+      const y = 180 - p.alt * (0.28 + 0.72 * t);
+      const lado = i % 2 ? -1 : 1;
+      const esc = 1.15 - t * 0.35;
+      s += this._trifolio(120, y, lado, esc, i === p.folhas - 1 && !p.seca ? this.C.folhaClara : folha);
+      if (p.flores && t > 0.45) s += `<circle cx="${120 + 6 * lado}" cy="${y - 2}" r="3" fill="${this.C.flor}"/>`;
+      if (p.vag && t > 0.3) s += this._vagem(120 + 5 * lado, y + 2, lado, p.vag, vagemCor);
+    }
+    return s;
+  },
+
+  _milho(ordem) {
+    const p = {
+      1: { alt: 28, folhas: 2 }, 2: { alt: 62, folhas: 4 }, 3: { alt: 98, folhas: 6 },
+      4: { alt: 132, folhas: 7, pend: .5 }, 5: { alt: 152, folhas: 7, pend: 1, cabelo: 1 },
+      6: { alt: 152, folhas: 7, pend: 1, espiga: 1 }, 7: { alt: 152, folhas: 6, pend: 1, espiga: 1, seca: 1 },
+    }[ordem] || { alt: 90, folhas: 5 };
+    const folha = p.seca ? this.C.dourado : this.C.folha;
+    const topo = 180 - p.alt;
+    let s = `<path d="M120,180 V${topo}" stroke="${p.seca ? this.C.douradoEscuro : this.C.talo}" stroke-width="6" stroke-linecap="round"/>`;
+    for (let i = 0; i < p.folhas; i++) {
+      const t = (i + 1) / (p.folhas + 1);
+      const y = 180 - p.alt * (0.18 + 0.78 * t);
+      const lado = i % 2 ? -1 : 1;
+      const alc = (46 - 18 * t) * lado;
+      s += `<path d="M120,${y} Q${120 + alc * .55},${y - 22} ${120 + alc},${y - 4}" stroke="${folha}" stroke-width="6" fill="none" stroke-linecap="round"/>`;
+    }
+    if (p.pend) { // pendão
+      const h = 16 * p.pend;
+      s += `<path d="M120,${topo} v-${h} M120,${topo - h * .4} l-9,-${h * .55} M120,${topo - h * .4} l9,-${h * .55}"
+              stroke="${this.C.dourado}" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+    }
+    const ey = topo + p.alt * 0.42;
+    if (p.cabelo && !p.espiga) { // boneca com cabelos
+      s += `<ellipse cx="132" cy="${ey}" rx="7" ry="13" fill="${this.C.folhaClara}"/>
+            <path d="M132,${ey - 12} q3,-7 1,-11 M135,${ey - 11} q4,-5 4,-9" stroke="${this.C.cabelo}" stroke-width="2" fill="none" stroke-linecap="round"/>`;
+    }
+    if (p.espiga) {
+      s += `<ellipse cx="134" cy="${ey}" rx="9" ry="16" fill="${this.C.grao}"/>
+            <path d="M128,${ey - 13} q6,-4 12,0" stroke="${p.seca ? this.C.dourado : this.C.folhaClara}" stroke-width="4" fill="none"/>
+            <path d="M131,${ey - 9} v19 M137,${ey - 9} v19" stroke="${this.C.douradoEscuro}" stroke-width="1.2" opacity=".55"/>`;
+    }
+    return s;
+  },
+
+  _espigaTrigo(x, y, cor) {
+    let g = `<path d="M${x},${y + 4} l4,-16 M${x},${y - 8} l7,-9 M${x + 2},${y - 10} l6,-11" stroke="${cor}" stroke-width="1.4" fill="none"/>`;
+    for (let i = 0; i < 4; i++) {
+      g += `<ellipse cx="${x - 3}" cy="${y - i * 5}" rx="3.4" ry="3" fill="${cor}"/>
+            <ellipse cx="${x + 3}" cy="${y - i * 5 - 2}" rx="3.4" ry="3" fill="${cor}"/>`;
+    }
+    return g;
+  },
+
+  _trigo(ordem) {
+    const p = {
+      1: { alt: 36, perf: 3 }, 2: { alt: 58, perf: 6 }, 3: { alt: 104, perf: 5 },
+      4: { alt: 132, perf: 5, espiga: 1 }, 5: { alt: 136, perf: 5, espiga: 1, claro: 1 },
+      6: { alt: 130, perf: 5, espiga: 1, seca: 1 },
+    }[ordem] || { alt: 80, perf: 4 };
+    const cor = p.seca ? this.C.douradoEscuro : this.C.talo;
+    const corEspiga = p.seca ? this.C.dourado : (p.claro ? this.C.grao : this.C.folhaClara);
+    let s = '';
+    for (let i = 0; i < p.perf; i++) {
+      const esp = (i - (p.perf - 1) / 2) * 14;
+      const alt = p.alt * (1 - Math.abs(esp) / 220);
+      const tx = 120 + esp * 2.2, ty = 180 - alt;
+      s += `<path d="M120,180 Q${120 + esp},${180 - alt * .6} ${tx},${ty}" stroke="${cor}" stroke-width="2.6" fill="none" stroke-linecap="round"/>`;
+      if (p.espiga) s += this._espigaTrigo(tx, ty, corEspiga);
+      else s += `<path d="M${tx},${ty} q${esp > 0 ? 8 : -8},-6 ${esp > 0 ? 12 : -12},-2" stroke="${p.seca ? this.C.dourado : this.C.folha}" stroke-width="2.6" fill="none" stroke-linecap="round"/>`;
+    }
+    return s;
+  },
+};
+
 /* ============================== PLANTIOS (Fase 6E) ============================== */
 
 const Plantios = {
@@ -502,6 +628,12 @@ const Plantios = {
 const Visitas = {
   etapa: 1,
   apoio: null,
+  // Estado da linha do tempo fenológica (modal de identificação de estágio)
+  _fenoEstagios: [],
+  _fenoIdx: 0,
+  _fenoCulturaId: null,
+  _fenoManualId: null,
+  _fenoTalhao: null,
 
   /** Reseta e abre o modal (comum a nova visita e completar cadastro). */
   _prepararModal(titulo) {
@@ -516,6 +648,8 @@ const Visitas = {
     document.querySelectorAll('#formVisita textarea.auto-crescer').forEach(t => { delete t.dataset.alturaManual; t.style.height = ''; });
     const fen = document.getElementById('visitaFenologia'); if (fen) fen.innerHTML = '';
     const chk = document.getElementById('visitaChecklist'); if (chk) chk.innerHTML = '';
+    Visitas._fenoManualId = null;
+    Visitas._fenoTalhao = null;
     Visitas.irParaEtapa(1);
     document.getElementById('visitaFotosPreview').innerHTML = '';
     Visitas.atualizarCompletude();
@@ -730,6 +864,18 @@ const Visitas = {
     const cicloTotal = Number(estagios[estagios.length - 1].dias_fim) + 1;
     const pct = Math.min(100, dap / cicloTotal * 100);
 
+    // Fase EM USO: a estimada pelo DAP, salvo ajuste manual do técnico
+    // ("A lavoura está nesta fase" no cartão do estágio)
+    if (Visitas._fenoTalhao !== talhaoId) { Visitas._fenoManualId = null; Visitas._fenoTalhao = talhaoId; }
+    if (!Visitas._fenoManualId && salvo && salvo.length) {
+      // Visita reaberta: recupera a fase pela qual o checklist foi marcado
+      const daMarcacao = estagios.find(e => (e.manejos || []).some(m => Number(m.id) === Number(salvo[0].manejo_id)));
+      if (daMarcacao) Visitas._fenoManualId = daMarcacao.id;
+    }
+    const emUso = estagios.find(e => e.id === Visitas._fenoManualId) || atual;
+    Visitas._fenoEstagios = estagios;
+    Visitas._fenoCulturaId = Number(plantio.cultura_id);
+
     // Macrofases (faixas Vegetativo/Reprodutivo/Feekes…): agrupa estágios consecutivos
     const zonas = [];
     estagios.forEach(e => {
@@ -742,9 +888,15 @@ const Visitas = {
     const trilha = zonas.map((z, i) => {
       const chips = z.estagios.map(e => {
         const span = Number(e.dias_fim) - Number(e.dias_inicio) + 1;
-        const classe = atual && e.id === atual.id ? 'atual' : (dap > Number(e.dias_fim) ? 'passada' : '');
-        return `<div class="fen2-chip ${classe}" style="flex-grow:${span}"
-                  title="${App.escapeHtml(e.codigo)} — ${App.escapeHtml(e.nome)} (${e.dias_inicio}–${e.dias_fim} DAP)${e.descricao ? ': ' + App.escapeHtml(e.descricao) : ''}">${App.escapeHtml(e.codigo)}</div>`;
+        let classe = '';
+        if (emUso && e.id === emUso.id) {
+          classe = 'atual';
+        } else {
+          if (dap > Number(e.dias_fim)) classe = 'passada';
+          if (atual && e.id === atual.id) classe += ' estimada'; // estimativa ≠ fase ajustada
+        }
+        return `<div class="fen2-chip ${classe}" style="flex-grow:${span}" onclick="Visitas.abrirEstagio(${Number(e.id)})"
+                  title="${App.escapeHtml(e.codigo)} — ${App.escapeHtml(e.nome)} (${e.dias_inicio}–${e.dias_fim} DAP) — toque para ver a ilustração">${App.escapeHtml(e.codigo)}</div>`;
       }).join('');
       return `<div class="fen2-zona zc-${i % 6}" style="flex-grow:${z.dias}">
                 ${z.nome ? `<div class="fen2-zona-nome">${App.escapeHtml(z.nome)}</div>` : ''}
@@ -752,21 +904,27 @@ const Visitas = {
               </div>`;
     }).join('');
 
-    // Posição na fase atual e prévia da próxima
-    let infoFase = '', proxima = '';
-    if (atual) {
-      const idx = estagios.findIndex(e => e.id === atual.id);
-      const diaFase = Math.min(dap, Number(atual.dias_fim)) - Number(atual.dias_inicio) + 1;
-      const duracaoFase = Number(atual.dias_fim) - Number(atual.dias_inicio) + 1;
-      infoFase = `Dia <strong>${diaFase}</strong> de ${duracaoFase} da fase (${atual.dias_inicio}–${atual.dias_fim} DAP)`;
+    // Posição na fase em uso e prévia da próxima
+    let infoFase = '', proxima = '', ajuste = '';
+    if (emUso) {
+      const idx = estagios.findIndex(e => e.id === emUso.id);
       const prox = estagios[idx + 1];
-      if (prox && dap <= Number(atual.dias_fim)) {
-        proxima = `Próxima: <strong>${App.escapeHtml(prox.codigo)} — ${App.escapeHtml(prox.nome)}</strong> em ~${Number(prox.dias_inicio) - dap} dia(s)`;
-      } else if (!prox || dap > Number(atual.dias_fim)) {
-        proxima = '<strong>Fim de ciclo</strong> — planejar/registrar a colheita';
+      if (atual && emUso.id === atual.id) {
+        const diaFase = Math.min(dap, Number(emUso.dias_fim)) - Number(emUso.dias_inicio) + 1;
+        const duracaoFase = Number(emUso.dias_fim) - Number(emUso.dias_inicio) + 1;
+        infoFase = `Dia <strong>${diaFase}</strong> de ${duracaoFase} da fase (${emUso.dias_inicio}–${emUso.dias_fim} DAP)`;
+        if (prox && dap <= Number(emUso.dias_fim)) {
+          proxima = `Próxima: <strong>${App.escapeHtml(prox.codigo)} — ${App.escapeHtml(prox.nome)}</strong> em ~${Number(prox.dias_inicio) - dap} dia(s)`;
+        } else if (!prox || dap > Number(emUso.dias_fim)) {
+          proxima = '<strong>Fim de ciclo</strong> — planejar/registrar a colheita';
+        }
+      } else if (atual) {
+        infoFase = `Janela de referência: ${emUso.dias_inicio}–${emUso.dias_fim} DAP`;
+        ajuste = `<div class="fen2-ajustada mt-1"><i class="bi bi-person-check me-1"></i>Fase ajustada pelo técnico — estimativa pelo plantio: <strong>${App.escapeHtml(atual.codigo)}</strong></div>`;
+        proxima = prox ? `Próxima: <strong>${App.escapeHtml(prox.codigo)} — ${App.escapeHtml(prox.nome)}</strong>` : '<strong>Última fase do ciclo</strong>';
       }
     }
-    const manejos = atual && atual.manejos ? atual.manejos : [];
+    const manejos = emUso && emUso.manejos ? emUso.manejos : [];
     const listaManejos = manejos.length
       ? manejos.map(m => `
           <div class="fen2-manejo">
@@ -792,14 +950,16 @@ const Visitas = {
         <div class="fen2-track-wrap"><div class="fen2-track">${trilha}</div></div>
         <div class="fen2-linha"><div class="fen2-fill" style="width:${pct.toFixed(1)}%"></div><div class="fen2-marcador" style="left:${pct.toFixed(1)}%" title="Hoje — ${dap} DAP"></div></div>
         <div class="fen2-rotulos"><span>plantio</span><span>${cicloTotal} dias de ciclo</span></div>
-        ${atual ? `
+        ${emUso ? `
         <div class="fen2-atual">
           <div class="fen2-atual-topo">
-            <span class="fen2-selo">${App.escapeHtml(atual.codigo)}</span>
+            <span class="fen2-selo" style="cursor:pointer" onclick="Visitas.abrirEstagio(${Number(emUso.id)})"
+                  title="Ver a ilustração e as características desta fase">${App.escapeHtml(emUso.codigo)}</span>
             <div>
-              <strong>${App.escapeHtml(atual.nome)}</strong>
-              ${atual.descricao ? `<div class="small text-muted">${App.escapeHtml(atual.descricao)}</div>` : ''}
+              <strong>${App.escapeHtml(emUso.nome)}</strong>
+              ${emUso.descricao ? `<div class="small text-muted">${App.escapeHtml(emUso.descricao)}</div>` : ''}
               <div class="small text-muted mt-1">${infoFase}</div>
+              ${ajuste}
             </div>
             <div class="fen2-proxima">${proxima}</div>
           </div>
@@ -807,14 +967,59 @@ const Visitas = {
             <div class="fen2-manejos-titulo"><i class="bi bi-clipboard2-check me-1"></i>Boas práticas e manejos desta fase</div>
             ${listaManejos}
           </div>
+          <div class="small text-muted mt-2"><i class="bi bi-hand-index-thumb me-1"></i>Toque num estágio da linha do tempo para ver a ilustração e confirmar a fase real da lavoura.</div>
         </div>` : ''}
       </div>`;
 
-    // Pré-preenche o estágio da visita com a fase estimada (sem sobrescrever o técnico)
+    // Pré-preenche o estágio da visita com a fase em uso (sem sobrescrever o técnico)
     const campoEstagio = document.querySelector('#formVisita [name=estagio_cultura]');
-    if (campoEstagio && !campoEstagio.value && atual) campoEstagio.value = atual.codigo + ' — ' + atual.nome;
+    if (campoEstagio && !campoEstagio.value && emUso) campoEstagio.value = emUso.codigo + ' — ' + emUso.nome;
 
-    Visitas.renderChecklist(atual, salvo);
+    Visitas.renderChecklist(emUso, salvo);
+  },
+
+  /** Abre o cartão do estágio (ilustração + características fisiológicas). */
+  abrirEstagio(estagioId) {
+    const idx = (Visitas._fenoEstagios || []).findIndex(e => Number(e.id) === Number(estagioId));
+    if (idx < 0) return;
+    Visitas._fenoIdx = idx;
+    Visitas._renderEstagioModal();
+    new bootstrap.Modal('#modalEstagio').show();
+  },
+
+  /** Navega para a fase anterior/seguinte no cartão (comparação no campo). */
+  navegarEstagio(delta) {
+    const novo = Visitas._fenoIdx + delta;
+    if (novo < 0 || novo >= Visitas._fenoEstagios.length) return;
+    Visitas._fenoIdx = novo;
+    Visitas._renderEstagioModal();
+  },
+
+  _renderEstagioModal() {
+    const e = Visitas._fenoEstagios[Visitas._fenoIdx];
+    if (!e) return;
+    document.getElementById('estagioSelo').textContent = e.codigo;
+    document.getElementById('estagioNome').textContent = e.nome;
+    document.getElementById('estagioFigura').innerHTML = FenologiaArte.svg(Visitas._fenoCulturaId, e);
+    document.getElementById('estagioJanela').textContent =
+      `${e.dias_inicio}–${e.dias_fim} dias após o plantio` + (e.grupo ? ` · macrofase ${e.grupo}` : '');
+    document.getElementById('estagioCarac').innerHTML =
+      '<div class="feno-carac-titulo"><i class="bi bi-search me-1"></i>Como identificar no campo</div>'
+      + App.escapeHtml(e.caracteristicas || e.descricao || 'Sem descrição cadastrada para esta fase.');
+    document.getElementById('estagioAnterior').disabled = Visitas._fenoIdx === 0;
+    document.getElementById('estagioProximo').disabled = Visitas._fenoIdx === Visitas._fenoEstagios.length - 1;
+  },
+
+  /** "A lavoura está nesta fase": ajusta a visita e o checklist para a fase real observada. */
+  usarEstagio() {
+    const e = Visitas._fenoEstagios[Visitas._fenoIdx];
+    if (!e) return;
+    Visitas._fenoManualId = e.id;
+    const campo = document.querySelector('#formVisita [name=estagio_cultura]');
+    if (campo) campo.value = e.codigo + ' — ' + e.nome;
+    bootstrap.Modal.getInstance('#modalEstagio')?.hide();
+    Visitas.renderFenologia();
+    App.alerta(`Fase da visita ajustada para ${e.codigo} — ${e.nome}. Checklist atualizado.`, 'info');
   },
 
   /** Checklist da fase atual na etapa de Avaliação (OK/Atenção/Crítico/N.A.). */
