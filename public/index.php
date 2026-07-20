@@ -107,6 +107,16 @@ $router->registrar('dashboard', DashboardController::class, 'index');
 $router->registrar('plantios/salvar', \App\Controllers\PlantiosController::class, 'salvar');
 $router->registrar('plantios/encerrar', \App\Controllers\PlantiosController::class, 'encerrar');
 
+// Administração da fenologia (Configurações → fases, imagens e recomendações)
+$router->registrar('arquivo/estagio', \App\Controllers\ArquivoController::class, 'estagio');
+$router->registrar('fenologia/estagios', \App\Controllers\FenologiaController::class, 'estagios');
+$router->registrar('fenologia/salvar-estagio', \App\Controllers\FenologiaController::class, 'salvarEstagio');
+$router->registrar('fenologia/imagem-padrao', \App\Controllers\FenologiaController::class, 'imagemPadrao');
+$router->registrar('fenologia/excluir-estagio', \App\Controllers\FenologiaController::class, 'excluirEstagio');
+$router->registrar('fenologia/salvar-manejo', \App\Controllers\FenologiaController::class, 'salvarManejo');
+$router->registrar('fenologia/excluir-manejo', \App\Controllers\FenologiaController::class, 'excluirManejo');
+$router->registrar('fenologia/manejos-padrao', \App\Controllers\FenologiaController::class, 'manejosPadrao');
+
 // Clientes
 $router->registrar('clientes', ClientesController::class, 'index');
 $router->registrar('clientes/obter', ClientesController::class, 'obter');

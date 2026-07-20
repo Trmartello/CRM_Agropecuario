@@ -21,6 +21,8 @@ class ConfiguracoesController
         Permissoes::exigir(['Administrador']);
         render('configuracoes', [
             'titulo' => 'Configurações',
+            'culturas' => \App\Core\Database::todos('SELECT id, nome FROM culturas ORDER BY nome'),
+            'familias' => \App\Core\Database::todos('SELECT id, nome FROM familias_produto ORDER BY nome'),
             'categoriasReembolso' => $this->categoriasComValores(),
             'tiposRefeicao' => \App\Services\DespesaService::TIPOS_REFEICAO,
             'logoAtual' => ConfigService::logoAplicacao(),

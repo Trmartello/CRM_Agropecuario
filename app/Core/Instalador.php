@@ -270,6 +270,18 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '20'"
             );
         }
+        if ($versao < 21) {
+            // Fenologia configurável: foto/arte personalizada por estágio
+            // (NULL = ilustração padrão do sistema, gerada em SVG no app)
+            self::adicionarColuna('fenologia_estagios', 'imagem',
+                'imagem MEDIUMBLOB NULL COMMENT "foto/arte personalizada da fase (NULL = ilustração padrão do sistema)" AFTER caracteristicas');
+            self::adicionarColuna('fenologia_estagios', 'imagem_mime',
+                'imagem_mime VARCHAR(40) NULL AFTER imagem');
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '21')
+                 ON DUPLICATE KEY UPDATE valor = '21'"
+            );
+        }
     }
 
     /** Fase 6E (refinamento): características fisiológicas por estágio (cartão ilustrado). */

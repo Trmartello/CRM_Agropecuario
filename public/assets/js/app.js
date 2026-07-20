@@ -1000,7 +1000,12 @@ const Visitas = {
     if (!e) return;
     document.getElementById('estagioSelo').textContent = e.codigo;
     document.getElementById('estagioNome').textContent = e.nome;
-    document.getElementById('estagioFigura').innerHTML = FenologiaArte.svg(Visitas._fenoCulturaId, e);
+    // Foto/arte personalizada do administrador quando houver; sem ela (ou
+    // offline, sem cache) cai na ilustração padrão do sistema (SVG local)
+    document.getElementById('estagioFigura').innerHTML = Number(e.tem_imagem)
+      ? `<img src="index.php?r=arquivo/estagio&id=${Number(e.id)}" class="img-fluid rounded" alt="Foto da fase ${App.escapeHtml(e.codigo)}"
+             onerror="this.closest('.feno-figura').innerHTML = Visitas._figuraPadrao();">`
+      : FenologiaArte.svg(Visitas._fenoCulturaId, e);
     document.getElementById('estagioJanela').textContent =
       `${e.dias_inicio}–${e.dias_fim} dias após o plantio` + (e.grupo ? ` · macrofase ${e.grupo}` : '');
     document.getElementById('estagioCarac').innerHTML =
@@ -1008,6 +1013,12 @@ const Visitas = {
       + App.escapeHtml(e.caracteristicas || e.descricao || 'Sem descrição cadastrada para esta fase.');
     document.getElementById('estagioAnterior').disabled = Visitas._fenoIdx === 0;
     document.getElementById('estagioProximo').disabled = Visitas._fenoIdx === Visitas._fenoEstagios.length - 1;
+  },
+
+  /** Fallback da figura quando a foto personalizada não carrega (ex.: offline). */
+  _figuraPadrao() {
+    const e = Visitas._fenoEstagios[Visitas._fenoIdx];
+    return e ? FenologiaArte.svg(Visitas._fenoCulturaId, e) : '';
   },
 
   /** "A lavoura está nesta fase": ajusta a visita e o checklist para a fase real observada. */

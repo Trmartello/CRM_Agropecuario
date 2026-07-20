@@ -56,6 +56,32 @@ class ImagemService
         return $relativo;
     }
 
+    /**
+     * Comprime uma imagem enviada e devolve [mime, binário] para guardar no
+     * banco (ex.: foto do estágio fenológico). Retorna null se não decodificar.
+     */
+    public static function comprimirParaBlob(string $origem, int $ladoMaximo = 900, int $qualidade = 82): ?array
+    {
+        if (!function_exists('imagecreatefromstring')) {
+            return null;
+        }
+        $binario = @file_get_contents($origem);
+        if ($binario === false || $binario === '') {
+            return null;
+        }
+        $img = @imagecreatefromstring($binario);
+        if ($img === false) {
+            return null;
+        }
+        $img = self::corrigirOrientacao($img, $origem);
+        $img = self::achatarFundoBranco($img);
+        $img = self::redimensionar($img, $ladoMaximo);
+        ob_start();
+        $ok = imagejpeg($img, null, $qualidade);
+        $jpeg = ob_get_clean();
+        return ($ok && $jpeg !== false && $jpeg !== '') ? ['image/jpeg', $jpeg] : null;
+    }
+
     private static function garantirPasta(string $arquivo): void
     {
         $dir = dirname($arquivo);

@@ -409,6 +409,8 @@ CREATE TABLE fenologia_estagios (
   ordem SMALLINT NOT NULL DEFAULT 0,
   grupo VARCHAR(40) NULL COMMENT 'macrofase exibida como faixa (ex.: Vegetativo, Reprodutivo, Afilhamento)',
   caracteristicas VARCHAR(600) NULL COMMENT 'características fisiológicas para identificar a fase no campo',
+  imagem MEDIUMBLOB NULL COMMENT 'foto/arte personalizada da fase (NULL = ilustração padrão do sistema)',
+  imagem_mime VARCHAR(40) NULL,
   FOREIGN KEY (cultura_id) REFERENCES culturas(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
@@ -1316,5 +1318,5 @@ CREATE TABLE sync_processados (
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','20')
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','21')
   ON DUPLICATE KEY UPDATE valor = '16';

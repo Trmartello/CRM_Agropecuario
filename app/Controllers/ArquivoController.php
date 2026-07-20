@@ -85,6 +85,26 @@ class ArquivoController
         exit;
     }
 
+    /** Foto/arte personalizada de um estágio fenológico (guardada no banco). */
+    public function estagio(): void
+    {
+        Auth::exigirLogin();
+        $id = (int) ($_GET['id'] ?? 0);
+        $linha = Database::um(
+            'SELECT imagem, imagem_mime FROM fenologia_estagios WHERE id = ? AND imagem IS NOT NULL', [$id]
+        );
+        if (!$linha) {
+            http_response_code(404);
+            exit;
+        }
+        header('Content-Type: ' . ($linha['imagem_mime'] ?: 'image/jpeg'));
+        header('Content-Length: ' . strlen($linha['imagem']));
+        header('Cache-Control: private, max-age=3600');
+        header('X-Content-Type-Options: nosniff');
+        echo $linha['imagem'];
+        exit;
+    }
+
     private function servir(string $chave): void
     {
         $imagem = ConfigService::obterImagem($chave);

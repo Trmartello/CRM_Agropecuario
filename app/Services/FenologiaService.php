@@ -11,6 +11,89 @@ use App\Core\Database;
  */
 class FenologiaService
 {
+    /**
+     * Recomendações PADRÃO do sistema por fase ("cultura_id:codigo") — usadas
+     * no seed e no botão "Adicionar recomendações padrão" das Configurações.
+     * Formato: [titulo, familia_id|null, orientacao]
+     */
+    public const MANEJOS_PADRAO = [
+        '1:VE' => [
+            ['Avaliar estande e emergência', 1, 'Contar população de plantas por metro e comparar com a meta da cultivar; decidir replantio até V2.'],
+            ['Controle de daninhas em pós-emergência inicial', 3, 'Aplicar com as daninhas pequenas (até 4 folhas); atenção a buva e azevém resistentes.'],
+        ],
+        '1:V2-V4' => [
+            ['Herbicida pós-emergente', 3, 'Completar o controle antes do fechamento; verificar falhas de aplicação.'],
+            ['Monitorar lagartas desfolhadoras', 5, 'Limite de desfolha na fase vegetativa: 30%.'],
+        ],
+        '1:V5+' => [
+            ['Adubação foliar com micronutrientes', 6, 'Mn, Co e Mo conforme análise; aproveitar a entrada do fechamento.'],
+            ['Monitorar doenças de início de ciclo', 4, 'Oídio e manchas iniciais; registrar pressão para posicionar o programa.'],
+        ],
+        '1:R1-R2' => [
+            ['1ª aplicação de fungicida (ferrugem asiática)', 4, 'Posicionamento preventivo no florescimento; reaplicar em 14–21 dias.'],
+            ['Monitorar percevejos — início', 5, 'Amostrar com pano de batida; registrar espécies e níveis.'],
+        ],
+        '1:R3-R4' => [
+            ['2ª aplicação de fungicida', 4, 'Sequência do programa; rotacionar mecanismos de ação.'],
+            ['Inseticida para percevejos', 5, 'Nível de controle: 2 percevejos/pano (1 em campos de semente).'],
+        ],
+        '1:R5' => [
+            ['3ª aplicação de fungicida (se houver pressão)', 4, 'Avaliar pressão de ferrugem e clima antes de fechar o programa.'],
+            ['Percevejo — fase crítica do enchimento', 5, 'Dano direto no grão: rigor no monitoramento semanal.'],
+            ['Adubação foliar de enchimento', 6, 'Potássio/nitrogênio foliar conforme demanda.'],
+        ],
+        '1:R7-R8' => [
+            ['Dessecação pré-colheita', 3, 'Aplicar em R7.3 quando indicado; respeitar o período de carência.'],
+            ['Planejar colheita: umidade e perdas', null, 'Colher entre 13–15% de umidade; regular a plataforma para perdas < 1 sc/ha.'],
+        ],
+        '2:VE' => [
+            ['Avaliar estande e emergência', 1, 'População final define a produtividade; avaliar falhas e replantio.'],
+        ],
+        '2:V3-V5' => [
+            ['Adubação nitrogenada de cobertura (1ª)', 2, 'Aplicar N em V3–V4 — estádio que define as fileiras da espiga.'],
+            ['Herbicida pós-emergente', 3, 'Milho é sensível à matocompetição inicial; controlar cedo.'],
+            ['Monitorar cigarrinha-do-milho', 5, 'Vetor dos enfezamentos: controle no início do ciclo.'],
+        ],
+        '2:V6-V8' => [
+            ['2ª cobertura nitrogenada', 2, 'Completar o N até V8 conforme expectativa de produtividade.'],
+            ['Lagarta-do-cartucho', 5, 'Controlar com dano no cartucho acima de 20% das plantas.'],
+        ],
+        '2:V9-VT' => [
+            ['1ª aplicação de fungicida', 4, 'Pré-pendoamento: proteger folha bandeira e colmo.'],
+            ['Adubação foliar', 6, 'Complementar micronutrientes no pré-pendoamento.'],
+        ],
+        '2:R1' => [
+            ['2ª aplicação de fungicida (doenças foliares)', 4, 'Proteger a polinização — fase mais sensível a estresse.'],
+        ],
+        '2:R2-R4' => [
+            ['Monitorar percevejo barriga-verde e doenças de colmo', 5, 'Avaliar colmos e grãos; risco de tombamento.'],
+        ],
+        '2:R5-R6' => [
+            ['Planejar colheita: umidade e perdas', null, 'Acompanhar a dry-down; colher na janela para evitar grãos ardidos.'],
+        ],
+        '3:F1-3' => [
+            ['Avaliar estande (plantas/m²)', 1, 'Contar plantas/m² e comparar com a meta da cultivar; falhas comprometem o rendimento.'],
+            ['Herbicida pós-emergente (azevém/nabo)', 3, 'Controlar cedo — a matocompetição no afilhamento reduz perfilhos.'],
+        ],
+        '3:F4-5' => [
+            ['1ª adubação nitrogenada de cobertura', 2, 'N no afilhamento define espigas por planta.'],
+        ],
+        '3:F6-10' => [
+            ['2ª cobertura de nitrogênio', 2, 'Completar o N no início do alongamento conforme expectativa de produtividade.'],
+            ['1ª aplicação de fungicida (manchas foliares)', 4, 'Proteger a folha bandeira — principal fonte de enchimento do grão.'],
+            ['Monitorar pulgões', 5, 'Vetores de viroses (nanismo-amarelo); controlar pelo nível de dano.'],
+        ],
+        '3:F10.1-10.5' => [
+            ['Fungicida para giberela', 4, 'Aplicar no espigamento/floração, especialmente com molhamento prolongado — janela crítica.'],
+        ],
+        '3:F11.1-11.2' => [
+            ['Monitorar percevejos e lagartas da espiga', 5, 'Dano direto ao grão no enchimento; amostrar semanalmente.'],
+        ],
+        '3:F11.3-11.4' => [
+            ['Planejar colheita: umidade e germinação na espiga', null, 'Colher na janela para preservar PH e evitar germinação na espiga com chuva.'],
+        ],
+    ];
+
     /** Plantio ativo (não encerrado) de um talhão, se houver. */
     public static function plantioAtivo(int $talhaoId): ?array
     {
@@ -60,8 +143,13 @@ class FenologiaService
             $where = 'WHERE fe.cultura_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')';
             $params = $ids;
         }
+        // Colunas explícitas: a imagem personalizada (MEDIUMBLOB) NÃO entra no
+        // catálogo JSON (modal/snapshot) — vai só a flag, servida por arquivo/estagio
         $estagios = Database::todos(
-            "SELECT fe.* FROM fenologia_estagios fe {$where} ORDER BY fe.cultura_id, fe.ordem",
+            "SELECT fe.id, fe.cultura_id, fe.codigo, fe.nome, fe.dias_inicio, fe.dias_fim,
+                    fe.descricao, fe.ordem, fe.grupo, fe.caracteristicas,
+                    (fe.imagem IS NOT NULL) AS tem_imagem
+               FROM fenologia_estagios fe {$where} ORDER BY fe.cultura_id, fe.ordem",
             $params
         );
         if (!$estagios) {
