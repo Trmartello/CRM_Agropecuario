@@ -256,6 +256,63 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '18'"
             );
         }
+        if ($versao < 19) {
+            self::migrarParaV19();
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '19')
+                 ON DUPLICATE KEY UPDATE valor = '19'"
+            );
+        }
+    }
+
+    /**
+     * Fase 6E (refinamento): macrofases na fenologia (faixas Vegetativo/
+     * Reprodutivo etc.) + escala Feekes-Large do trigo.
+     */
+    private static function migrarParaV19(): void
+    {
+        self::adicionarColuna('fenologia_estagios', 'grupo',
+            "grupo VARCHAR(40) NULL COMMENT 'macrofase exibida como faixa (ex.: Vegetativo, Reprodutivo)' AFTER ordem");
+        // Backfill soja/milho: códigos R* são reprodutivos, o resto vegetativo
+        Database::executar(
+            "UPDATE fenologia_estagios SET grupo = CASE WHEN codigo LIKE 'R%' THEN 'Reprodutivo' ELSE 'Vegetativo' END
+              WHERE grupo IS NULL AND cultura_id IN (1,2)"
+        );
+        // Trigo (Feekes-Large) — só se a cultura ainda não tem fenologia
+        if ((int) Database::valor('SELECT COUNT(*) FROM fenologia_estagios WHERE cultura_id = 3') > 0) {
+            return;
+        }
+        $estagios = [
+            ['F1-3', 'Afilhamento inicial', 0, 30, 'Emergência ao início do afilhamento — estabelecimento do estande', 1, 'Afilhamento',
+                [['Avaliar estande (plantas/m²)', 1, 'Contar plantas/m² e comparar com a meta da cultivar; falhas comprometem o rendimento.'],
+                 ['Herbicida pós-emergente (azevém/nabo)', 3, 'Controlar cedo — a matocompetição no afilhamento reduz perfilhos.']]],
+            ['F4-5', 'Afilhamento pleno', 31, 45, 'Perfilhos formados — define o nº de espigas por planta', 2, 'Afilhamento',
+                [['1ª adubação nitrogenada de cobertura', 2, 'N no afilhamento define espigas por planta.']]],
+            ['F6-10', 'Alongamento do colmo', 46, 70, 'Crescimento do colmo e da espiga — proteção da folha bandeira', 3, 'Alongamento',
+                [['2ª cobertura de nitrogênio', 2, 'Completar o N no início do alongamento conforme expectativa de produtividade.'],
+                 ['1ª aplicação de fungicida (manchas foliares)', 4, 'Proteger a folha bandeira — principal fonte de enchimento do grão.'],
+                 ['Monitorar pulgões', 5, 'Vetores de viroses (nanismo-amarelo); controlar pelo nível de dano.']]],
+            ['F10.1-10.5', 'Espigamento e florescimento', 71, 85, 'Espiga emergida e floração — janela crítica da giberela', 4, 'Espigamento',
+                [['Fungicida para giberela', 4, 'Aplicar no espigamento/floração, especialmente com molhamento prolongado — janela crítica.']]],
+            ['F11.1-11.2', 'Enchimento de grãos', 86, 110, 'Grão leitoso a massa mole — define o peso do grão', 5, 'Enchimento',
+                [['Monitorar percevejos e lagartas da espiga', 5, 'Dano direto ao grão no enchimento; amostrar semanalmente.']]],
+            ['F11.3-11.4', 'Maturação', 111, 135, 'Massa dura à maturação de colheita', 6, 'Maturação',
+                [['Planejar colheita: umidade e germinação na espiga', null, 'Colher na janela para preservar PH e evitar germinação na espiga com chuva.']]],
+        ];
+        foreach ($estagios as [$codigo, $nome, $ini, $fim, $desc, $ordem, $grupo, $manejos]) {
+            Database::executar(
+                'INSERT INTO fenologia_estagios (cultura_id, codigo, nome, dias_inicio, dias_fim, descricao, ordem, grupo)
+                 VALUES (3,?,?,?,?,?,?,?)',
+                [$codigo, $nome, $ini, $fim, $desc, $ordem, $grupo]
+            );
+            $estagioId = Database::ultimoId();
+            foreach ($manejos as [$titulo, $familiaId, $orientacao]) {
+                Database::executar(
+                    'INSERT INTO manejos_fase (estagio_id, titulo, familia_id, orientacao, eh_checklist) VALUES (?,?,?,?,1)',
+                    [$estagioId, $titulo, $familiaId, $orientacao]
+                );
+            }
+        }
     }
 
     /**

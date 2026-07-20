@@ -167,13 +167,62 @@ textarea.auto-crescer { resize: vertical; overflow: hidden; min-height: 38px; li
   .table { font-size: .92rem; }
 }
 
-/* Linha do tempo fenológica da cultura (Fase 6E) */
-.fenologia-barra { display: flex; height: 30px; border-radius: 8px; overflow: hidden; border: 1px solid #d8e2d8; }
-.fenologia-seg {
-  display: flex; align-items: center; justify-content: center;
-  font-size: .72rem; color: #5a6b5a; background: #eef3ee;
-  border-right: 1px solid #fff; white-space: nowrap; overflow: hidden; min-width: 0;
+/* ===== Linha do tempo fenológica da cultura (Fase 6E) ===== */
+.fen2 { border: 1px solid #dbe7db; border-radius: 14px; overflow: hidden; background: #fff; }
+.fen2-cabecalho {
+  display: flex; justify-content: space-between; align-items: center; gap: .75rem;
+  padding: .65rem .9rem; background: linear-gradient(135deg, #1b5e20, #2e7d32); color: #fff;
 }
-.fenologia-seg.passada { background: #a5c9a7; color: #274e2a; }
-.fenologia-seg.atual { background: #2e7d32; color: #fff; font-weight: 700; }
-.fenologia-seg:last-child { border-right: 0; }
+.fen2-cabecalho .fen2-cultura { font-weight: 700; font-size: 1.02rem; }
+.fen2-cabecalho .fen2-sub { color: #d3e6d4; font-size: .78rem; }
+.fen2-dap { text-align: center; line-height: 1.05; background: rgba(255,255,255,.14); border-radius: 10px; padding: .3rem .7rem; }
+.fen2-dap strong { font-size: 1.25rem; }
+.fen2-dap span { display: block; font-size: .62rem; letter-spacing: .04em; text-transform: uppercase; color: #cfe4d0; }
+
+.fen2-track-wrap { overflow-x: auto; padding: .8rem .9rem .35rem; }
+.fen2-track { display: flex; gap: 4px; min-width: 540px; }
+.fen2-zona { border-radius: 10px; padding: 3px; background: var(--z-clara); }
+.fen2-zona-nome {
+  text-align: center; font-size: .64rem; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--z-forte); padding: 1px 0 3px; white-space: nowrap;
+}
+.fen2-zona-chips { display: flex; gap: 3px; }
+.fen2-chip {
+  flex: 1 1 0; min-width: 34px; text-align: center; padding: .28rem .15rem;
+  font-size: .7rem; font-weight: 600; border-radius: 7px;
+  background: #fff; color: #8a978a; transition: all .15s ease; white-space: nowrap;
+}
+.fen2-chip.passada { background: var(--z-media); color: #fff; }
+.fen2-chip.atual {
+  background: var(--z-forte); color: #fff; font-weight: 700;
+  box-shadow: 0 3px 8px rgba(0,0,0,.25); transform: scale(1.07); position: relative; z-index: 1;
+}
+/* Paleta das macrofases (cíclica) */
+.zc-0 { --z-forte: #2e7d32; --z-media: #9dc49f; --z-clara: #e7f1e7; }
+.zc-1 { --z-forte: #c05e11; --z-media: #e0a677; --z-clara: #fbeadd; }
+.zc-2 { --z-forte: #00695c; --z-media: #7fb5ae; --z-clara: #e0efed; }
+.zc-3 { --z-forte: #9a7d0a; --z-media: #cdb96a; --z-clara: #f7f1d9; }
+.zc-4 { --z-forte: #5d4037; --z-media: #a1887f; --z-clara: #efe7e4; }
+.zc-5 { --z-forte: #455a64; --z-media: #90a4ae; --z-clara: #e8edf0; }
+
+.fen2-linha { position: relative; height: 8px; margin: .55rem .9rem .2rem; background: #edf2ed; border-radius: 4px; }
+.fen2-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, #66bb6a, #2e7d32); }
+.fen2-marcador {
+  position: absolute; top: 50%; transform: translate(-50%, -50%);
+  width: 16px; height: 16px; border-radius: 50%; background: #1b5e20;
+  border: 3px solid #fff; box-shadow: 0 1px 5px rgba(0,0,0,.35);
+}
+.fen2-rotulos { display: flex; justify-content: space-between; margin: 0 .9rem; font-size: .66rem; color: #97a397; }
+
+.fen2-atual { padding: .7rem .9rem .85rem; border-top: 1px dashed #dde7dd; margin-top: .5rem; }
+.fen2-atual-topo { display: flex; align-items: flex-start; gap: .7rem; flex-wrap: wrap; }
+.fen2-selo {
+  background: #2e7d32; color: #fff; font-weight: 800; font-size: 1rem;
+  border-radius: 10px; padding: .35rem .65rem; white-space: nowrap;
+}
+.fen2-proxima { margin-left: auto; text-align: right; font-size: .74rem; color: #6b776b; }
+.fen2-manejos { margin-top: .6rem; }
+.fen2-manejos-titulo { font-size: .72rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #2e7d32; margin-bottom: .3rem; }
+.fen2-manejo { display: flex; gap: .5rem; align-items: baseline; padding: .22rem 0; border-bottom: 1px solid #f1f5f1; font-size: .84rem; }
+.fen2-manejo:last-child { border-bottom: 0; }
+.fen2-manejo .bi { color: #2e7d32; }

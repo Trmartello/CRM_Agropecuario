@@ -407,6 +407,7 @@ CREATE TABLE fenologia_estagios (
   dias_fim SMALLINT NOT NULL,
   descricao VARCHAR(255),
   ordem SMALLINT NOT NULL DEFAULT 0,
+  grupo VARCHAR(40) NULL COMMENT 'macrofase exibida como faixa (ex.: Vegetativo, Reprodutivo, Afilhamento)',
   FOREIGN KEY (cultura_id) REFERENCES culturas(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
@@ -1116,24 +1117,31 @@ INSERT INTO calendario_agronomico (cultura_id, atividade, familia_id, mes_inicio
 -- regionais médias — ajustáveis por cultura no piloto.
 -- ---------------------------------------------------------------------------
 
-INSERT INTO fenologia_estagios (id, cultura_id, codigo, nome, dias_inicio, dias_fim, descricao, ordem) VALUES
--- Soja (ciclo ~130 dias)
-(1,1,'VE','Emergência',0,10,'Da semeadura à emergência das plântulas',1),
-(2,1,'V2-V4','Desenvolvimento vegetativo',11,30,'2 a 4 trifólios — definição do estande',2),
-(3,1,'V5+','Fechamento das entrelinhas',31,44,'Crescimento vegetativo pleno',3),
-(4,1,'R1-R2','Florescimento',45,59,'Início e plena floração',4),
-(5,1,'R3-R4','Formação de vagens',60,74,'Canivetinho a vagem formada',5),
-(6,1,'R5','Enchimento de grãos',75,94,'Fase de maior demanda hídrica e nutricional',6),
-(7,1,'R6','Grão cheio',95,109,'Grãos com volume máximo',7),
-(8,1,'R7-R8','Maturação',110,135,'Maturação fisiológica à colheita',8),
--- Milho (ciclo ~140 dias)
-(9,2,'VE','Emergência',0,8,'Da semeadura à emergência',1),
-(10,2,'V3-V5','Definição da produtividade',9,25,'Estádio que define o número de fileiras da espiga',2),
-(11,2,'V6-V8','Desenvolvimento vegetativo',26,40,'Crescimento acelerado do colmo',3),
-(12,2,'V9-VT','Pré-pendoamento',41,60,'Emborrachamento ao pendoamento',4),
-(13,2,'R1','Polinização',61,75,'Embonecamento — fase mais sensível a estresse',5),
-(14,2,'R2-R4','Enchimento de grãos',76,105,'Grão leitoso a pastoso',6),
-(15,2,'R5-R6','Maturação',106,140,'Formação de dente à maturação fisiológica',7);
+INSERT INTO fenologia_estagios (id, cultura_id, codigo, nome, dias_inicio, dias_fim, descricao, ordem, grupo) VALUES
+-- Soja (ciclo ~130 dias, escala de Fehr)
+(1,1,'VE','Emergência',0,10,'Da semeadura à emergência das plântulas',1,'Vegetativo'),
+(2,1,'V2-V4','Desenvolvimento vegetativo',11,30,'2 a 4 trifólios — definição do estande',2,'Vegetativo'),
+(3,1,'V5+','Fechamento das entrelinhas',31,44,'Crescimento vegetativo pleno',3,'Vegetativo'),
+(4,1,'R1-R2','Florescimento',45,59,'Início e plena floração',4,'Reprodutivo'),
+(5,1,'R3-R4','Formação de vagens',60,74,'Canivetinho a vagem formada',5,'Reprodutivo'),
+(6,1,'R5','Enchimento de grãos',75,94,'Fase de maior demanda hídrica e nutricional',6,'Reprodutivo'),
+(7,1,'R6','Grão cheio',95,109,'Grãos com volume máximo',7,'Reprodutivo'),
+(8,1,'R7-R8','Maturação',110,135,'Maturação fisiológica à colheita',8,'Reprodutivo'),
+-- Milho (ciclo ~140 dias, estádios V/R)
+(9,2,'VE','Emergência',0,8,'Da semeadura à emergência',1,'Vegetativo'),
+(10,2,'V3-V5','Definição da produtividade',9,25,'Estádio que define o número de fileiras da espiga',2,'Vegetativo'),
+(11,2,'V6-V8','Desenvolvimento vegetativo',26,40,'Crescimento acelerado do colmo',3,'Vegetativo'),
+(12,2,'V9-VT','Pré-pendoamento',41,60,'Emborrachamento ao pendoamento',4,'Vegetativo'),
+(13,2,'R1','Polinização',61,75,'Embonecamento — fase mais sensível a estresse',5,'Reprodutivo'),
+(14,2,'R2-R4','Enchimento de grãos',76,105,'Grão leitoso a pastoso',6,'Reprodutivo'),
+(15,2,'R5-R6','Maturação',106,140,'Formação de dente à maturação fisiológica',7,'Reprodutivo'),
+-- Trigo (ciclo ~135 dias, escala Feekes-Large)
+(16,3,'F1-3','Afilhamento inicial',0,30,'Emergência ao início do afilhamento — estabelecimento do estande',1,'Afilhamento'),
+(17,3,'F4-5','Afilhamento pleno',31,45,'Perfilhos formados — define o nº de espigas por planta',2,'Afilhamento'),
+(18,3,'F6-10','Alongamento do colmo',46,70,'Crescimento do colmo e da espiga — proteção da folha bandeira',3,'Alongamento'),
+(19,3,'F10.1-10.5','Espigamento e florescimento',71,85,'Espiga emergida e floração — janela crítica da giberela',4,'Espigamento'),
+(20,3,'F11.1-11.2','Enchimento de grãos',86,110,'Grão leitoso a massa mole — define o peso do grão',5,'Enchimento'),
+(21,3,'F11.3-11.4','Maturação',111,135,'Massa dura à maturação de colheita',6,'Maturação');
 
 INSERT INTO manejos_fase (estagio_id, titulo, familia_id, orientacao, eh_checklist) VALUES
 -- Soja
@@ -1163,13 +1171,24 @@ INSERT INTO manejos_fase (estagio_id, titulo, familia_id, orientacao, eh_checkli
 (12,'Adubação foliar',6,'Complementar micronutrientes no pré-pendoamento.',1),
 (13,'2ª aplicação de fungicida (doenças foliares)',4,'Proteger a polinização — fase mais sensível a estresse.',1),
 (14,'Monitorar percevejo barriga-verde e doenças de colmo',5,'Avaliar colmos e grãos; risco de tombamento.',1),
-(15,'Planejar colheita: umidade e perdas',NULL,'Acompanhar a dry-down; colher na janela para evitar grãos ardidos.',1);
+(15,'Planejar colheita: umidade e perdas',NULL,'Acompanhar a dry-down; colher na janela para evitar grãos ardidos.',1),
+-- Trigo
+(16,'Avaliar estande (plantas/m²)',1,'Contar plantas/m² e comparar com a meta da cultivar; falhas comprometem o rendimento.',1),
+(16,'Herbicida pós-emergente (azevém/nabo)',3,'Controlar cedo — a matocompetição no afilhamento reduz perfilhos.',1),
+(17,'1ª adubação nitrogenada de cobertura',2,'N no afilhamento define espigas por planta.',1),
+(18,'2ª cobertura de nitrogênio',2,'Completar o N no início do alongamento conforme expectativa de produtividade.',1),
+(18,'1ª aplicação de fungicida (manchas foliares)',4,'Proteger a folha bandeira — principal fonte de enchimento do grão.',1),
+(18,'Monitorar pulgões',5,'Vetores de viroses (nanismo-amarelo); controlar pelo nível de dano.',1),
+(19,'Fungicida para giberela',4,'Aplicar no espigamento/floração, especialmente com molhamento prolongado — janela crítica.',1),
+(20,'Monitorar percevejos e lagartas da espiga',5,'Dano direto ao grão no enchimento; amostrar semanalmente.',1),
+(21,'Planejar colheita: umidade e germinação na espiga',NULL,'Colher na janela para preservar PH e evitar germinação na espiga com chuva.',1);
 
 -- Plantios de demonstração (datas relativas: a linha do tempo sempre mostra
 -- fases diferentes — soja em florescimento e milho no início de ciclo)
 INSERT INTO plantios (talhao_id, cultura_id, safra_id, data_plantio, cultivar) VALUES
 (1,1,2,DATE_SUB(CURDATE(), INTERVAL 50 DAY),'58I60 IPRO'),
-(3,2,2,DATE_SUB(CURDATE(), INTERVAL 15 DAY),'K9105 VIP3');
+(3,2,2,DATE_SUB(CURDATE(), INTERVAL 15 DAY),'K9105 VIP3'),
+(4,3,2,DATE_SUB(CURDATE(), INTERVAL 78 DAY),'TBIO Audaz');
 -- Plantio encerrado com colheita (exercita produtividade no relatório de safra)
 INSERT INTO plantios (talhao_id, cultura_id, safra_id, data_plantio, cultivar, encerrado, colhido_em, produtividade) VALUES
 (5,1,2,DATE_SUB(CURDATE(), INTERVAL 170 DAY),'M5947 IPRO',1,DATE_SUB(CURDATE(), INTERVAL 35 DAY),68.50);
@@ -1296,5 +1315,5 @@ CREATE TABLE sync_processados (
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','18')
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','19')
   ON DUPLICATE KEY UPDATE valor = '16';

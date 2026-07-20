@@ -728,25 +728,86 @@ const Visitas = {
     const dap = Math.max(0, Math.floor((new Date(dataRef + 'T12:00') - new Date(plantio.data_plantio + 'T12:00')) / 864e5));
     const atual = Visitas._estagioPorDap(estagios, dap);
     const cicloTotal = Number(estagios[estagios.length - 1].dias_fim) + 1;
+    const pct = Math.min(100, dap / cicloTotal * 100);
 
-    const segmentos = estagios.map(e => {
-      const largura = (Number(e.dias_fim) - Number(e.dias_inicio) + 1) / cicloTotal * 100;
-      const classe = atual && e.id === atual.id ? 'atual' : (dap > Number(e.dias_fim) ? 'passada' : '');
-      return `<div class="fenologia-seg ${classe}" style="width:${largura.toFixed(2)}%"
-                title="${App.escapeHtml(e.codigo)} — ${App.escapeHtml(e.nome)} (${e.dias_inicio}–${e.dias_fim} DAP)${e.descricao ? ': ' + App.escapeHtml(e.descricao) : ''}">${App.escapeHtml(e.codigo)}</div>`;
+    // Macrofases (faixas Vegetativo/Reprodutivo/Feekes…): agrupa estágios consecutivos
+    const zonas = [];
+    estagios.forEach(e => {
+      const g = e.grupo || '';
+      if (!zonas.length || zonas[zonas.length - 1].nome !== g) zonas.push({ nome: g, estagios: [], dias: 0 });
+      const z = zonas[zonas.length - 1];
+      z.estagios.push(e);
+      z.dias += Number(e.dias_fim) - Number(e.dias_inicio) + 1;
+    });
+    const trilha = zonas.map((z, i) => {
+      const chips = z.estagios.map(e => {
+        const span = Number(e.dias_fim) - Number(e.dias_inicio) + 1;
+        const classe = atual && e.id === atual.id ? 'atual' : (dap > Number(e.dias_fim) ? 'passada' : '');
+        return `<div class="fen2-chip ${classe}" style="flex-grow:${span}"
+                  title="${App.escapeHtml(e.codigo)} — ${App.escapeHtml(e.nome)} (${e.dias_inicio}–${e.dias_fim} DAP)${e.descricao ? ': ' + App.escapeHtml(e.descricao) : ''}">${App.escapeHtml(e.codigo)}</div>`;
+      }).join('');
+      return `<div class="fen2-zona zc-${i % 6}" style="flex-grow:${z.dias}">
+                ${z.nome ? `<div class="fen2-zona-nome">${App.escapeHtml(z.nome)}</div>` : ''}
+                <div class="fen2-zona-chips">${chips}</div>
+              </div>`;
     }).join('');
 
+    // Posição na fase atual e prévia da próxima
+    let infoFase = '', proxima = '';
+    if (atual) {
+      const idx = estagios.findIndex(e => e.id === atual.id);
+      const diaFase = Math.min(dap, Number(atual.dias_fim)) - Number(atual.dias_inicio) + 1;
+      const duracaoFase = Number(atual.dias_fim) - Number(atual.dias_inicio) + 1;
+      infoFase = `Dia <strong>${diaFase}</strong> de ${duracaoFase} da fase (${atual.dias_inicio}–${atual.dias_fim} DAP)`;
+      const prox = estagios[idx + 1];
+      if (prox && dap <= Number(atual.dias_fim)) {
+        proxima = `Próxima: <strong>${App.escapeHtml(prox.codigo)} — ${App.escapeHtml(prox.nome)}</strong> em ~${Number(prox.dias_inicio) - dap} dia(s)`;
+      } else if (!prox || dap > Number(atual.dias_fim)) {
+        proxima = '<strong>Fim de ciclo</strong> — planejar/registrar a colheita';
+      }
+    }
+    const manejos = atual && atual.manejos ? atual.manejos : [];
+    const listaManejos = manejos.length
+      ? manejos.map(m => `
+          <div class="fen2-manejo">
+            <i class="bi bi-check2-square"></i>
+            <div>
+              <strong>${App.escapeHtml(m.titulo)}</strong>
+              ${m.familia ? `<span class="badge text-bg-light border text-dark ms-1">${App.escapeHtml(m.familia)}</span>` : ''}
+              ${m.orientacao ? `<div class="small text-muted">${App.escapeHtml(m.orientacao)}</div>` : ''}
+            </div>
+          </div>`).join('')
+        + '<div class="small text-success mt-2"><i class="bi bi-arrow-right-circle me-1"></i>Avalie e marque estes itens no <strong>checklist da etapa 2 — Avaliação</strong>.</div>'
+      : '<div class="small text-muted">Sem manejos de referência cadastrados para esta fase.</div>';
+
     alvo.innerHTML = `
-      <div class="card border-success-subtle">
-        <div class="card-body py-2">
-          <div class="d-flex flex-wrap justify-content-between align-items-center mb-1 gap-2">
-            <div><i class="bi bi-flower1 text-success me-1"></i><strong>${App.escapeHtml(plantio.cultura)}</strong>
-              <span class="text-muted small">plantio ${new Date(plantio.data_plantio + 'T12:00').toLocaleDateString('pt-BR')}${plantio.cultivar ? ' · ' + App.escapeHtml(plantio.cultivar) : ''} · ${dap} dias</span></div>
-            ${atual ? `<span class="badge text-bg-success">Fase ${App.escapeHtml(atual.codigo)} — ${App.escapeHtml(atual.nome)}</span>` : ''}
+      <div class="fen2">
+        <div class="fen2-cabecalho">
+          <div>
+            <div class="fen2-cultura"><i class="bi bi-flower1 me-1"></i>${App.escapeHtml(plantio.cultura)}${plantio.cultivar ? ' · ' + App.escapeHtml(plantio.cultivar) : ''}</div>
+            <div class="fen2-sub">Plantio em ${new Date(plantio.data_plantio + 'T12:00').toLocaleDateString('pt-BR')}</div>
           </div>
-          <div class="fenologia-barra">${segmentos}</div>
-          ${atual && atual.descricao ? `<div class="small text-muted mt-1">${App.escapeHtml(atual.descricao)}</div>` : ''}
+          <div class="fen2-dap"><strong>${dap}</strong><span>dias (DAP)</span></div>
         </div>
+        <div class="fen2-track-wrap"><div class="fen2-track">${trilha}</div></div>
+        <div class="fen2-linha"><div class="fen2-fill" style="width:${pct.toFixed(1)}%"></div><div class="fen2-marcador" style="left:${pct.toFixed(1)}%" title="Hoje — ${dap} DAP"></div></div>
+        <div class="fen2-rotulos"><span>plantio</span><span>${cicloTotal} dias de ciclo</span></div>
+        ${atual ? `
+        <div class="fen2-atual">
+          <div class="fen2-atual-topo">
+            <span class="fen2-selo">${App.escapeHtml(atual.codigo)}</span>
+            <div>
+              <strong>${App.escapeHtml(atual.nome)}</strong>
+              ${atual.descricao ? `<div class="small text-muted">${App.escapeHtml(atual.descricao)}</div>` : ''}
+              <div class="small text-muted mt-1">${infoFase}</div>
+            </div>
+            <div class="fen2-proxima">${proxima}</div>
+          </div>
+          <div class="fen2-manejos">
+            <div class="fen2-manejos-titulo"><i class="bi bi-clipboard2-check me-1"></i>Boas práticas e manejos desta fase</div>
+            ${listaManejos}
+          </div>
+        </div>` : ''}
       </div>`;
 
     // Pré-preenche o estágio da visita com a fase estimada (sem sobrescrever o técnico)
