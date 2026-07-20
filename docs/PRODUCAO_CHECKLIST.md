@@ -29,17 +29,22 @@ Sem volume, **fotos/comprovantes/documentos são apagados a cada redeploy**
 O banco guarda visitas, despesas, reclamações e clientes. Sem backup, um
 acidente (delete errado, corrupção, exclusão do serviço) perde tudo.
 
-**Opção A — Backups do próprio Railway (mais simples):**
-1. Abra o serviço **MySQL** → aba **Backups**.
-2. Ative os backups agendados (diário) — disponíveis nos planos pagos.
-3. Faça um backup manual agora para ter o primeiro ponto de restauração.
+**Opção A — Botão de backup no próprio app (funciona em qualquer plano):**
+1. Entre como **Administrador** → **Configurações** → card **"Backup do banco de dados"**.
+2. Clique em **"Baixar backup agora"** — baixa um `.sql` completo (estrutura + dados).
+3. Guarde o arquivo fora do servidor (Drive, pendrive) — ao menos **1x por semana**.
+4. Restauração: `mysql -u <usuario> -p <banco> < arquivo.sql`.
+5. Atenção: as **fotos/documentos** ficam no volume (`/app/dados/uploads`) e não
+   entram nesse arquivo — o volume as preserva entre deploys.
 
-**Opção B — Dump manual periódico (gratuito, manual):**
+**Opção B — Backups automáticos do Railway (aba "Backups" no volume do MySQL):**
+disponível apenas em planos superiores (Pro). Se a aba não aparecer no seu
+plano, use a Opção A.
+
+**Opção C — Dump via Railway CLI (manual):**
 ```bash
-# Com o Railway CLI logado no projeto (as variáveis vêm do serviço MySQL):
 railway run --service MySQL bash -c 'mysqldump -h $MYSQLHOST -P $MYSQLPORT -u $MYSQLUSER -p$MYSQLPASSWORD $MYSQLDATABASE' > backup_$(date +%Y%m%d).sql
 ```
-Guarde o arquivo fora do Railway (Drive, S3 etc.). Repita ao menos semanalmente.
 
 ## 3. Senhas do seed — resolvido no app (v14)
 

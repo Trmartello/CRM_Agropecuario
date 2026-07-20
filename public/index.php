@@ -172,6 +172,7 @@ $router->registrar('notificacoes/ler-todas', \App\Controllers\NotificacoesContro
 // Painel gerencial e mapa (Fase 4)
 $router->registrar('gerencial', \App\Controllers\GerencialController::class, 'index');
 $router->registrar('auditoria', \App\Controllers\AuditoriaController::class, 'index');
+$router->registrar('backup/baixar', \App\Controllers\BackupController::class, 'baixar');
 $router->registrar('mapa', \App\Controllers\MapaController::class, 'index');
 
 // Portal do Produtor (Fase 4)

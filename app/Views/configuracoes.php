@@ -119,6 +119,21 @@
       </div>
     </div>
   </div>
+
+  <!-- Backup do banco -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header"><i class="bi bi-database-down me-2 text-success"></i><strong>Backup do banco de dados</strong></div>
+      <div class="card-body d-flex flex-wrap align-items-center gap-3">
+        <div class="flex-grow-1 small text-muted">
+          Baixa um arquivo <code>.sql</code> completo (estrutura + dados) para guardar fora do servidor
+          (Drive, pendrive etc.). Recomendado ao menos <strong>1x por semana</strong>.
+          As fotos/documentos ficam no volume do servidor e não entram neste arquivo.
+        </div>
+        <a class="btn btn-success" href="<?= url('backup/baixar') ?>"><i class="bi bi-download me-1"></i>Baixar backup agora</a>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Modal: categoria de reembolso -->
