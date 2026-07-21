@@ -163,6 +163,8 @@ const Voz = {
     if (!SpeechRecognition) return; // fallback silencioso: botões ficam ocultos
 
     document.querySelectorAll('.btn-voz').forEach(btn => { btn.style.display = 'inline-flex'; });
+    // Campos criados DEPOIS (ex.: observação do checklist) mostram o microfone via CSS
+    document.body.classList.add('voz-suportada');
 
     document.addEventListener('click', ev => {
       const btn = ev.target.closest('.btn-voz');
@@ -637,11 +639,13 @@ const Croqui = {
   tiles: null,
   atualId: 0,          // 0 = divisa da PROPRIEDADE; >0 = talhão
   pontos: [],
-  vista: null,         // {z, cx, cy} em coordenadas de mundo Web Mercator (0..1)
+  vista: null,         // {z, cx, cy} em coordenadas de mundo Web Mercator (0..1); z pode ser fracionário (pinça)
   watchId: null,
   _dirty: false,
   _arrasto: null,
   _pan: null,
+  _pinch: null,        // zoom de pinça (dois dedos)
+  _ponteiros: new Map(),
   _eventosOk: false,
 
   /* --- Web Mercator (mesma projeção dos tiles de satélite) --- */
@@ -722,7 +726,8 @@ const Croqui = {
 
   zoom(delta) {
     if (!Croqui.vista) return;
-    Croqui.vista.z = Math.max(3, Math.min(19, Croqui.vista.z + delta));
+    // Botões andam em níveis inteiros mesmo depois de um zoom de pinça fracionário
+    Croqui.vista.z = Math.max(3, Math.min(19, Math.round(Croqui.vista.z) + delta));
     Croqui.render();
   },
 
@@ -894,16 +899,19 @@ const Croqui = {
     let tilesHtml = '';
     if (Croqui.tiles && navigator.onLine) {
       const e = Croqui._escala();
-      const z = Croqui.vista.z, n = Math.pow(2, z);
+      // Zoom fracionário (pinça): tiles do nível inteiro mais próximo, escalados
+      const zTile = Math.max(3, Math.min(19, Math.round(Croqui.vista.z)));
+      const ts = 256 * Math.pow(2, Croqui.vista.z - zTile); // tamanho do tile na tela
+      const n = Math.pow(2, zTile);
       const px0 = Croqui.vista.cx * e - larg / 2, py0 = Croqui.vista.cy * e - alt / 2;
-      const tx0 = Math.floor(px0 / 256), tx1 = Math.floor((px0 + larg) / 256);
-      const ty0 = Math.max(0, Math.floor(py0 / 256)), ty1 = Math.min(n - 1, Math.floor((py0 + alt) / 256));
+      const tx0 = Math.floor(px0 / ts), tx1 = Math.floor((px0 + larg) / ts);
+      const ty0 = Math.max(0, Math.floor(py0 / ts)), ty1 = Math.min(n - 1, Math.floor((py0 + alt) / ts));
       for (let tx = tx0; tx <= tx1; tx++) {
         for (let ty = ty0; ty <= ty1; ty++) {
           const txn = ((tx % n) + n) % n; // dá a volta no antimeridiano
-          const url = Croqui.tiles.url.replace('{z}', z).replace('{x}', txn).replace('{y}', ty);
+          const url = Croqui.tiles.url.replace('{z}', zTile).replace('{x}', txn).replace('{y}', ty);
           tilesHtml += `<img src="${App.escapeHtml(url)}" class="croqui-tile" loading="lazy" alt=""
-            style="left:${Math.round(tx * 256 - px0)}px;top:${Math.round(ty * 256 - py0)}px" onerror="this.remove()">`;
+            style="left:${(tx * ts - px0).toFixed(1)}px;top:${(ty * ts - py0).toFixed(1)}px;width:${ts.toFixed(2)}px;height:${ts.toFixed(2)}px" onerror="this.remove()">`;
         }
       }
     }
@@ -1022,8 +1030,29 @@ const Croqui = {
       return [ev.clientX - r.left, ev.clientY - r.top, r.width, r.height];
     };
     palco.addEventListener('pointerdown', ev => {
-      if (!ev.isPrimary || ev.target.closest('.croqui-zoom')) return; // 2º dedo não interfere
-      palco.setPointerCapture(ev.pointerId); // soltar fora do palco ainda dispara o pointerup
+      if (ev.target.closest('.croqui-zoom')) return;
+      // Soltar fora do palco ainda dispara o pointerup (alguns navegadores lançam
+      // erro se o ponteiro já não existe — não pode matar o gesto)
+      try { palco.setPointerCapture(ev.pointerId); } catch (e) { /* segue sem captura */ }
+      Croqui._ponteiros.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      // Dois dedos = PINÇA (zoom contínuo ancorado no ponto médio dos dedos)
+      if (Croqui._ponteiros.size === 2 && Croqui.vista) {
+        Croqui._arrasto = null;
+        Croqui._pan = null;
+        const [a, b] = [...Croqui._ponteiros.values()];
+        const r = palco.getBoundingClientRect();
+        const e = Croqui._escala();
+        const mx = (a.x + b.x) / 2 - r.left, my = (a.y + b.y) / 2 - r.top;
+        Croqui._pinch = {
+          d0: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+          z0: Croqui.vista.z,
+          wx: Croqui.vista.cx + (mx - r.width / 2) / e,   // ponto do mundo sob a pinça
+          wy: Croqui.vista.cy + (my - r.height / 2) / e,
+        };
+        ev.preventDefault();
+        return;
+      }
+      if (!ev.isPrimary) return;
       const v = ev.target.closest('.croqui-vertice');
       if (v) { Croqui._arrasto = Number(v.dataset.idx); ev.preventDefault(); return; }
       if (!Croqui.vista) return;
@@ -1031,6 +1060,21 @@ const Croqui = {
       ev.preventDefault();
     });
     palco.addEventListener('pointermove', ev => {
+      if (Croqui._ponteiros.has(ev.pointerId)) Croqui._ponteiros.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      if (Croqui._pinch && Croqui._ponteiros.size >= 2 && Croqui.vista) {
+        const [a, b] = [...Croqui._ponteiros.values()];
+        const r = palco.getBoundingClientRect();
+        const d = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+        Croqui.vista.z = Math.max(3, Math.min(19, Croqui._pinch.z0 + Math.log2(d / Croqui._pinch.d0)));
+        const e2 = Croqui._escala();
+        const mx = (a.x + b.x) / 2 - r.left, my = (a.y + b.y) / 2 - r.top;
+        // O ponto do mundo que estava sob os dedos segue os dedos (zoom + pan juntos)
+        Croqui.vista.cx = Croqui._pinch.wx - (mx - r.width / 2) / e2;
+        Croqui.vista.cy = Croqui._pinch.wy - (my - r.height / 2) / e2;
+        Croqui.render();
+        ev.preventDefault();
+        return;
+      }
       if (!ev.isPrimary) return;
       if (Croqui._arrasto !== null && Croqui.vista) {
         const [x, y, w, h] = pos(ev);
@@ -1053,6 +1097,12 @@ const Croqui = {
       }
     });
     ['pointerup', 'pointercancel'].forEach(n => palco.addEventListener(n, ev => {
+      Croqui._ponteiros.delete(ev.pointerId);
+      if (Croqui._pinch) {
+        // Fim (ou redução) da pinça: nunca vira clique/ponto
+        if (Croqui._ponteiros.size < 2) Croqui._pinch = null;
+        return;
+      }
       if (Croqui._arrasto !== null) { Croqui._arrasto = null; return; }
       if (Croqui._pan) {
         // Gesto CANCELADO pelo navegador (ligação, palm rejection) nunca vira ponto
@@ -1587,15 +1637,19 @@ const Visitas = {
             </div>
             <div class="btn-group" role="group">${botoes}</div>
           </div>
-          <input name="checklist_obs[${m.id}]" class="form-control form-control-sm mt-2 ${obs ? '' : 'd-none'}"
-                 placeholder="Observação do item…" value="${obs}">
+          <div class="campo-voz mt-2 ${obs ? '' : 'd-none'}">
+            <input name="checklist_obs[${m.id}]" class="form-control form-control-sm"
+                   placeholder="Observação do item… (ou dite pelo microfone)" value="${obs}">
+            <button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button>
+          </div>
         </li>`;
       }).join('') + '</ul></div>';
   },
 
   /** Mostra o campo de observação do item quando ele é marcado. */
   _obsChecklist(manejoId) {
-    document.querySelector(`#visitaChecklist [name="checklist_obs[${manejoId}]"]`)?.classList.remove('d-none');
+    document.querySelector(`#visitaChecklist [name="checklist_obs[${manejoId}]"]`)
+      ?.closest('.campo-voz')?.classList.remove('d-none');
   },
 
   /** Registra o plantio do talhão direto do modal de visita. */

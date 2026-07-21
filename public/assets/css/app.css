@@ -280,3 +280,7 @@ textarea.auto-crescer { resize: vertical; overflow: hidden; min-height: 38px; li
   .badge, .progress-bar { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .relatorio-assinaturas { margin-top: 5rem !important; }
 }
+
+/* Microfone em campos criados dinamicamente (ex.: observação do checklist) */
+body.voz-suportada .campo-voz .btn-voz { display: inline-flex; }
+.campo-voz .form-control-sm + .btn-voz { width: 1.7rem; height: 1.7rem; font-size: .8rem; }
