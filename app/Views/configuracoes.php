@@ -135,6 +135,45 @@
     </div>
   </div>
 
+  <!-- Diagnóstico do armazenamento de fotos (volume) -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header"><i class="bi bi-hdd me-2 text-success"></i><strong>Armazenamento de fotos e arquivos</strong>
+        <span class="text-muted small">diagnóstico do volume no servidor</span></div>
+      <div class="card-body">
+        <div class="d-flex flex-wrap gap-3 align-items-center mb-2">
+          <code class="small"><?= e($armazenamento['caminho']) ?></code>
+          <?php if ($armazenamento['gravavel']): ?>
+            <span class="badge text-bg-success"><i class="bi bi-check-circle me-1"></i>Pasta gravável (volume OK)</span>
+          <?php elseif ($armazenamento['existe']): ?>
+            <span class="badge text-bg-danger"><i class="bi bi-x-circle me-1"></i>Pasta existe mas NÃO é gravável — confira o volume</span>
+          <?php else: ?>
+            <span class="badge text-bg-danger"><i class="bi bi-x-circle me-1"></i>Pasta não existe — volume não montado</span>
+          <?php endif; ?>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm mb-2" style="max-width:560px">
+            <thead class="table-light"><tr><th>Tipo</th><th class="text-end">No disco</th><th class="text-end">Perdidos</th></tr></thead>
+            <tbody>
+              <?php foreach ($armazenamento['detalhe'] as $d): ?>
+              <tr>
+                <td><?= e($d['rotulo']) ?></td>
+                <td class="text-end text-success fw-semibold"><?= (int) $d['ok'] ?></td>
+                <td class="text-end <?= $d['faltando'] > 0 ? 'text-danger fw-semibold' : 'text-muted' ?>"><?= (int) $d['faltando'] ?></td>
+              </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+        <div class="small text-muted">
+          "Perdidos" = registro no banco cujo arquivo não está mais no servidor — em geral fotos enviadas
+          <strong>antes</strong> de o volume estar montado no caminho certo (foram apagadas num redeploy e não têm recuperação).
+          As novas ficam no volume e sobrevivem aos deploys; para conferir, envie uma foto e recarregue esta tela.
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Fenologia das culturas (fases, imagens e recomendações por fase) -->
   <div class="col-12">
     <div class="card">

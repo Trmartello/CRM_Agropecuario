@@ -16,11 +16,61 @@ class ConfiguracoesController
         'favicon_aplicacao' => ['png', 'ico', 'svg', 'jpg', 'jpeg'],
     ];
 
+    /**
+     * Diagnóstico do armazenamento de fotos/arquivos (volume no Railway):
+     * confere se a pasta é gravável e cruza as referências do banco com os
+     * arquivos que existem de fato no disco — fotos enviadas ANTES do volume
+     * correto foram perdidas em redeploys e aparecem como "perdidas" aqui.
+     */
+    private function diagnosticoUploads(): array
+    {
+        $dir = uploads_dir();
+        $legado = dirname(__DIR__, 2) . '/public/uploads';
+        $existeArquivo = function (?string $rel) use ($dir, $legado): bool {
+            if ($rel === null || $rel === '') {
+                return false;
+            }
+            return is_file($dir . '/' . $rel) || is_file($legado . '/' . $rel);
+        };
+
+        $fontes = [
+            'Fotos de visitas' => Database::todos('SELECT arquivo FROM visita_fotos'),
+            'Fotos de reclamações' => Database::todos('SELECT arquivo FROM reclamacao_fotos'),
+            'Comprovantes de refeição' => Database::todos('SELECT comprovante AS arquivo FROM refeicoes WHERE comprovante IS NOT NULL'),
+            'Documentos' => Database::todos('SELECT arquivo FROM documentos'),
+        ];
+        $detalhe = [];
+        foreach ($fontes as $rotulo => $linhas) {
+            $ok = 0;
+            $faltando = 0;
+            foreach ($linhas as $l) {
+                $existeArquivo($l['arquivo']) ? $ok++ : $faltando++;
+            }
+            $detalhe[] = ['rotulo' => $rotulo, 'ok' => $ok, 'faltando' => $faltando];
+        }
+
+        // Teste real de escrita (o volume pode existir mas estar montado errado)
+        $gravavel = false;
+        if (is_dir($dir)) {
+            $teste = $dir . '/.teste_escrita';
+            $gravavel = @file_put_contents($teste, 'ok') !== false;
+            @unlink($teste);
+        }
+
+        return [
+            'caminho' => $dir,
+            'existe' => is_dir($dir),
+            'gravavel' => $gravavel,
+            'detalhe' => $detalhe,
+        ];
+    }
+
     public function index(): void
     {
         Permissoes::exigir(['Administrador']);
         render('configuracoes', [
             'titulo' => 'Configurações',
+            'armazenamento' => $this->diagnosticoUploads(),
             'culturas' => \App\Core\Database::todos('SELECT id, nome FROM culturas ORDER BY nome'),
             'familias' => \App\Core\Database::todos('SELECT id, nome FROM familias_produto ORDER BY nome'),
             'categoriasReembolso' => $this->categoriasComValores(),
