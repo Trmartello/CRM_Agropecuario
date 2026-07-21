@@ -263,6 +263,8 @@ textarea.auto-crescer { resize: vertical; overflow: hidden; min-height: 38px; li
   position: absolute; right: 4px; bottom: 2px; z-index: 3;
   font-size: .62rem; color: #fff; text-shadow: 0 0 3px rgba(0,0,0,.9); pointer-events: none;
 }
+.mapa-palco { cursor: grab; }
+.mapa-palco:active { cursor: grabbing; }
 .croqui-vertice { cursor: grab; }
 .croqui-vertice:active { cursor: grabbing; }
 .croqui-rotulo {
