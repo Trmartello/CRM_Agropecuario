@@ -95,13 +95,40 @@ class DashboardController
 
         $capGeral = CapService::atingimentoGeral(Auth::id());
 
+        // "Seu dia em campo": agenda de hoje + visitas feitas + carteira vencida
+        $hoje = date('Y-m-d');
+        $eventosHoje = Database::todos(
+            "SELECT e.id, e.tipo, e.titulo, e.hora, e.status, c.nome AS cliente, c.telefone
+               FROM agenda_eventos e LEFT JOIN clientes c ON c.id = e.cliente_id
+              WHERE e.usuario_id = ? AND e.data = ? AND e.status <> 'Cancelado'
+              ORDER BY (e.status = 'Pendente') DESC, e.ordem, (e.hora IS NULL), e.hora",
+            [Auth::id(), $hoje]
+        );
+        $meuDia = [
+            'eventos' => $eventosHoje,
+            'pendentes' => count(array_filter($eventosHoje, fn ($e) => $e['status'] === 'Pendente')),
+            'visitas_hoje' => (int) Database::valor(
+                'SELECT COUNT(*) FROM visitas WHERE usuario_id = ? AND data_visita = ?',
+                [Auth::id(), $hoje]
+            ),
+            // Produtores da PRÓPRIA carteira sem visita há N dias (ou nunca visitados)
+            'vencidas' => (int) Database::valor(
+                'SELECT COUNT(*) FROM clientes c
+                  WHERE c.ativo = 1 AND c.prospecto = 0 AND c.responsavel_id = ?
+                    AND COALESCE((SELECT MAX(v.data_visita) FROM visitas v WHERE v.cliente_id = c.id), "2000-01-01")
+                        <= DATE_SUB(?, INTERVAL ' . \App\Services\AgendaService::DIAS_VISITA_VENCIDA . ' DAY)',
+                [Auth::id(), $hoje]
+            ),
+        ];
+
         render('dashboard', compact(
             'indicadores',
             'prioridades',
             'totaisFunil',
             'clientesChurn',
             'garantiasVencendo',
-            'capGeral'
+            'capGeral',
+            'meuDia'
         ) + ['titulo' => 'Dashboard']);
     }
 }

@@ -13,6 +13,69 @@
   <a class="btn btn-outline-success btn-atalho" href="<?= url('despesas') ?>"><i class="bi bi-receipt me-1"></i>Despesas</a>
 </div>
 
+<!-- Seu dia em campo -->
+<?php
+  $proximo = null;
+  foreach ($meuDia['eventos'] as $ev) {
+      if ($ev['status'] === 'Pendente') { $proximo = $ev; break; }
+  }
+  $telDia = $proximo ? preg_replace('/\D/', '', (string) ($proximo['telefone'] ?? '')) : '';
+?>
+<div class="card mb-3 border-success-subtle">
+  <div class="card-header d-flex align-items-center flex-wrap gap-2">
+    <i class="bi bi-sunrise me-1 text-success"></i><strong>Seu dia em campo</strong>
+    <span class="text-muted small"><?= data_br(date('Y-m-d')) ?></span>
+    <span class="ms-auto d-flex gap-2">
+      <a class="btn btn-sm btn-success" href="<?= url('agenda/organizador') ?>"><i class="bi bi-signpost-split me-1"></i>Montar roteiro</a>
+      <a class="btn btn-sm btn-outline-success" href="<?= url('agenda') ?>"><i class="bi bi-calendar3 me-1"></i>Agenda</a>
+    </span>
+  </div>
+  <div class="card-body py-3">
+    <div class="row g-3 align-items-center">
+      <div class="col-md-7">
+        <?php if ($proximo): ?>
+          <div class="d-flex align-items-center gap-3">
+            <div class="text-center px-2">
+              <div class="fs-4 fw-bold text-success"><?= $proximo['hora'] ? substr($proximo['hora'], 0, 5) : '—' ?></div>
+              <div class="small text-muted"><?= e($proximo['tipo']) ?></div>
+            </div>
+            <div class="flex-grow-1">
+              <div class="fw-semibold"><?= e($proximo['titulo']) ?></div>
+              <?php if ($proximo['cliente']): ?><div class="small text-muted"><i class="bi bi-person me-1"></i><?= e($proximo['cliente']) ?></div><?php endif; ?>
+            </div>
+            <?php if ($telDia): ?>
+              <a class="btn btn-sm btn-outline-success" href="tel:+55<?= e($telDia) ?>" title="Ligar"><i class="bi bi-telephone"></i></a>
+              <a class="btn btn-sm btn-success" target="_blank" href="https://wa.me/55<?= e($telDia) ?>" title="WhatsApp"><i class="bi bi-whatsapp"></i></a>
+            <?php endif; ?>
+          </div>
+          <?php if ($meuDia['pendentes'] > 1): ?>
+            <div class="small text-muted mt-2"><i class="bi bi-three-dots me-1"></i>mais <?= numero($meuDia['pendentes'] - 1) ?> compromisso(s) pendente(s) hoje</div>
+          <?php endif; ?>
+        <?php else: ?>
+          <div class="text-muted"><i class="bi bi-calendar-x me-1"></i>Nenhum compromisso pendente para hoje.
+            <a href="<?= url('agenda/organizador') ?>">Monte o roteiro do dia</a> a partir das visitas prioritárias.</div>
+        <?php endif; ?>
+      </div>
+      <div class="col-md-5">
+        <div class="row g-2 text-center">
+          <div class="col-4"><div class="border rounded p-2 h-100">
+            <div class="fs-5 fw-bold"><?= numero($meuDia['pendentes']) ?></div>
+            <div class="small text-muted">na agenda<br>hoje</div>
+          </div></div>
+          <div class="col-4"><div class="border rounded p-2 h-100">
+            <div class="fs-5 fw-bold text-success"><?= numero($meuDia['visitas_hoje']) ?></div>
+            <div class="small text-muted">visitas<br>feitas hoje</div>
+          </div></div>
+          <div class="col-4"><a class="text-decoration-none d-block border rounded p-2 h-100 <?= $meuDia['vencidas'] > 0 ? 'border-warning' : '' ?>" href="<?= url('visitas') ?>" title="Produtores da sua carteira sem visita há 90+ dias">
+            <div class="fs-5 fw-bold <?= $meuDia['vencidas'] > 0 ? 'text-warning' : 'text-body' ?>"><?= numero($meuDia['vencidas']) ?></div>
+            <div class="small text-muted">visitas<br>vencidas</div>
+          </a></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Indicadores -->
 <div class="row g-3 mb-3">
   <div class="col-6 col-md-3">
