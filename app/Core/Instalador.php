@@ -356,6 +356,15 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '27'"
             );
         }
+        if ($versao < 28) {
+            // CAR (SICAR): número de inscrição + divisa oficial importada do shapefile
+            self::adicionarColuna('propriedades', 'car_numero',
+                'car_numero VARCHAR(60) NULL COMMENT "número de inscrição no CAR (SICAR)" AFTER area_gps');
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '28')
+                 ON DUPLICATE KEY UPDATE valor = '28'"
+            );
+        }
     }
 
     /** Fase 6E (refinamento): características fisiológicas por estágio (cartão ilustrado). */

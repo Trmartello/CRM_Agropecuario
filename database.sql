@@ -134,6 +134,7 @@ CREATE TABLE propriedades (
   longitude DECIMAL(10,7),
   contorno TEXT NULL COMMENT 'croqui: divisa da propriedade [[lat,lng],...] (Fase 6A)',
   area_gps DECIMAL(10,2) NULL COMMENT 'área total (ha) calculada pelo contorno GPS',
+  car_numero VARCHAR(60) NULL COMMENT 'número de inscrição no CAR (SICAR)',
   FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
@@ -1339,5 +1340,5 @@ CREATE TABLE sync_processados (
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','27')
-  ON DUPLICATE KEY UPDATE valor = '27';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','28')
+  ON DUPLICATE KEY UPDATE valor = '28';

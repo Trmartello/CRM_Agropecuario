@@ -368,6 +368,67 @@ class ClientesController
         json_ok(['area_gps' => $areaGps]);
     }
 
+    /**
+     * Importa a divisa oficial da propriedade a partir do shapefile do CAR
+     * (arquivo .zip baixado da consulta pública do SICAR). Desenha o perímetro
+     * no croqui (mesma tabela/área do croqui manual) — o servidor recalcula a área.
+     */
+    public function importarCar(): void
+    {
+        Permissoes::exigirInterno();
+        $propId = (int) ($_POST['propriedade_id'] ?? 0);
+        $this->propriedadeDaCarteira($propId);
+
+        if (empty($_FILES['arquivo']['tmp_name']) || !is_uploaded_file($_FILES['arquivo']['tmp_name'])) {
+            json_erro('Selecione o arquivo .zip do CAR (Shapefile).');
+        }
+        if (($_FILES['arquivo']['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
+            json_erro('Falha no envio do arquivo (verifique o tamanho).');
+        }
+        if (strtolower(pathinfo($_FILES['arquivo']['name'], PATHINFO_EXTENSION)) !== 'zip') {
+            json_erro('Envie o .zip do CAR (na consulta pública, "Baixar dados" → Shapefile).');
+        }
+        if ($_FILES['arquivo']['size'] > 30 * 1024 * 1024) {
+            json_erro('Arquivo muito grande (máximo 30 MB).');
+        }
+
+        try {
+            $pontos = \App\Services\ShapefileService::contornoDoCarZip($_FILES['arquivo']['tmp_name']);
+            $pontos = \App\Services\CroquiService::validarContorno(json_encode($pontos));
+        } catch (\Exception $e) {
+            json_erro($e->getMessage());
+        }
+
+        $areaGps = \App\Services\CroquiService::areaHa($pontos);
+
+        // A divisa do CAR é a verdade oficial: se algum talhão já desenhado ficar
+        // para fora, avisamos (não bloqueia — deixa o gestor ajustar o talhão).
+        $fora = [];
+        foreach (Database::todos(
+            'SELECT nome, contorno FROM talhoes WHERE propriedade_id = ? AND contorno IS NOT NULL', [$propId]
+        ) as $t) {
+            $pts = json_decode((string) $t['contorno'], true) ?: [];
+            if ($pts && \App\Services\CroquiService::pontosFora($pts, $pontos)) {
+                $fora[] = $t['nome'];
+            }
+        }
+
+        $car = trim($_POST['car_numero'] ?? '');
+        if ($car !== '') {
+            Database::executar(
+                'UPDATE propriedades SET contorno = ?, area_gps = ?, car_numero = ? WHERE id = ?',
+                [json_encode($pontos), $areaGps, mb_substr($car, 0, 60), $propId]
+            );
+        } else {
+            Database::executar(
+                'UPDATE propriedades SET contorno = ?, area_gps = ? WHERE id = ?',
+                [json_encode($pontos), $areaGps, $propId]
+            );
+        }
+        auditar('importar', 'croqui', $propId, 'CAR shapefile · ' . count($pontos) . " pontos · {$areaGps} ha");
+        json_ok(['area_gps' => $areaGps, 'pontos' => count($pontos), 'talhoes_fora' => $fora]);
+    }
+
     /** Garante que a propriedade pertence a um cliente da carteira do usuário. */
     private function propriedadeDaCarteira(int $propId): array
     {
@@ -507,15 +568,16 @@ class ClientesController
             $nome,
             (float) str_replace(',', '.', $_POST['area_ha'] ?? 0),
             trim($_POST['municipio'] ?? '') ?: null,
+            trim($_POST['car_numero'] ?? '') ? mb_substr(trim($_POST['car_numero']), 0, 60) : null,
         ];
         if ($id > 0) {
             Database::executar(
-                'UPDATE propriedades SET nome=?, area_ha=?, municipio=? WHERE id=? AND cliente_id=?',
+                'UPDATE propriedades SET nome=?, area_ha=?, municipio=?, car_numero=? WHERE id=? AND cliente_id=?',
                 array_merge($dados, [$id, $clienteId])
             );
         } else {
             Database::executar(
-                'INSERT INTO propriedades (nome, area_ha, municipio, cliente_id) VALUES (?,?,?,?)',
+                'INSERT INTO propriedades (nome, area_ha, municipio, car_numero, cliente_id) VALUES (?,?,?,?,?)',
                 array_merge($dados, [$clienteId])
             );
             $id = Database::ultimoId();

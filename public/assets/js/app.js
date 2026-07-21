@@ -402,7 +402,31 @@ const Clientes = {
     form.querySelector('[name=nome]').value = p.nome;
     form.querySelector('[name=area_ha]').value = p.area_ha;
     form.querySelector('[name=municipio]').value = p.municipio || '';
+    form.querySelector('[name=car_numero]').value = p.car_numero || '';
     new bootstrap.Modal('#modalPropriedade').show();
+  },
+
+  /** Importa a divisa oficial do CAR (shapefile .zip) e desenha no croqui. */
+  importarCar(propId) {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = '.zip,application/zip';
+    inp.onchange = async () => {
+      if (!inp.files || !inp.files.length) return;
+      const fd = new FormData();
+      fd.append('propriedade_id', propId);
+      fd.append('arquivo', inp.files[0]);
+      App.alerta('Lendo o shapefile do CAR…', 'info');
+      try {
+        const r = await App.json('index.php?r=clientes/importar-car', { method: 'POST', body: fd });
+        App.alerta(`Divisa do CAR importada: ${r.pontos} pontos · ${Number(r.area_gps).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ha.`, 'success');
+        if (r.talhoes_fora && r.talhoes_fora.length) {
+          App.alerta('Atenção: talhão(ões) fora da divisa oficial do CAR: ' + r.talhoes_fora.join(', ') + '. Ajuste no croqui.', 'warning');
+        }
+        if (Clientes.fichaClienteId) setTimeout(() => Clientes.ficha(Clientes.fichaClienteId), 900);
+      } catch (e) { App.alerta(e.message, 'danger'); }
+    };
+    inp.click();
   },
 
   async salvarPropriedade(ev) {

@@ -22,6 +22,11 @@
             <label class="form-label">Município</label>
             <input name="municipio" class="form-control">
           </div>
+          <div class="col-12">
+            <label class="form-label">Número do CAR <span class="text-muted small">(SICAR — opcional)</span></label>
+            <input name="car_numero" class="form-control" placeholder="Ex.: SC-4204202-XXXX...">
+            <div class="form-text">Permite abrir o imóvel na consulta pública e importar a divisa oficial (shapefile) no croqui.</div>
+          </div>
         </div>
       </div>
       <div class="modal-footer">

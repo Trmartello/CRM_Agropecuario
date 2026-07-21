@@ -3,11 +3,11 @@
 # adequado para homologação. Em produção definitiva, migrar para FPM+Nginx.
 FROM php:8.3-cli
 
-# Extensões: PDO MySQL e GD (imagens/ícones)
+# Extensões: PDO MySQL, GD (imagens/ícones) e Zip (importar shapefile do CAR)
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libpng-dev libjpeg-dev libwebp-dev \
+ && apt-get install -y --no-install-recommends libpng-dev libjpeg-dev libwebp-dev libzip-dev \
  && docker-php-ext-configure gd --with-jpeg --with-webp \
- && docker-php-ext-install pdo_mysql gd exif \
+ && docker-php-ext-install pdo_mysql gd exif zip \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /var/www/html

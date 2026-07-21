@@ -130,6 +130,7 @@ $router->registrar('clientes/salvar-propriedade', ClientesController::class, 'sa
 $router->registrar('clientes/salvar-talhao', ClientesController::class, 'salvarTalhao');
 $router->registrar('clientes/croqui-dados', ClientesController::class, 'croquiDados');
 $router->registrar('clientes/salvar-croqui', ClientesController::class, 'salvarCroqui');
+$router->registrar('clientes/importar-car', ClientesController::class, 'importarCar');
 $router->registrar('clientes/salvar-plano-safra', ClientesController::class, 'salvarPlanoSafra');
 $router->registrar('clientes/salvar-documento', ClientesController::class, 'salvarDocumento');
 $router->registrar('clientes/baixar-documento', ClientesController::class, 'baixarDocumento');

@@ -284,9 +284,18 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
     <?php if (!$propriedades): ?><p class="text-muted small">Nenhuma propriedade cadastrada.</p><?php endif; ?>
     <?php foreach ($propriedades as $p): ?>
     <div class="card mb-2">
-      <div class="card-header py-2 d-flex justify-content-between align-items-center">
-        <div><strong><?= e($p['nome']) ?></strong> <span class="text-muted small"><?= numero($p['area_ha'], 0) ?> ha · <?= e($p['municipio'] ?? '—') ?></span></div>
+      <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-1">
+        <div>
+          <strong><?= e($p['nome']) ?></strong> <span class="text-muted small"><?= numero($p['area_ha'], 0) ?> ha · <?= e($p['municipio'] ?? '—') ?></span>
+          <?php if (!empty($p['car_numero'])): ?>
+            <div class="small text-muted"><i class="bi bi-geo me-1"></i>CAR: <?= e($p['car_numero']) ?>
+              <a href="https://consultapublica.car.gov.br/publico/imoveis/index" target="_blank" rel="noopener" class="ms-1" title="Abrir a consulta pública do CAR">abrir no CAR <i class="bi bi-box-arrow-up-right"></i></a>
+            </div>
+          <?php endif; ?>
+        </div>
         <div class="btn-group">
+          <button class="btn btn-sm btn-outline-success" title="Importar a divisa oficial do CAR (shapefile .zip) e desenhar no croqui"
+                  onclick="Clientes.importarCar(<?= (int) $p['id'] ?>)"><i class="bi bi-cloud-download me-1"></i>CAR</button>
           <button class="btn btn-sm btn-outline-success" title="Croqui da propriedade: marcar os contornos dos talhões no campo"
                   onclick="Croqui.abrir(<?= (int) $p['id'] ?>)"><i class="bi bi-bounding-box-circles me-1"></i>Croqui</button>
           <button class="btn btn-sm btn-outline-secondary" onclick='Clientes.editarPropriedade(<?= json_attr($p) ?>)'><i class="bi bi-pencil"></i></button>
