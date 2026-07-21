@@ -355,8 +355,10 @@ class Instalador
             "UPDATE fenologia_estagios SET grupo = CASE WHEN codigo LIKE 'R%' THEN 'Reprodutivo' ELSE 'Vegetativo' END
               WHERE grupo IS NULL AND cultura_id IN (1,2)"
         );
-        // Trigo (Feekes-Large) — só se a cultura ainda não tem fenologia
-        if ((int) Database::valor('SELECT COUNT(*) FROM fenologia_estagios WHERE cultura_id = 3') > 0) {
+        // Trigo (Feekes-Large) — só se a cultura 3 existir e ainda não tiver fenologia
+        // (guard evita erro de FK travar a migração num banco com seed alterado)
+        if (!Database::valor('SELECT 1 FROM culturas WHERE id = 3')
+            || (int) Database::valor('SELECT COUNT(*) FROM fenologia_estagios WHERE cultura_id = 3') > 0) {
             return;
         }
         $estagios = [

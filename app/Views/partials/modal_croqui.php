@@ -4,7 +4,7 @@
     <div class="modal-content">
       <div class="modal-header py-2">
         <h5 class="modal-title"><i class="bi bi-bounding-box-circles me-2 text-success"></i>Croqui — <span id="croquiPropNome"></span></h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" onclick="Croqui.fechar()"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button><!-- Croqui.fechar() roda no hidden.bs.modal (cobre Esc também) -->
       </div>
       <div class="modal-body d-flex flex-column p-2 gap-2">
         <div class="d-flex flex-wrap align-items-center gap-2">

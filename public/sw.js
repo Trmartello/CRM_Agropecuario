@@ -2,7 +2,7 @@
  * Cache do app e assets para abrir sem conexão (offline básico da Fase 1).
  */
 
-const CACHE = 'crm-coperdia-v31';
+const CACHE = 'crm-coperdia-v32';
 
 const ARQUIVOS_APP = [
   'assets/vendor/bootstrap.min.css',
@@ -173,7 +173,10 @@ self.addEventListener('fetch', ev => {
     fetch(ev.request)
       .then(resp => {
         const ct = resp.headers.get('Content-Type') || '';
-        if (resp.ok && ct.includes('text/html')) {
+        // Relatório de safra fica FORA do cache: uma variante por cliente/safra
+        // acumularia dados de produtores em repouso no aparelho
+        const semCache = url.search.includes('r=relatorios%2Fsafra') || url.search.includes('r=relatorios/safra');
+        if (resp.ok && ct.includes('text/html') && !semCache) {
           const copia = resp.clone();
           caches.open(CACHE).then(cache => cache.put(ev.request, copia));
         }

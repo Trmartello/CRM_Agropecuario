@@ -33,7 +33,7 @@ class DesempenhoService
                     COUNT(*) AS visitas,
                     SUM(v.finalizada = 1) AS finalizadas,
                     COUNT(DISTINCT v.cliente_id) AS produtores,
-                    COUNT(DISTINCT CASE WHEN c.responsavel_id = v.usuario_id THEN v.cliente_id END) AS produtores_carteira,
+                    COUNT(DISTINCT CASE WHEN c.ativo = 1 AND c.responsavel_id = v.usuario_id THEN v.cliente_id END) AS produtores_carteira,
                     SUM(EXISTS (
                         SELECT 1 FROM pedidos p
                          WHERE p.cliente_id = v.cliente_id
@@ -140,7 +140,10 @@ class DesempenhoService
     /** Evolução mensal da equipe inteira (últimos N meses): visitas × vendido. */
     public static function evolucaoMensal(int $meses = 6): array
     {
-        $inicio = date('Y-m-01', strtotime('-' . ($meses - 1) . ' months'));
+        // Âncora no dia 1º: "-N months" a partir do dia 29-31 estoura o mês
+        // (ex.: 31/07 - 1 mês = 01/07) e duplicava/pulava meses na série
+        $base = strtotime(date('Y-m-01'));
+        $inicio = date('Y-m-01', strtotime('-' . ($meses - 1) . ' months', $base));
 
         $visitas = [];
         foreach (Database::todos(
@@ -163,7 +166,7 @@ class DesempenhoService
 
         $serie = [];
         for ($i = $meses - 1; $i >= 0; $i--) {
-            $mes = date('Y-m', strtotime("-{$i} months"));
+            $mes = date('Y-m', strtotime("-{$i} months", $base));
             $serie[] = [
                 'mes' => $mes,
                 'rotulo' => date('m/Y', strtotime($mes . '-01')),

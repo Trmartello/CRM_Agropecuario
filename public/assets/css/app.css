@@ -241,6 +241,7 @@ textarea.auto-crescer { resize: vertical; overflow: hidden; min-height: 38px; li
 .feno-carac {
   background: #f7faf7; border-left: 4px solid #2e7d32; border-radius: 0 10px 10px 0;
   padding: .55rem .75rem; font-size: .86rem;
+  white-space: pre-line; /* preserva as quebras digitadas no cadastro da fase */
 }
 .feno-carac .feno-carac-titulo {
   font-size: .68rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;

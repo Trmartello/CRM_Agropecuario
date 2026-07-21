@@ -598,7 +598,9 @@ const Plantios = {
       bootstrap.Modal.getInstance('#modalPlantio').hide();
       App.alerta('Plantio registrado — linha do tempo da cultura ativada.');
       if (typeof Clientes !== 'undefined' && Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId);
-    } catch (e) { App.alerta(e.message, 'danger'); }
+    } catch (e) {
+      App.alerta(navigator.onLine ? e.message : 'Sem conexão — registre o plantio quando estiver online.', 'warning');
+    }
     return false;
   },
 
@@ -618,7 +620,9 @@ const Plantios = {
       bootstrap.Modal.getInstance('#modalColheita').hide();
       App.alerta('Colheita registrada — plantio encerrado.');
       if (typeof Clientes !== 'undefined' && Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId);
-    } catch (e) { App.alerta(e.message, 'danger'); }
+    } catch (e) {
+      App.alerta(navigator.onLine ? e.message : 'Sem conexão — registre a colheita quando estiver online.', 'warning');
+    }
     return false;
   },
 };
@@ -743,6 +747,7 @@ const Croqui = {
   },
 
   _iniciarGPS() {
+    Croqui._pararGPS(); // nunca acumula watchers (o antigo ficaria órfão)
     const status = document.getElementById('croquiGpsStatus');
     if (!navigator.geolocation) { App.alerta('GPS indisponível neste aparelho.', 'warning'); return; }
     status.classList.remove('d-none');
@@ -1008,13 +1013,17 @@ const Croqui = {
   _prepararEventos() {
     if (Croqui._eventosOk) return;
     Croqui._eventosOk = true;
+    // Esc/backdrop fecham o modal sem passar pelo botão X: garante parar o
+    // GPS e atualizar a ficha em QUALQUER forma de fechar
+    document.getElementById('modalCroqui').addEventListener('hidden.bs.modal', () => Croqui.fechar());
     const palco = document.getElementById('croquiPalco');
     const pos = ev => {
       const r = palco.getBoundingClientRect();
       return [ev.clientX - r.left, ev.clientY - r.top, r.width, r.height];
     };
     palco.addEventListener('pointerdown', ev => {
-      if (ev.target.closest('.croqui-zoom')) return;
+      if (!ev.isPrimary || ev.target.closest('.croqui-zoom')) return; // 2º dedo não interfere
+      palco.setPointerCapture(ev.pointerId); // soltar fora do palco ainda dispara o pointerup
       const v = ev.target.closest('.croqui-vertice');
       if (v) { Croqui._arrasto = Number(v.dataset.idx); ev.preventDefault(); return; }
       if (!Croqui.vista) return;
@@ -1022,6 +1031,7 @@ const Croqui = {
       ev.preventDefault();
     });
     palco.addEventListener('pointermove', ev => {
+      if (!ev.isPrimary) return;
       if (Croqui._arrasto !== null && Croqui.vista) {
         const [x, y, w, h] = pos(ev);
         Croqui.pontos[Croqui._arrasto] = Croqui._prender(Croqui._paraGeo(x, y, w, h));
@@ -1045,7 +1055,8 @@ const Croqui = {
     ['pointerup', 'pointercancel'].forEach(n => palco.addEventListener(n, ev => {
       if (Croqui._arrasto !== null) { Croqui._arrasto = null; return; }
       if (Croqui._pan) {
-        const foiClique = !Croqui._pan.moved;
+        // Gesto CANCELADO pelo navegador (ligação, palm rejection) nunca vira ponto
+        const foiClique = ev.type === 'pointerup' && ev.isPrimary && !Croqui._pan.moved;
         Croqui._pan = null;
         if (foiClique && document.getElementById('croquiModoManual').checked && Croqui.vista
             && !ev.target.closest('.croqui-zoom')) {
@@ -1258,13 +1269,21 @@ const Visitas = {
     const a = snap && snap.apoio ? snap.apoio[clienteId] : null;
     if (!a) return null;
     const prod = (snap.produtores || []).find(pr => Number(pr.id) === Number(clienteId));
+    // Visita incompleta salva offline ainda na FILA também conta como pendente
+    // (o snapshot só reflete o servidor; sem isso, a 2ª visita seria recusada no sync)
+    let pendenteNaFila = false;
+    try {
+      pendenteNaFila = (await Offline.listar()).some(i => i.rota === 'visitas/salvar'
+        && Number(i.campos && i.campos.cliente_id) === Number(clienteId)
+        && Number((i.campos && i.campos.id) || 0) === 0);
+    } catch (e) { /* fila indisponível: segue só com o snapshot */ }
     return {
       propriedades: a.propriedades || [],
       talhoes: a.talhoes || [],
       painel: null, // dados comerciais não ficam no snapshot (indisponíveis offline)
       plantios: snap.plantios || {},   // linha do tempo/checklist funcionam offline
       fenologia: snap.fenologia || {},
-      _pendente: !!(prod && prod.ultima_completude !== null && !prod.ultima_finalizada),
+      _pendente: !!(prod && prod.ultima_completude !== null && !prod.ultima_finalizada) || pendenteNaFila,
       _atualizado: snap.atualizado_em ? new Date(snap.atualizado_em).toLocaleString('pt-BR') : '',
     };
   },
@@ -1274,7 +1293,7 @@ const Visitas = {
     const propId = Number(document.getElementById('visitaPropriedade').value);
     const talhoes = Visitas.apoio.talhoes.filter(t => !propId || Number(t.propriedade_id) === propId);
     document.getElementById('visitaTalhao').innerHTML = '<option value="">—</option>' +
-      talhoes.map(t => `<option value="${t.id}" data-cultura="${t.cultura_id || ''}">${t.nome}${t.cultura ? ' (' + t.cultura + ')' : ''}</option>`).join('');
+      talhoes.map(t => `<option value="${Number(t.id)}" data-cultura="${Number(t.cultura_id) || ''}">${App.escapeHtml(t.nome)}${t.cultura ? ' (' + App.escapeHtml(t.cultura) + ')' : ''}</option>`).join('');
     Visitas.renderFenologia(); // talhão mudou/limpou: refaz (ou limpa) a linha do tempo
   },
 
@@ -1292,12 +1311,14 @@ const Visitas = {
 
   /** Estágio estimado pela idade da lavoura (espelho do FenologiaService). */
   _estagioPorDap(estagios, dap) {
-    let ultimo = null;
+    // Fora de qualquer janela (lacuna criada na edição, ou além do ciclo):
+    // vale a última fase já iniciada — a timeline nunca some
+    let melhor = null;
     for (const e of estagios) {
       if (dap >= Number(e.dias_inicio) && dap <= Number(e.dias_fim)) return e;
-      ultimo = e;
+      if (dap > Number(e.dias_fim) && (!melhor || Number(e.dias_fim) > Number(melhor.dias_fim))) melhor = e;
     }
-    return (ultimo && dap > Number(ultimo.dias_fim)) ? ultimo : null;
+    return melhor;
   },
 
   /** Coleta o checklist já marcado no DOM (preserva as marcações ao re-renderizar). */
@@ -1323,6 +1344,8 @@ const Visitas = {
     const talhaoId = Number(document.getElementById('visitaTalhao')?.value);
     if (!talhaoId || !Visitas.apoio) return;
     const plantio = Visitas.apoio.plantios ? Visitas.apoio.plantios[talhaoId] : null;
+    // Data LOCAL (toISOString é UTC: depois das 21h no Brasil viraria "amanhã")
+    const hojeLocal = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
     if (!plantio) {
       // Sem plantio ativo: oferece o registro ali mesmo (ancora a linha do tempo)
@@ -1332,7 +1355,7 @@ const Visitas = {
             <div><i class="bi bi-calendar-plus text-success me-1"></i><strong>Talhão sem plantio registrado.</strong>
               <div class="small text-muted">Informe a data de plantio para acompanhar a fase da lavoura e o checklist.</div></div>
             <div><label class="form-label mb-0 small">Data do plantio</label>
-              <input type="date" id="plantioData" class="form-control form-control-sm" max="${new Date().toISOString().slice(0, 10)}"></div>
+              <input type="date" id="plantioData" class="form-control form-control-sm" max="${hojeLocal}"></div>
             <div><label class="form-label mb-0 small">Cultivar (opcional)</label>
               <input id="plantioCultivar" class="form-control form-control-sm" placeholder="Ex.: 58I60 IPRO"></div>
             <button type="button" class="btn btn-success btn-sm" onclick="Visitas.registrarPlantio(${talhaoId})">
@@ -1344,7 +1367,7 @@ const Visitas = {
 
     const estagios = (Visitas.apoio.fenologia && Visitas.apoio.fenologia[plantio.cultura_id]) || [];
     if (!estagios.length) return;
-    const dataRef = document.querySelector('#formVisita [name=data_visita]')?.value || new Date().toISOString().slice(0, 10);
+    const dataRef = document.querySelector('#formVisita [name=data_visita]')?.value || hojeLocal;
     const dap = Math.max(0, Math.floor((new Date(dataRef + 'T12:00') - new Date(plantio.data_plantio + 'T12:00')) / 864e5));
     const atual = Visitas._estagioPorDap(estagios, dap);
     const cicloTotal = Number(estagios[estagios.length - 1].dias_fim) + 1;
@@ -1353,9 +1376,10 @@ const Visitas = {
     // Fase EM USO: a estimada pelo DAP, salvo ajuste manual do técnico
     // ("A lavoura está nesta fase" no cartão do estágio)
     if (Visitas._fenoTalhao !== talhaoId) { Visitas._fenoManualId = null; Visitas._fenoTalhao = talhaoId; }
-    if (!Visitas._fenoManualId && salvo && salvo.length) {
-      // Visita reaberta: recupera a fase pela qual o checklist foi marcado
-      const daMarcacao = estagios.find(e => (e.manejos || []).some(m => Number(m.id) === Number(salvo[0].manejo_id)));
+    if (!Visitas._fenoManualId && checklistSalvo && checklistSalvo.length) {
+      // Recupera a fase SÓ pelo checklist vindo do servidor (visita reaberta) —
+      // marcações ainda não salvas no DOM não "fixam" a fase sem o técnico pedir
+      const daMarcacao = estagios.find(e => (e.manejos || []).some(m => Number(m.id) === Number(checklistSalvo[0].manejo_id)));
       if (daMarcacao) Visitas._fenoManualId = daMarcacao.id;
     }
     const emUso = estagios.find(e => e.id === Visitas._fenoManualId) || atual;
@@ -1470,7 +1494,16 @@ const Visitas = {
     if (idx < 0) return;
     Visitas._fenoIdx = idx;
     Visitas._renderEstagioModal();
-    new bootstrap.Modal('#modalEstagio').show();
+    const el = document.getElementById('modalEstagio');
+    if (!el.dataset.shimEmpilhado) {
+      // Modais empilhados: fechar o de cima remove o modal-open do body e o
+      // fundo volta a rolar por baixo do modal de visita — restaura o estado
+      el.dataset.shimEmpilhado = '1';
+      el.addEventListener('hidden.bs.modal', () => {
+        if (document.querySelector('#modalVisita.show')) document.body.classList.add('modal-open');
+      });
+    }
+    bootstrap.Modal.getOrCreateInstance(el).show();
   },
 
   /** Navega para a fase anterior/seguinte no cartão (comparação no campo). */
@@ -1577,8 +1610,7 @@ const Visitas = {
     fd.append('data_plantio', data);
     fd.append('cultivar', document.getElementById('plantioCultivar')?.value || '');
     try {
-      const resp = await (await fetch('index.php?r=plantios/salvar', { method: 'POST', body: fd })).json();
-      if (!resp.ok) throw new Error(resp.erro || 'Não foi possível registrar o plantio.');
+      const resp = await App.json('index.php?r=plantios/salvar', { method: 'POST', body: fd });
       if (!Visitas.apoio.plantios || Array.isArray(Visitas.apoio.plantios)) Visitas.apoio.plantios = {};
       Visitas.apoio.plantios[talhaoId] = resp.plantio;
       App.alerta('Plantio registrado — linha do tempo ativada.');
@@ -2227,15 +2259,26 @@ const OfflineView = {
       : `<span class="badge rounded-pill text-bg-warning text-dark">Cadastro ${Number(p.ultima_completude)}%</span>`;
   },
 
+  /** Selo do segmento (espelho do helper PHP selo_segmento; manual prevalece). */
+  _seloSegmento(p, compacto) {
+    const seg = (p.segmento_manual || p.segmento || '').trim();
+    const cores = { A: 'success', B: 'primary', C: 'secondary', D: 'danger', P: 'warning' };
+    const rotulos = { A: 'A — Parceiro', B: 'B — Crescimento', C: 'C — Ocasional', D: 'D — Em risco', P: 'Prospect' };
+    if (!cores[seg]) return '';
+    return `<span class="badge text-bg-${cores[seg]}">${compacto ? seg : rotulos[seg]}</span>`;
+  },
+
   clientes(snap, quando) {
     const tb = document.getElementById('tabelaClientes');
     const lista = [...snap.produtores].sort((a, b) => String(a.nome).localeCompare(b.nome, 'pt-BR'));
     tb.innerHTML = lista.map(c => `
       <tr>
         <td>
-          <div class="fw-semibold">${App.escapeHtml(c.nome)}${Number(c.prospecto) ? ' <span class="badge text-bg-warning ms-1">Prospecto</span>' : ''}</div>
+          <div class="fw-semibold">${App.escapeHtml(c.nome)}${Number(c.prospecto) ? ' <span class="badge text-bg-warning ms-1">Prospecto</span>' : ''}
+            <span class="d-md-none ms-1">${OfflineView._seloSegmento(c, true)}</span></div>
           <div class="small text-muted d-md-none">${App.escapeHtml(c.municipio || '')}</div>
         </td>
+        <td class="d-none d-md-table-cell">${OfflineView._seloSegmento(c) || '<span class="text-muted">—</span>'}</td>
         <td class="d-none d-md-table-cell">${App.escapeHtml(c.municipio || '—')}</td>
         <td class="d-none d-md-table-cell">${c.situacao ? `<span class="badge text-bg-${c.situacao === 'Associado' ? 'success' : 'secondary'}">${App.escapeHtml(c.situacao)}</span>` : '—'}</td>
         <td class="d-none d-lg-table-cell">${App.escapeHtml(c.nivel_tecnologico || '')}</td>
@@ -2252,7 +2295,7 @@ const OfflineView = {
       return `<tr class="${i < 3 ? 'table-warning-subtle' : ''}">
         <td><span class="badge rounded-pill text-bg-${i < 3 ? 'danger' : 'success'} fs-6">${i + 1}º</span></td>
         <td>
-          <div class="fw-semibold">${App.escapeHtml(p.nome)}${p.risco_churn ? ` <span class="badge text-bg-danger ms-1">Churn −${Number(p.queda_percentual)}%</span>` : ''}</div>
+          <div class="fw-semibold">${App.escapeHtml(p.nome)} <span class="ms-1">${OfflineView._seloSegmento(p, true)}</span>${p.risco_churn ? ` <span class="badge text-bg-danger ms-1">Churn −${Number(p.queda_percentual)}%</span>` : ''}</div>
           <div class="small text-muted">${App.escapeHtml(p.municipio || '')}</div>
           <div class="mt-1">${OfflineView._seloCadastro(p)}</div>
         </td>

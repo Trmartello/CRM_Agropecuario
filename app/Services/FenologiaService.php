@@ -180,15 +180,19 @@ class FenologiaService
     /** Estágio estimado para uma idade de lavoura (DAP), dentro de um catálogo de cultura. */
     public static function estagioPorDap(array $estagiosCultura, int $dap): ?array
     {
-        $ultimo = null;
+        // Fora de qualquer janela (lacuna criada na edição do admin, ou DAP além
+        // do ciclo), vale a última fase já INICIADA — nunca some da visita
+        $melhor = null;
         foreach ($estagiosCultura as $e) {
             if ($dap >= (int) $e['dias_inicio'] && $dap <= (int) $e['dias_fim']) {
                 return $e;
             }
-            $ultimo = $e;
+            if ($dap > (int) $e['dias_fim']
+                && ($melhor === null || (int) $e['dias_fim'] > (int) $melhor['dias_fim'])) {
+                $melhor = $e;
+            }
         }
-        // Além do fim do ciclo: permanece no último estágio (colheita pendente)
-        return ($ultimo && $dap > (int) $ultimo['dias_fim']) ? $ultimo : null;
+        return $melhor;
     }
 
     /** Registra o plantio de um talhão (um ativo por vez). */
@@ -208,10 +212,16 @@ class FenologiaService
             throw new \InvalidArgumentException('Este talhão já tem um plantio em andamento — encerre-o (colheita) antes de registrar outro.');
         }
         $safra = ComercialService::safraAtual();
+        // INSERT condicionado: fecha a corrida do check-then-insert (toque duplo)
         Database::executar(
-            'INSERT INTO plantios (talhao_id, cultura_id, safra_id, data_plantio, cultivar) VALUES (?,?,?,?,?)',
-            [$talhaoId, $culturaId, $safra ? (int) $safra['id'] : null, $data->format('Y-m-d'), trim((string) $cultivar) ?: null]
+            'INSERT INTO plantios (talhao_id, cultura_id, safra_id, data_plantio, cultivar)
+             SELECT ?,?,?,?,? FROM DUAL
+              WHERE NOT EXISTS (SELECT 1 FROM plantios p2 WHERE p2.talhao_id = ? AND p2.encerrado = 0)',
+            [$talhaoId, $culturaId, $safra ? (int) $safra['id'] : null, $data->format('Y-m-d'), trim((string) $cultivar) ?: null, $talhaoId]
         );
+        if (Database::ultimoId() === 0) {
+            throw new \InvalidArgumentException('Este talhão já tem um plantio em andamento — encerre-o (colheita) antes de registrar outro.');
+        }
         // Mantém a cultura do talhão alinhada ao plantio real
         Database::executar('UPDATE talhoes SET cultura_id = ? WHERE id = ?', [$culturaId, $talhaoId]);
         return Database::ultimoId();
@@ -241,7 +251,8 @@ class FenologiaService
     public static function gatilhosLavoura(int $clienteId, int $safraId): array
     {
         $plantios = Database::todos(
-            'SELECT p.id, p.talhao_id, p.cultura_id, p.data_plantio, cu.nome AS cultura, t.nome AS talhao, t.area_ha
+            'SELECT p.id, p.talhao_id, p.cultura_id, p.data_plantio, cu.nome AS cultura, t.nome AS talhao,
+                    COALESCE(t.area_gps, t.area_ha) AS area_ha
                FROM plantios p
                JOIN culturas cu ON cu.id = p.cultura_id
                JOIN talhoes t ON t.id = p.talhao_id

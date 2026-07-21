@@ -396,7 +396,9 @@ const FenoCfg = {
     form.querySelector('[name=cultura_id]').value = FenoCfg.culturaId();
     document.getElementById('faseCfgTitulo').textContent = titulo;
     document.getElementById('faseCfgManejoForm').classList.add('d-none');
-    new bootstrap.Modal('#modalFaseCfg').show();
+    // getOrCreateInstance: reabrir com o modal já aberto NÃO pode criar 2ª
+    // instância (deixava um backdrop órfão cobrindo a tela após salvar)
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modalFaseCfg')).show();
     return form;
   },
 
@@ -439,13 +441,11 @@ const FenoCfg = {
 
   async salvarFase(ev) {
     ev.preventDefault();
-    const novo = Number(ev.target.querySelector('[name=id]').value) === 0;
     try {
       const resp = await App.json('index.php?r=fenologia/salvar-estagio', { method: 'POST', body: new FormData(ev.target) });
       if (resp.aviso) App.alerta(resp.aviso, 'warning'); else App.alerta('Fase salva.');
       await FenoCfg.carregar();
-      if (novo) FenoCfg.editarFase(resp.id); // segue direto para imagem/recomendações
-      else FenoCfg.editarFase(resp.id);
+      FenoCfg.editarFase(resp.id); // segue direto para imagem/recomendações
     } catch (e) { App.alerta(e.message, 'danger'); }
     return false;
   },
