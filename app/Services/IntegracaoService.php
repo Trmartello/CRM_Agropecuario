@@ -15,6 +15,12 @@ use App\Core\Database;
  */
 class IntegracaoService
 {
+    /**
+     * Indicadores do CAP em que a meta é um TETO (quanto menor, melhor):
+     * 200 = Despesas Operacionais, 202 = Inadimplência, 204 = Prazo Médio.
+     */
+    public const CAP_INDICADORES_INVERTIDOS = [200, 202, 204];
+
     /** Entidades sincronizáveis (conforme escopo do Módulo 18). */
     public const ENTIDADES = [
         'clientes' => 'Clientes e associados',
@@ -205,13 +211,9 @@ class IntegracaoService
                 if ($nomeInd === '' || $meta == 0.0) {
                     continue; // sem meta não há atingimento a acompanhar
                 }
-                // Indicadores INVERTIDOS do CAP (quanto menor, melhor): a tela
-                // local calcula atingimento = realizado ÷ meta e marcaria "meta
-                // atingida" errado — ficam de fora até o CapService tratá-los.
-                // 200 = Despesas Operacionais, 202 = Inadimplência, 204 = Prazo Médio
-                if (in_array((int) ($i['codigo'] ?? 0), [200, 202, 204], true)) {
-                    continue;
-                }
+                // Indicadores INVERTIDOS do CAP (quanto menor, melhor): a meta é
+                // um teto — o CapService/Gerencial calculam o atingimento invertido.
+                $invertido = in_array((int) ($i['codigo'] ?? 0), self::CAP_INDICADORES_INVERTIDOS, true);
                 $unidade = 'R$';
                 if (str_contains($nomeInd, '(TON)')) {
                     $unidade = 'TON';
@@ -221,9 +223,9 @@ class IntegracaoService
                     $unidade = 'dias';
                 }
                 Database::executar(
-                    'INSERT INTO metas_cap (usuario_id, indicador, unidade, meta, periodo_inicio, periodo_fim)
-                     VALUES (?,?,?,?,?,?)',
-                    [$usuarioId, mb_substr($nomeInd, 0, 120), $unidade, round($meta, 2), $inicio, $fim]
+                    'INSERT INTO metas_cap (usuario_id, indicador, unidade, menor_melhor, meta, periodo_inicio, periodo_fim)
+                     VALUES (?,?,?,?,?,?,?)',
+                    [$usuarioId, mb_substr($nomeInd, 0, 120), $unidade, $invertido ? 1 : 0, round($meta, 2), $inicio, $fim]
                 );
                 $metaId = Database::ultimoId();
                 Database::executar(

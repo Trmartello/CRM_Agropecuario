@@ -71,9 +71,14 @@ class GerencialController
         );
 
         // KPIs adicionais -----------------------------------------------------
-        // Atingimento CAP médio da equipe (metas vigentes)
+        // Atingimento CAP médio da equipe (metas vigentes). Indicadores
+        // invertidos (menor_melhor): a meta é um teto — dentro dele vale 100%,
+        // acima cai na proporção teto ÷ realizado (mesma regra do CapService).
         $cap = Database::um(
-            "SELECT AVG(LEAST(r.realizado / m.meta, 1.5)) AS atingimento
+            "SELECT AVG(LEAST(
+                      CASE WHEN m.menor_melhor = 1
+                           THEN CASE WHEN r.realizado <= m.meta THEN 1 ELSE m.meta / r.realizado END
+                           ELSE r.realizado / m.meta END, 1.5)) AS atingimento
                FROM metas_cap m
                JOIN (SELECT meta_id, COALESCE(SUM(valor),0) AS realizado FROM realizado_cap GROUP BY meta_id) r
                  ON r.meta_id = m.id

@@ -26,8 +26,20 @@ class CapService
         foreach ($metas as &$m) {
             $meta = (float) $m['meta'];
             $realizado = (float) $m['realizado'];
-            $m['percentual'] = $meta > 0 ? round($realizado / $meta * 100, 1) : 0;
-            $m['saldo'] = max(0, $meta - $realizado);
+            if (!empty($m['menor_melhor'])) {
+                // Indicador invertido: a meta é um TETO (despesas, inadimplência,
+                // prazo médio). Dentro do teto = 100%; acima, cai na proporção
+                // teto ÷ realizado (estourou o dobro do teto → 50%).
+                if ($realizado <= $meta) {
+                    $m['percentual'] = 100.0;
+                } else {
+                    $m['percentual'] = $meta > 0 ? round($meta / $realizado * 100, 1) : 0.0;
+                }
+                $m['saldo'] = max(0, $realizado - $meta); // excesso acima do teto
+            } else {
+                $m['percentual'] = $meta > 0 ? round($realizado / $meta * 100, 1) : 0;
+                $m['saldo'] = max(0, $meta - $realizado); // quanto falta para a meta
+            }
         }
         return $metas;
     }

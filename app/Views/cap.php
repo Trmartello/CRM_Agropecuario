@@ -10,22 +10,29 @@
         <?php endif; ?>
         <?php foreach ($minhasMetas as $m): ?>
         <div class="mb-3">
+          <?php $invertido = !empty($m['menor_melhor']); ?>
           <div class="d-flex justify-content-between flex-wrap">
-            <strong><?= e($m['indicador']) ?></strong>
+            <strong><?= e($m['indicador']) ?>
+              <?php if ($invertido): ?><span class="badge text-bg-light border text-muted fw-normal ms-1"><i class="bi bi-arrow-down-short"></i>quanto menor, melhor</span><?php endif; ?>
+            </strong>
             <span class="small text-muted"><?= data_br($m['periodo_inicio']) ?> a <?= data_br($m['periodo_fim']) ?></span>
           </div>
           <div class="d-flex justify-content-between small mb-1">
-            <span>Realizado: <strong><?= $m['unidade'] === 'R$' ? moeda($m['realizado']) : numero($m['realizado'], 0) . ' ' . e($m['unidade']) ?></strong></span>
-            <span>Meta: <?= $m['unidade'] === 'R$' ? moeda($m['meta']) : numero($m['meta'], 0) . ' ' . e($m['unidade']) ?></span>
+            <span>Realizado: <strong><?= $m['unidade'] === 'R$' ? moeda($m['realizado']) : numero($m['realizado'], $m['unidade'] === '%' ? 1 : 0) . ' ' . e($m['unidade']) ?></strong></span>
+            <span><?= $invertido ? 'Teto' : 'Meta' ?>: <?= $m['unidade'] === 'R$' ? moeda($m['meta']) : numero($m['meta'], $m['unidade'] === '%' ? 1 : 0) . ' ' . e($m['unidade']) ?></span>
           </div>
           <div class="progress" style="height:16px">
             <div class="progress-bar bg-<?= $m['percentual'] >= 100 ? 'success' : ($m['percentual'] >= 70 ? 'info' : ($m['percentual'] >= 40 ? 'warning' : 'danger')) ?>"
                  style="width:<?= min(100, $m['percentual']) ?>%"><?= numero($m['percentual'], 1) ?>%</div>
           </div>
           <?php if ($m['saldo'] > 0): ?>
-            <div class="small text-muted mt-1">Faltam <?= $m['unidade'] === 'R$' ? moeda($m['saldo']) : numero($m['saldo'], 0) . ' ' . e($m['unidade']) ?> para a meta.</div>
+            <?php if ($invertido): ?>
+              <div class="small text-danger mt-1"><i class="bi bi-exclamation-triangle me-1"></i><?= $m['unidade'] === 'R$' ? moeda($m['saldo']) : numero($m['saldo'], $m['unidade'] === '%' ? 1 : 0) . ' ' . e($m['unidade']) ?> acima do teto.</div>
+            <?php else: ?>
+              <div class="small text-muted mt-1">Faltam <?= $m['unidade'] === 'R$' ? moeda($m['saldo']) : numero($m['saldo'], 0) . ' ' . e($m['unidade']) ?> para a meta.</div>
+            <?php endif; ?>
           <?php else: ?>
-            <div class="small text-success mt-1"><i class="bi bi-check-circle me-1"></i>Meta atingida!</div>
+            <div class="small text-success mt-1"><i class="bi bi-check-circle me-1"></i><?= $invertido ? 'Dentro do teto!' : 'Meta atingida!' ?></div>
           <?php endif; ?>
         </div>
         <?php endforeach; ?>
@@ -61,7 +68,7 @@
           <strong><?= e($membro['nome']) ?></strong> <span class="text-muted small">· <?= e($membro['perfil']) ?></span>
           <?php foreach ($membro['metas'] as $m): ?>
           <div class="d-flex align-items-center gap-2 small">
-            <span class="text-truncate" style="max-width:180px"><?= e($m['indicador']) ?></span>
+            <span class="text-truncate" style="max-width:180px"><?php if (!empty($m['menor_melhor'])): ?><i class="bi bi-arrow-down-short text-muted" title="quanto menor, melhor"></i><?php endif; ?><?= e($m['indicador']) ?></span>
             <div class="progress flex-grow-1" style="height:8px">
               <div class="progress-bar bg-<?= $m['percentual'] >= 100 ? 'success' : ($m['percentual'] >= 70 ? 'info' : 'warning') ?>" style="width:<?= min(100, $m['percentual']) ?>%"></div>
             </div>

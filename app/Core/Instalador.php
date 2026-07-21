@@ -356,6 +356,16 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '27'"
             );
         }
+        if ($versao < 28) {
+            // Indicadores invertidos do CAP (Despesas, Inadimplência, Prazo Médio):
+            // a meta é um TETO — quanto menor o realizado, melhor o atingimento
+            self::adicionarColuna('metas_cap', 'menor_melhor',
+                'menor_melhor TINYINT(1) NOT NULL DEFAULT 0 COMMENT "1 = quanto menor melhor (a meta é um teto)" AFTER unidade');
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '28')
+                 ON DUPLICATE KEY UPDATE valor = '28'"
+            );
+        }
     }
 
     /** Fase 6E (refinamento): características fisiológicas por estágio (cartão ilustrado). */

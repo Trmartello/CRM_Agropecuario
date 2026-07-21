@@ -330,6 +330,7 @@ CREATE TABLE metas_cap (
   usuario_id INT NOT NULL,
   indicador VARCHAR(120) NOT NULL,
   unidade VARCHAR(20) NOT NULL DEFAULT 'R$',
+  menor_melhor TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = quanto menor melhor (a meta é um teto: despesas, inadimplência, prazo médio)',
   meta DECIMAL(14,2) NOT NULL,
   periodo_inicio DATE NOT NULL,
   periodo_fim DATE NOT NULL,
@@ -1090,13 +1091,20 @@ INSERT INTO metas_cap (id, usuario_id, indicador, unidade, meta, periodo_inicio,
 (5,4,'Visitas técnicas realizadas','visitas',180.00,'2025-09-01','2026-08-31'),
 (6,4,'Recomendações emitidas','recom.',150.00,'2025-09-01','2026-08-31');
 
+-- Indicadores invertidos (a meta é um TETO — quanto menor o realizado, melhor)
+INSERT INTO metas_cap (id, usuario_id, indicador, unidade, menor_melhor, meta, periodo_inicio, periodo_fim) VALUES
+(7,5,'Inadimplência (%)','%',1,2.00,'2025-09-01','2026-08-31'),
+(8,5,'Despesas Operacionais (R$)','R$',1,45000.00,'2025-09-01','2026-08-31');
+
 INSERT INTO realizado_cap (meta_id, valor, data_ref) VALUES
 (1,1425000.00,'2026-06-30'),
 (2,196.00,'2026-06-30'),
 (3,24.00,'2026-06-30'),
 (4,7.00,'2026-06-30'),
 (5,164.00,'2026-06-30'),
-(6,141.00,'2026-06-30');
+(6,141.00,'2026-06-30'),
+(7,1.40,'2026-06-30'),
+(8,52300.00,'2026-06-30');
 
 -- ---------------------------------------------------------------------------
 -- PLANOS DE SAFRA (intenção de plantio 26/27 usa a safra atual como referência)
