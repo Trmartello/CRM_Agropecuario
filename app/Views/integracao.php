@@ -28,13 +28,14 @@
     <button class="btn btn-outline-success w-100 mb-3" onclick="Integracao.sincronizar('_tudo')"><i class="bi bi-arrow-repeat me-1"></i>Sincronizar tudo agora</button>
 
     <div class="card">
-      <div class="card-header"><i class="bi bi-cloud-upload me-2 text-success"></i><strong>Carga inicial do CAP (arquivo do Qlik)</strong></div>
+      <div class="card-header"><i class="bi bi-cloud-upload me-2 text-success"></i><strong>Carga inicial (arquivo do Qlik)</strong></div>
       <div class="card-body">
         <p class="text-muted small mb-2">
-          Importa as <strong>metas e o realizado anuais</strong> por vendedor extraídos do app
-          "CAP - Copérdia Alta Performance" (arquivo JSON). O vínculo é pelo
-          <strong>Cód. vendedor (ERP)</strong> preenchido no cadastro de Usuários —
-          vendedores sem vínculo são listados após a importação. Reimportar o mesmo ano substitui a carga anterior.
+          Aceita dois arquivos JSON extraídos do Qlik: <strong>metas do CAP</strong> (tipo
+          <code>cap_anual</code> — vínculo pelo Cód. vendedor no cadastro de Usuários; reimportar o
+          mesmo ano substitui) e <strong>cadastro de clientes</strong> (tipo <code>clientes</code> —
+          cria/atualiza produtores pelo código do ERP sem tocar no que o CRM enriquece:
+          responsável, nível tecnológico, potencial, segmento e coordenadas).
         </p>
         <form id="formCargaCap" onsubmit="return Integracao.importarCarga(event)" class="d-flex gap-2 align-items-center flex-wrap">
           <input type="file" name="arquivo" class="form-control" accept="application/json,.json" required style="max-width:320px">
@@ -99,12 +100,19 @@ const Integracao = {
     try {
       const r = await App.json('index.php?r=integracao/importar-carga', { method: 'POST', body: new FormData(ev.target) });
       const s = r.resumo;
-      alvo.innerHTML = `<div class="alert alert-${s.vinculados > 0 ? 'success' : 'warning'} py-2 mb-1">
-          Carga ${App.escapeHtml(String(s.ano))}: <strong>${s.vinculados}</strong> de ${s.vendedores_arquivo} vendedor(es) vinculados ·
-          <strong>${s.metas_importadas}</strong> metas importadas.
-        </div>` +
-        (s.sem_usuario.length ? `<details><summary class="text-muted">${s.sem_usuario.length} vendedor(es) sem usuário no CRM (preencha o Cód. vendedor no cadastro e reimporte)</summary>
-          <div class="mt-1" style="max-height:160px;overflow:auto">${s.sem_usuario.map(n => `<div class="text-muted">${App.escapeHtml(n)}</div>`).join('')}</div></details>` : '');
+      if (r.tipo === 'clientes') {
+        alvo.innerHTML = `<div class="alert alert-success py-2 mb-1">
+            Carga de clientes: <strong>${s.criados}</strong> criado(s) e <strong>${s.atualizados}</strong> atualizado(s)
+            de ${s.clientes_arquivo} no arquivo${s.ignorados ? ` · ${s.ignorados} ignorado(s)` : ''}.
+          </div><div class="text-muted">Os produtores entram sem responsável — distribua as carteiras em Produtores/Clientes.</div>`;
+      } else {
+        alvo.innerHTML = `<div class="alert alert-${s.vinculados > 0 ? 'success' : 'warning'} py-2 mb-1">
+            Carga ${App.escapeHtml(String(s.ano))}: <strong>${s.vinculados}</strong> de ${s.vendedores_arquivo} vendedor(es) vinculados ·
+            <strong>${s.metas_importadas}</strong> metas importadas.
+          </div>` +
+          (s.sem_usuario.length ? `<details><summary class="text-muted">${s.sem_usuario.length} vendedor(es) sem usuário no CRM (preencha o Cód. vendedor no cadastro e reimporte)</summary>
+            <div class="mt-1" style="max-height:160px;overflow:auto">${s.sem_usuario.map(n => `<div class="text-muted">${App.escapeHtml(n)}</div>`).join('')}</div></details>` : '');
+      }
     } catch (e) { alvo.innerHTML = ''; App.alerta(e.message, 'danger'); }
     return false;
   },

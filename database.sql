@@ -106,6 +106,7 @@ CREATE TABLE clientes (
   potencial_venda DECIMAL(14,2) NOT NULL DEFAULT 0,
   limite_credito DECIMAL(14,2) NOT NULL DEFAULT 0,
   prospecto TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'pré-cadastro (cliente em prospecção)',
+  cod_erp INT NULL COMMENT 'código do cliente no ERP (vincula as cargas do Qlik)',
   segmento CHAR(1) NULL COMMENT 'segmento calculado (A/B/C/D/P) — cache do SegmentacaoService',
   segmento_manual CHAR(1) NULL COMMENT 'segmento fixado pelo gestor (prevalece sobre o calculado)',
   ativo TINYINT(1) NOT NULL DEFAULT 1,
@@ -1338,5 +1339,5 @@ CREATE TABLE sync_processados (
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','26')
-  ON DUPLICATE KEY UPDATE valor = '26';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','27')
+  ON DUPLICATE KEY UPDATE valor = '27';

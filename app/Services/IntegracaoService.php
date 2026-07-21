@@ -94,6 +94,77 @@ class IntegracaoService
      * cadastro de Usuários); sem vínculo, o vendedor fica listado no retorno.
      * Reimportar o mesmo ano substitui as metas anteriores (idempotente).
      */
+    /**
+     * Carga do cadastro de CLIENTES extraída do Qlik (Comercial Global).
+     * Formato: { tipo: "clientes", clientes: [ { cod, nome, cpf_cnpj, telefone,
+     * telefone2, email, endereco, municipio, estado, ... } ] }.
+     *
+     * Upsert idempotente: procura por `clientes.cod_erp` e, na falta, pelo
+     * CPF/CNPJ. Atualiza só o CADASTRO (nome, contatos, endereço, município) —
+     * preserva tudo que o CRM enriquece (responsável, nível tecnológico,
+     * potencial, segmento, coordenadas, limite de crédito).
+     */
+    public static function importarCargaClientes(array $carga): array
+    {
+        if (($carga['tipo'] ?? '') !== 'clientes' || empty($carga['clientes']) || !is_array($carga['clientes'])) {
+            throw new \Exception('Arquivo inválido: esperado JSON de carga "clientes".');
+        }
+
+        $criados = 0;
+        $atualizados = 0;
+        $ignorados = 0;
+        foreach ($carga['clientes'] as $c) {
+            $cod = (int) ($c['cod'] ?? 0);
+            $nome = trim((string) ($c['nome'] ?? ''));
+            if ($cod <= 0 || $nome === '') {
+                $ignorados++;
+                continue;
+            }
+            $cpf = trim((string) ($c['cpf_cnpj'] ?? '')) ?: null;
+            $dados = [
+                'nome' => mb_substr($nome, 0, 160),
+                'cpf_cnpj' => $cpf ? mb_substr($cpf, 0, 20) : null,
+                'telefone' => trim((string) ($c['telefone'] ?? '')) ?: null,
+                'telefone2' => trim((string) ($c['telefone2'] ?? '')) ?: null,
+                'email' => trim((string) ($c['email'] ?? '')) ?: null,
+                'endereco' => trim((string) ($c['endereco'] ?? '')) ?: null,
+                'municipio' => trim((string) ($c['municipio'] ?? '')) ?: null,
+                'estado' => strlen(trim((string) ($c['estado'] ?? ''))) === 2 ? strtoupper(trim($c['estado'])) : null,
+            ];
+
+            $existente = Database::um('SELECT id FROM clientes WHERE cod_erp = ?', [$cod]);
+            if (!$existente && $cpf) {
+                $existente = Database::um('SELECT id FROM clientes WHERE cpf_cnpj = ?', [$cpf]);
+            }
+            if ($existente) {
+                Database::executar(
+                    'UPDATE clientes SET nome=?, cpf_cnpj=?, telefone=?, telefone2=?, email=?,
+                            endereco=?, municipio=?, estado=COALESCE(?, estado), cod_erp=? WHERE id=?',
+                    array_merge(array_values($dados), [$cod, (int) $existente['id']])
+                );
+                $atualizados++;
+            } else {
+                Database::executar(
+                    'INSERT INTO clientes (nome, cpf_cnpj, telefone, telefone2, email, endereco, municipio,
+                            estado, cod_erp, situacao, ativo, prospecto)
+                     VALUES (?,?,?,?,?,?,?,COALESCE(?, "SC"),?, "Associado", 1, 0)',
+                    array_merge(array_values($dados), [$cod])
+                );
+                $criados++;
+            }
+        }
+
+        self::registrar('ERP', 'clientes', 'Sucesso', $criados + $atualizados,
+            "Carga Qlik de clientes: {$criados} criados, {$atualizados} atualizados" . ($ignorados ? ", {$ignorados} ignorados" : ''));
+
+        return [
+            'clientes_arquivo' => count($carga['clientes']),
+            'criados' => $criados,
+            'atualizados' => $atualizados,
+            'ignorados' => $ignorados,
+        ];
+    }
+
     public static function importarCargaCap(array $carga): array
     {
         if (($carga['tipo'] ?? '') !== 'cap_anual' || empty($carga['vendedores']) || !is_array($carga['vendedores'])) {

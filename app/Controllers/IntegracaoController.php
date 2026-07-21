@@ -45,13 +45,20 @@ class IntegracaoController
         if (!is_array($carga)) {
             json_erro('O arquivo não é um JSON válido.');
         }
+        // O tipo do arquivo decide o importador (cap_anual | clientes)
+        $tipo = (string) ($carga['tipo'] ?? '');
         try {
-            $resumo = IntegracaoService::importarCargaCap($carga);
+            $resumo = $tipo === 'clientes'
+                ? IntegracaoService::importarCargaClientes($carga)
+                : IntegracaoService::importarCargaCap($carga);
         } catch (\Exception $e) {
             json_erro($e->getMessage());
         }
-        auditar('importar', 'integracao', 0, 'carga CAP ' . ($resumo['ano'] ?? '?') . ' — ' . $resumo['vinculados'] . ' vinculados');
-        json_ok(['resumo' => $resumo]);
+        $detalhe = $tipo === 'clientes'
+            ? 'carga clientes — ' . $resumo['criados'] . ' criados, ' . $resumo['atualizados'] . ' atualizados'
+            : 'carga CAP ' . ($resumo['ano'] ?? '?') . ' — ' . $resumo['vinculados'] . ' vinculados';
+        auditar('importar', 'integracao', 0, $detalhe);
+        json_ok(['resumo' => $resumo, 'tipo' => $tipo]);
     }
 
     public function sincronizar(): void

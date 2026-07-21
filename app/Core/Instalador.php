@@ -347,6 +347,15 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '26'"
             );
         }
+        if ($versao < 27) {
+            // Carga de clientes do Qlik: código do cliente no ERP (upsert idempotente)
+            self::adicionarColuna('clientes', 'cod_erp',
+                'cod_erp INT NULL COMMENT "código do cliente no ERP (vincula as cargas do Qlik)" AFTER prospecto');
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '27')
+                 ON DUPLICATE KEY UPDATE valor = '27'"
+            );
+        }
     }
 
     /** Fase 6E (refinamento): características fisiológicas por estágio (cartão ilustrado). */
