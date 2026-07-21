@@ -69,10 +69,11 @@ class RelatorioSafraService
                FROM visitas WHERE cliente_id = ? AND data_visita BETWEEN ? AND ?',
             [$clienteId, $inicio, $fim]
         );
+        // GROUP BY pelo próprio alias selecionado (ONLY_FULL_GROUP_BY do MySQL 8)
         $visitasPorMes = Database::todos(
             "SELECT DATE_FORMAT(data_visita, '%m/%Y') AS mes, COUNT(*) AS total
                FROM visitas WHERE cliente_id = ? AND data_visita BETWEEN ? AND ?
-              GROUP BY DATE_FORMAT(data_visita, '%Y-%m') ORDER BY MIN(data_visita)",
+              GROUP BY mes ORDER BY MIN(data_visita)",
             [$clienteId, $inicio, $fim]
         );
         $recomendacoes = Database::todos(

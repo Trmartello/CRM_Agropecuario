@@ -46,6 +46,9 @@
             <?php if ($l['visitas'] > $l['finalizadas']): ?>
               <div class="small text-warning" title="Visitas com cadastro incompleto"><?= numero($l['visitas'] - $l['finalizadas']) ?> incompleta(s)</div>
             <?php endif; ?>
+            <?php if ($l['duracao_media'] !== null): ?>
+              <div class="small text-muted" title="Duração média real (botão Iniciar Visita)"><i class="bi bi-stopwatch"></i> ~<?= $l['duracao_media'] ?> min</div>
+            <?php endif; ?>
           </td>
           <td class="text-center d-none d-lg-table-cell"><?= numero($l['produtores']) ?> / <?= numero($l['carteira']) ?></td>
           <td class="text-center">

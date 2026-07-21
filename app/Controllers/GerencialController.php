@@ -37,7 +37,7 @@ class GerencialController
                JOIN pedidos p ON p.id = pi.pedido_id AND p.status IN ('Aprovado','Faturado') AND p.criado_em >= ?
                JOIN produtos pr ON pr.id = pi.produto_id
                JOIN familias_produto f ON f.id = pr.familia_id
-              GROUP BY f.id ORDER BY total DESC",
+              GROUP BY f.id, f.nome ORDER BY total DESC",
             [$inicioMes]
         );
 

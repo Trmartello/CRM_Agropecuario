@@ -17,6 +17,19 @@
 <dl class="row small">
   <dt class="col-5">Propriedade / talhão</dt><dd class="col-7"><?= e($visita['propriedade'] ?? '—') ?><?= $visita['talhao'] ? ' · ' . e($visita['talhao']) : '' ?></dd>
   <dt class="col-5">Cultura / estágio</dt><dd class="col-7"><?= e($visita['cultura'] ?? '—') ?><?= $visita['estagio_cultura'] ? ' · ' . e($visita['estagio_cultura']) : '' ?></dd>
+  <?php if (!empty($visita['hora_inicio'])): ?>
+    <dt class="col-5">Duração no campo</dt>
+    <dd class="col-7">
+      <?= substr($visita['hora_inicio'], 0, 5) ?><?php if (!empty($visita['hora_fim'])): ?> — <?= substr($visita['hora_fim'], 0, 5) ?>
+        <?php $durMin = (int) round((strtotime($visita['hora_fim']) - strtotime($visita['hora_inicio'])) / 60); ?>
+        <?php if ($durMin > 0): ?><span class="badge text-bg-success-subtle text-success border border-success"><?= $durMin ?> min</span><?php endif; ?>
+      <?php endif; ?>
+    </dd>
+  <?php endif; ?>
+  <?php if (isset($visita['produtor_presente']) && $visita['produtor_presente'] !== null): ?>
+    <dt class="col-5">Produtor presente</dt>
+    <dd class="col-7"><span class="badge text-bg-<?= (int) $visita['produtor_presente'] === 1 ? 'success' : 'secondary' ?>"><?= (int) $visita['produtor_presente'] === 1 ? 'Sim' : 'Não' ?></span></dd>
+  <?php endif; ?>
   <?php if ($visita['objetivo']): ?><dt class="col-5">Objetivo</dt><dd class="col-7"><?= e($visita['objetivo']) ?></dd><?php endif; ?>
   <?php if ($visita['desenvolvimento']): ?><dt class="col-5">Desenvolvimento</dt><dd class="col-7"><?= e($visita['desenvolvimento']) ?></dd><?php endif; ?>
   <?php if ($visita['pragas']): ?><dt class="col-5">Pragas</dt><dd class="col-7"><?= e($visita['pragas']) ?></dd><?php endif; ?>

@@ -183,6 +183,9 @@ CREATE TABLE visitas (
   latitude DECIMAL(10,7),
   longitude DECIMAL(10,7),
   sincronizada_offline TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = criada offline e sincronizada depois',
+  hora_inicio TIME NULL COMMENT 'botão Iniciar Visita (carimba a chegada no campo)',
+  hora_fim TIME NULL COMMENT 'preenchida ao salvar quando a visita foi iniciada — dá a duração real',
+  produtor_presente TINYINT(1) NULL COMMENT '1/0 = produtor estava presente na visita (NULL = não informado)',
   finalizada TINYINT(1) NOT NULL DEFAULT 1 COMMENT '0 = cadastro salvo incompleto (não finalizada)',
   completude TINYINT NOT NULL DEFAULT 100 COMMENT 'percentual de campos do cadastro preenchidos (0-100)',
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1328,5 +1331,5 @@ CREATE TABLE sync_processados (
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','23')
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','24')
   ON DUPLICATE KEY UPDATE valor = '16';

@@ -70,7 +70,23 @@
             </div>
             <div class="col-md-8">
               <label class="form-label">Objetivo <span class="text-danger" title="Obrigatório para finalizar">*</span></label>
-              <input name="objetivo" class="form-control" placeholder="Ex.: acompanhamento fitossanitário">
+              <input name="objetivo" class="form-control" placeholder="Toque num motivo abaixo ou escreva…">
+              <!-- Motivos de 1 toque (preenchem o objetivo; texto continua livre) -->
+              <div class="d-flex flex-wrap gap-1 mt-2" id="visitaMotivos">
+                <?php foreach (['Rotina', 'Monitoramento fitossanitário', 'Pós-venda', 'Negociação de manejo', 'Planejamento de safra', 'Cobrança / crédito'] as $motivo): ?>
+                  <button type="button" class="btn btn-sm btn-outline-success motivo-chip" onclick="Visitas.usarMotivo(this)"><?= e($motivo) ?></button>
+                <?php endforeach; ?>
+              </div>
+            </div>
+            <div class="col-12">
+              <!-- Iniciar Visita: carimba a chegada; ao salvar, a duração real é registrada -->
+              <div class="d-flex align-items-center gap-2 flex-wrap border rounded p-2 bg-light-subtle">
+                <button type="button" class="btn btn-success" id="btnIniciarVisita" onclick="Visitas.iniciarVisita()">
+                  <i class="bi bi-play-circle me-1"></i>Iniciar Visita
+                </button>
+                <span id="visitaInicioStatus" class="small text-muted">Toque ao chegar na propriedade — a duração real da visita é registrada.</span>
+                <input type="hidden" name="hora_inicio"><input type="hidden" name="hora_fim">
+              </div>
             </div>
           </div>
           <!-- Linha do tempo da cultura do talhão (plantio → fase atual) -->
@@ -145,6 +161,24 @@
             </div>
           </div>
           <div id="visitaFotosPreview" class="d-flex flex-wrap gap-2 mb-4"></div>
+
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <div class="border rounded p-2 h-100">
+                <label class="form-label mb-1"><i class="bi bi-alarm me-1 text-success"></i><strong>Próximo retorno</strong>
+                  <span class="text-muted small">(cria o compromisso na sua Agenda)</span></label>
+                <input type="date" name="proximo_retorno" class="form-control" min="<?= date('Y-m-d', strtotime('+1 day')) ?>">
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="border rounded p-2 h-100 d-flex align-items-center">
+                <div class="form-check form-switch fs-5 mb-0">
+                  <input class="form-check-input" type="checkbox" id="visitaProdutorPresente" name="produtor_presente" value="1" checked>
+                  <label class="form-check-label fs-6" for="visitaProdutorPresente"><i class="bi bi-person-check me-1 text-success"></i>Produtor presente na visita?</label>
+                </div>
+              </div>
+            </div>
+          </div>
 
           <div class="card border-secondary-subtle">
             <div class="card-header py-2"><i class="bi bi-shop me-1"></i><strong>Concorrência</strong> <span class="text-muted small">(opcional — o produtor compra de outro fornecedor?)</span></div>

@@ -12,7 +12,51 @@
       </p>
       <button class="btn btn-success" onclick="Visitas.nova()"><i class="bi bi-clipboard2-plus me-1"></i>Nova Visita</button>
     </div>
-    <div class="card">
+    <!-- Celular: cartões de campo (1 produtor por cartão, ações em 1 toque) -->
+    <div class="d-md-none">
+      <?php foreach ($prioridades as $i => $p): ?>
+      <?php
+        $telDig = preg_replace('/\D/', '', (string) ($p['telefone'] ?? ''));
+        $wa = $telDig !== '' ? '55' . ltrim($telDig, '0') : '';
+        $cpClasse = $p['dias_sem_visita'] >= 90 ? 'cp-vencida' : ($p['dias_sem_visita'] >= 60 ? 'cp-atencao' : 'cp-emdia');
+      ?>
+      <div class="card mb-2 cartao-prior <?= $cpClasse ?>">
+        <div class="card-body py-2 px-3">
+          <div class="d-flex justify-content-between align-items-start gap-2">
+            <div>
+              <span class="badge rounded-pill text-bg-<?= $i < 3 ? 'danger' : 'success' ?>"><?= $i + 1 ?>º</span>
+              <strong><?= e($p['nome']) ?></strong>
+              <?= selo_segmento($p['segmento_manual'] ?? null, $p['segmento'] ?? null, true) ?>
+              <?php if ($p['risco_churn']): ?><span class="badge text-bg-danger">Churn −<?= $p['queda_percentual'] ?>%</span><?php endif; ?>
+              <div class="small text-muted"><?= e($p['municipio'] ?? '—') ?> · <?= e($p['nivel_tecnologico']) ?></div>
+            </div>
+            <div class="text-end">
+              <div class="small <?= $p['dias_sem_visita'] >= 120 ? 'text-danger fw-bold' : 'text-muted' ?>">
+                <i class="bi bi-clock-history"></i> <?= $p['dias_sem_visita'] >= 120 ? '120+' : $p['dias_sem_visita'] ?> d
+              </div>
+              <div class="progress mt-1" style="width:64px;height:7px" title="score <?= $p['score'] ?>">
+                <div class="progress-bar bg-<?= $p['score'] >= 60 ? 'danger' : ($p['score'] >= 40 ? 'warning' : 'success') ?>" style="width:<?= $p['score'] ?>%"></div>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-2">
+            <?php if (($p['ultima_completude'] ?? null) !== null && !$p['ultima_finalizada']): ?>
+              <button class="btn btn-warning flex-grow-1" onclick="Visitas.editar(<?= (int) $p['ultima_visita_id'] ?>)"><i class="bi bi-pencil-square me-1"></i>Completar (<?= (int) $p['ultima_completude'] ?>%)</button>
+            <?php else: ?>
+              <button class="btn btn-success flex-grow-1" onclick="Visitas.nova(<?= $p['id'] ?>)"><i class="bi bi-clipboard2-plus me-1"></i>Visitar</button>
+            <?php endif; ?>
+            <?php if ($wa !== ''): ?>
+              <a class="btn btn-outline-success" target="_blank" href="https://wa.me/<?= e($wa) ?>" title="WhatsApp"><i class="bi bi-whatsapp"></i></a>
+              <a class="btn btn-outline-secondary" href="tel:+<?= e($wa) ?>" title="Ligar"><i class="bi bi-telephone"></i></a>
+            <?php endif; ?>
+          </div>
+        </div>
+      </div>
+      <?php endforeach; ?>
+      <?php if (!$prioridades): ?><div class="text-center text-muted py-4">Nenhum produtor na carteira.</div><?php endif; ?>
+    </div>
+
+    <div class="card d-none d-md-block">
       <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
           <thead class="table-light">

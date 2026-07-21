@@ -6,22 +6,60 @@ $queda = $painel['queda'];
 $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
 ?>
 <div class="mb-3">
-  <div class="d-flex align-items-start justify-content-between gap-2 flex-wrap">
-    <div>
-      <h4 class="mb-0"><?= e($cliente['nome']) ?></h4>
-      <div class="text-muted small">
-        <?= e($cliente['situacao']) ?> · <?= e($cliente['municipio'] ?? '—') ?>/<?= e($cliente['estado'] ?? '') ?>
-        <?= $cliente['cpf_cnpj'] ? ' · ' . e($cliente['cpf_cnpj']) : '' ?>
+  <?php
+    // Cartão do produtor (estilo app de campo): contato e ação principal em 1 toque
+    $telefoneDigitos = preg_replace('/\D/', '', (string) ($cliente['telefone'] ?? ''));
+    $whatsapp = $telefoneDigitos !== '' ? '55' . ltrim($telefoneDigitos, '0') : '';
+    $areaTotalFicha = 0.0;
+    foreach ($propriedades as $prTmp) {
+        $areaTotalFicha += (float) (($prTmp['area_gps'] ?? null) ?: $prTmp['area_ha']);
+    }
+    $ultimaVisitaFicha = $historico[0]['data_visita'] ?? null;
+    $diasSemVisita = $ultimaVisitaFicha ? (int) floor((time() - strtotime($ultimaVisitaFicha)) / 86400) : null;
+  ?>
+  <div class="cartao-produtor mb-3">
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+      <div class="cartao-produtor-avatar"><?= e(mb_strtoupper(mb_substr(trim($cliente['nome']), 0, 1))) ?></div>
+      <div class="flex-grow-1">
+        <h4 class="mb-0 text-white"><?= e($cliente['nome']) ?></h4>
+        <div class="cartao-produtor-sub">
+          <?= e($cliente['municipio'] ?? '—') ?>/<?= e($cliente['estado'] ?? '') ?> · <?= e($cliente['situacao']) ?>
+          <?= $cliente['cpf_cnpj'] ? ' · ' . e($cliente['cpf_cnpj']) : '' ?>
+        </div>
+        <div class="d-flex gap-1 flex-wrap mt-1">
+          <?= selo_segmento($cliente['segmento_manual'] ?? null, $cliente['segmento'] ?? null) ?>
+          <span class="badge text-bg-<?= $corInad ?>" title="<?= $inad['inadimplente'] ? moeda($inad['valor_vencido']) . ' vencido há ' . $inad['dias_atraso'] . ' dias' : 'Sem títulos vencidos' ?>"><?= e($inad['grau']) ?></span>
+          <span class="badge text-bg-<?= ['A' => 'success', 'B' => 'primary', 'C' => 'warning', 'D' => 'danger'][$credito['score']] ?>">Score <?= $credito['score'] ?></span>
+        </div>
       </div>
     </div>
-    <div class="d-flex gap-2 align-items-center flex-wrap">
-      <a class="btn btn-sm btn-outline-success" target="_blank" title="Relatório de fechamento de safra (imprimível)"
+    <div class="row g-2 mt-1">
+      <div class="col-4"><div class="cartao-produtor-tile"><div class="ct-valor"><?= numero($areaTotalFicha, 0) ?> ha</div><div class="ct-rotulo">área total</div></div></div>
+      <div class="col-4"><div class="cartao-produtor-tile"><div class="ct-valor"><?= moeda($cliente['limite_credito']) ?></div><div class="ct-rotulo">limite de crédito</div></div></div>
+      <div class="col-4"><div class="cartao-produtor-tile"><div class="ct-valor"><?= $diasSemVisita === null ? '—' : $diasSemVisita . ' d' ?></div><div class="ct-rotulo">sem visita</div></div></div>
+    </div>
+    <button class="btn btn-light btn-lg w-100 mt-2 fw-bold text-success" onclick="Visitas.nova(<?= (int) $cliente['id'] ?>)">
+      <i class="bi bi-clipboard2-plus me-2"></i>Registrar Visita
+    </button>
+    <div class="row g-2 mt-0">
+      <div class="col-6">
+        <?php if ($telefoneDigitos !== ''): ?>
+          <a class="btn btn-outline-light w-100" href="tel:+<?= e($whatsapp) ?>"><i class="bi bi-telephone me-1"></i>Ligar</a>
+        <?php else: ?>
+          <button class="btn btn-outline-light w-100" disabled title="Sem telefone no cadastro"><i class="bi bi-telephone me-1"></i>Ligar</button>
+        <?php endif; ?>
+      </div>
+      <div class="col-6">
+        <?php if ($whatsapp !== ''): ?>
+          <a class="btn btn-outline-light w-100" target="_blank" href="https://wa.me/<?= e($whatsapp) ?>"><i class="bi bi-whatsapp me-1"></i>WhatsApp</a>
+        <?php else: ?>
+          <button class="btn btn-outline-light w-100" disabled title="Sem telefone no cadastro"><i class="bi bi-whatsapp me-1"></i>WhatsApp</button>
+        <?php endif; ?>
+      </div>
+    </div>
+    <div class="text-center mt-2">
+      <a class="btn btn-sm btn-outline-light" target="_blank" title="Relatório de fechamento de safra (imprimível)"
          href="<?= url('relatorios/safra') ?>&cliente=<?= (int) $cliente['id'] ?>"><i class="bi bi-file-earmark-bar-graph me-1"></i>Fechamento de safra</a>
-      <span class="fs-6"><?= selo_segmento($cliente['segmento_manual'] ?? null, $cliente['segmento'] ?? null) ?></span>
-      <span class="badge fs-6 text-bg-<?= $corInad ?>" title="<?= $inad['inadimplente'] ? moeda($inad['valor_vencido']) . ' vencido há ' . $inad['dias_atraso'] . ' dias' : 'Sem títulos vencidos' ?>">
-        <?= e($inad['grau']) ?>
-      </span>
-      <span class="badge fs-6 text-bg-<?= ['A' => 'success', 'B' => 'primary', 'C' => 'warning', 'D' => 'danger'][$credito['score']] ?>">Score <?= $credito['score'] ?></span>
     </div>
   </div>
   <?php if ($queda['risco_churn']): ?>

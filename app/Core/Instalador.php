@@ -304,6 +304,19 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '23'"
             );
         }
+        if ($versao < 24) {
+            // Visita rápida de campo: Iniciar Visita (duração real) + produtor presente
+            self::adicionarColuna('visitas', 'hora_inicio',
+                'hora_inicio TIME NULL COMMENT "botão Iniciar Visita (carimba a chegada no campo)" AFTER sincronizada_offline');
+            self::adicionarColuna('visitas', 'hora_fim',
+                'hora_fim TIME NULL COMMENT "preenchida ao salvar quando a visita foi iniciada — dá a duração real" AFTER hora_inicio');
+            self::adicionarColuna('visitas', 'produtor_presente',
+                'produtor_presente TINYINT(1) NULL COMMENT "1/0 = produtor estava presente na visita (NULL = não informado)" AFTER hora_fim');
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '24')
+                 ON DUPLICATE KEY UPDATE valor = '24'"
+            );
+        }
     }
 
     /** Fase 6E (refinamento): características fisiológicas por estágio (cartão ilustrado). */

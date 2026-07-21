@@ -34,7 +34,7 @@ class PriorizacaoService
     public static function listaPriorizada(string $filtroCarteira, array $params, int $limite = 0): array
     {
         $clientes = Database::todos(
-            "SELECT c.id, c.nome, c.municipio, c.nivel_tecnologico,
+            "SELECT c.id, c.nome, c.municipio, c.telefone, c.nivel_tecnologico,
                     c.volume_compra_anual, c.potencial_venda, c.segmento, c.segmento_manual,
                     (SELECT MAX(v.data_visita) FROM visitas v WHERE v.cliente_id = c.id) AS ultima_visita,
                     (SELECT v2.completude FROM visitas v2 WHERE v2.cliente_id = c.id

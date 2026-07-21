@@ -34,6 +34,8 @@ class DesempenhoService
                     SUM(v.finalizada = 1) AS finalizadas,
                     COUNT(DISTINCT v.cliente_id) AS produtores,
                     COUNT(DISTINCT CASE WHEN c.ativo = 1 AND c.responsavel_id = v.usuario_id THEN v.cliente_id END) AS produtores_carteira,
+                    AVG(CASE WHEN v.hora_inicio IS NOT NULL AND v.hora_fim IS NOT NULL AND v.hora_fim > v.hora_inicio
+                             THEN TIME_TO_SEC(TIMEDIFF(v.hora_fim, v.hora_inicio)) / 60 END) AS duracao_media,
                     SUM(EXISTS (
                         SELECT 1 FROM pedidos p
                          WHERE p.cliente_id = v.cliente_id
@@ -114,6 +116,7 @@ class DesempenhoService
                 'carteira' => $carteira,
                 'visitas' => $totalVisitas,
                 'finalizadas' => (int) ($v['finalizadas'] ?? 0),
+                'duracao_media' => isset($v['duracao_media']) && $v['duracao_media'] !== null ? (int) round((float) $v['duracao_media']) : null,
                 'produtores' => $produtores,
                 // Cobertura mede a PRÓPRIA carteira: visitas a clientes de outros
                 // responsáveis contam como visita, mas não como cobertura.

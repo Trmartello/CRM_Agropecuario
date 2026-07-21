@@ -1197,6 +1197,12 @@ const Visitas = {
     const chk = document.getElementById('visitaChecklist'); if (chk) chk.innerHTML = '';
     Visitas._fenoManualId = null;
     Visitas._fenoTalhao = null;
+    // Estado do "Iniciar Visita" e dos chips de motivo
+    const btnIni = document.getElementById('btnIniciarVisita');
+    if (btnIni) btnIni.disabled = false;
+    const stIni = document.getElementById('visitaInicioStatus');
+    if (stIni) stIni.textContent = 'Toque ao chegar na propriedade — a duração real da visita é registrada.';
+    document.querySelectorAll('#visitaMotivos .motivo-chip').forEach(b => b.classList.remove('active'));
     Visitas.irParaEtapa(1);
     document.getElementById('visitaFotosPreview').innerHTML = '';
     Visitas.atualizarCompletude();
@@ -1265,9 +1271,49 @@ const Visitas = {
         if (el.tagName === 'TEXTAREA') App.autoCrescer(el);
       }
     });
+    // Iniciar Visita / presença: recupera o que já foi registrado
+    if (visita.hora_inicio) {
+      form.querySelector('[name=hora_inicio]').value = String(visita.hora_inicio).substring(0, 5);
+      if (visita.hora_fim) form.querySelector('[name=hora_fim]').value = String(visita.hora_fim).substring(0, 5);
+      Visitas._mostrarInicio(String(visita.hora_inicio).substring(0, 5));
+    }
+    const presente = form.querySelector('[name=produtor_presente]');
+    if (presente && visita.produtor_presente !== null && visita.produtor_presente !== undefined) {
+      presente.checked = Number(visita.produtor_presente) === 1;
+    }
     // Linha do tempo + checklist já marcado na visita original
     Visitas.renderFenologia(visita.checklist || []);
     Visitas.atualizarCompletude();
+  },
+
+  /** Motivo de 1 toque: preenche o Objetivo (o texto continua livre/editável). */
+  usarMotivo(btn) {
+    const campo = document.querySelector('#formVisita [name=objetivo]');
+    if (!campo) return;
+    campo.value = btn.textContent.trim();
+    document.querySelectorAll('#visitaMotivos .motivo-chip').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    Visitas.atualizarCompletude();
+  },
+
+  _horaAgora() {
+    const d = new Date();
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  },
+
+  /** "Iniciar Visita": carimba a chegada; a hora_fim é gravada ao salvar. */
+  iniciarVisita() {
+    const form = document.getElementById('formVisita');
+    const hora = Visitas._horaAgora();
+    form.querySelector('[name=hora_inicio]').value = hora;
+    Visitas._mostrarInicio(hora);
+  },
+
+  _mostrarInicio(hora) {
+    const status = document.getElementById('visitaInicioStatus');
+    const btn = document.getElementById('btnIniciarVisita');
+    if (status) status.innerHTML = `<span class="text-success fw-semibold"><i class="bi bi-check-circle-fill me-1"></i>Iniciada às ${App.escapeHtml(hora)}</span> — a duração é registrada ao salvar.`;
+    if (btn) btn.disabled = true;
   },
 
   /** Divide o campo único de data+hora nos campos que o servidor espera. */
@@ -1884,6 +1930,10 @@ const Visitas = {
       const sel = document.getElementById('visitaCliente');
       const nome = sel && sel.selectedOptions[0] ? sel.selectedOptions[0].text : 'Visita';
       const editando = Number(form.querySelector('[name=id]').value) > 0;
+      // Visita iniciada: o salvar carimba o fim (duração real no campo)
+      const hIni = form.querySelector('[name=hora_inicio]');
+      const hFim = form.querySelector('[name=hora_fim]');
+      if (hIni && hFim && hIni.value && !hFim.value) hFim.value = Visitas._horaAgora();
       const r = await App.enviarFormOffline(form, 'index.php?r=visitas/salvar', { modulo: 'Visitas', rotulo: (editando ? 'Completar visita — ' : 'Visita — ') + nome });
       bootstrap.Modal.getInstance('#modalVisita').hide();
       if (r.offline) {

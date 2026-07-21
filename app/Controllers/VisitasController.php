@@ -190,6 +190,9 @@ class VisitasController
             trim($_POST['recomendacao'] ?? '') ?: null,
             $_POST['latitude'] !== '' ? (float) $_POST['latitude'] : null,
             $_POST['longitude'] !== '' ? (float) $_POST['longitude'] : null,
+            preg_match('/^\d{2}:\d{2}$/', $_POST['hora_inicio'] ?? '') ? $_POST['hora_inicio'] : null,
+            preg_match('/^\d{2}:\d{2}$/', $_POST['hora_fim'] ?? '') ? $_POST['hora_fim'] : null,
+            isset($_POST['produtor_presente']) ? 1 : 0,
         ];
 
         $visitaId = (int) ($_POST['id'] ?? 0);
@@ -210,7 +213,8 @@ class VisitasController
                 'UPDATE visitas SET cliente_id=?, propriedade_id=?, talhao_id=?, cultura_id=?, data_visita=?, hora=?,
                         objetivo=?, estagio_cultura=?, desenvolvimento=?, pragas=?, doencas=?, plantas_daninhas=?,
                         deficiencia_nutricional=?, condicoes_climaticas=?, observacoes=?, recomendacao=?,
-                        latitude=?, longitude=?, finalizada=?, completude=? WHERE id=?',
+                        latitude=?, longitude=?, hora_inicio=?, hora_fim=?, produtor_presente=?,
+                        finalizada=?, completude=? WHERE id=?',
                 array_merge([$clienteId], $campos, [$finalizada, $completude, $visitaId])
             );
             $fotosIgnoradas = $this->salvarFotos($visitaId);
@@ -233,8 +237,9 @@ class VisitasController
                 'INSERT INTO visitas (cliente_id, propriedade_id, talhao_id, cultura_id, usuario_id, data_visita, hora,
                         objetivo, estagio_cultura, desenvolvimento, pragas, doencas, plantas_daninhas,
                         deficiencia_nutricional, condicoes_climaticas, observacoes, recomendacao,
-                        latitude, longitude, sincronizada_offline, finalizada, completude)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                        latitude, longitude, hora_inicio, hora_fim, produtor_presente,
+                        sincronizada_offline, finalizada, completude)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                 array_merge(
                     [$clienteId],
                     array_slice($campos, 0, 3),
@@ -252,6 +257,25 @@ class VisitasController
             // Amarra automaticamente a quilometragem do dia (mesmo técnico/produtor) a esta visita
             \App\Services\DespesaService::vincularVisitaPorEvento($visitaId, Auth::id(), $clienteId, $data);
             $notificar = trim($_POST['recomendacao'] ?? '') !== '';
+        }
+
+        // Próximo retorno combinado na visita → compromisso na Agenda do técnico
+        $retorno = trim($_POST['proximo_retorno'] ?? '');
+        if ($retorno !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $retorno) && $retorno > date('Y-m-d')) {
+            $jaAgendado = Database::valor(
+                'SELECT 1 FROM agenda_eventos
+                  WHERE usuario_id = ? AND cliente_id = ? AND data = ? AND tipo = "Visita" AND status = "Pendente" LIMIT 1',
+                [Auth::id(), $clienteId, $retorno]
+            );
+            if (!$jaAgendado) {
+                $nomeCliente = (string) Database::valor('SELECT nome FROM clientes WHERE id = ?', [$clienteId]);
+                Database::executar(
+                    'INSERT INTO agenda_eventos (usuario_id, cliente_id, tipo, titulo, data, status, descricao)
+                     VALUES (?,?, "Visita", ?, ?, "Pendente", ?)',
+                    [Auth::id(), $clienteId, 'Retorno — ' . $nomeCliente, $retorno,
+                     'Retorno combinado na visita de ' . data_br($data)]
+                );
+            }
         }
 
         // Notifica o produtor (portal) quando há recomendação técnica nova

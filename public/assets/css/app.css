@@ -284,3 +284,25 @@ textarea.auto-crescer { resize: vertical; overflow: hidden; min-height: 38px; li
 /* Microfone em campos criados dinamicamente (ex.: observação do checklist) */
 body.voz-suportada .campo-voz .btn-voz { display: inline-flex; }
 .campo-voz .form-control-sm + .btn-voz { width: 1.7rem; height: 1.7rem; font-size: .8rem; }
+
+/* Cartão do produtor (topo da ficha — estilo app de campo) */
+.cartao-produtor {
+  background: linear-gradient(150deg, #1b5e20, #2e7d32 70%, #388e3c);
+  border-radius: 16px; padding: 1rem; color: #fff;
+}
+.cartao-produtor-avatar {
+  width: 64px; height: 64px; border-radius: 18px; background: #e8f5e9; color: #1b5e20;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.8rem; font-weight: 800; flex: 0 0 64px;
+}
+.cartao-produtor-sub { color: #d3e6d4; font-size: .85rem; }
+.cartao-produtor-tile {
+  background: rgba(255,255,255,.13); border-radius: 10px; padding: .45rem .3rem; text-align: center;
+}
+.cartao-produtor-tile .ct-valor { font-weight: 700; font-size: .95rem; }
+.cartao-produtor-tile .ct-rotulo { font-size: .64rem; text-transform: uppercase; letter-spacing: .04em; color: #cfe4d0; }
+
+/* Priorização em cartões no celular */
+.cartao-prior { border-left: 5px solid #2e7d32; border-radius: 12px; }
+.cartao-prior.cp-atencao { border-left-color: #e0a800; }
+.cartao-prior.cp-vencida { border-left-color: #c62828; }
