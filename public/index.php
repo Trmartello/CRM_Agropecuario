@@ -222,6 +222,7 @@ $router->registrar('portal', \App\Controllers\PortalController::class, 'index');
 $router->registrar('integracao', \App\Controllers\IntegracaoController::class, 'index');
 $router->registrar('integracao/salvar-config', \App\Controllers\IntegracaoController::class, 'salvarConfig');
 $router->registrar('integracao/sincronizar', \App\Controllers\IntegracaoController::class, 'sincronizar');
+$router->registrar('integracao/importar-carga', \App\Controllers\IntegracaoController::class, 'importarCarga');
 
 // Relatórios
 $router->registrar('relatorios/potencial', RelatoriosController::class, 'potencial');

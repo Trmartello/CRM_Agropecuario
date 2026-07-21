@@ -94,3 +94,23 @@ API REST do Qlik Cloud diretamente. Falta apenas:
 > Alternativa sem API key: exportação periódica agendada no Qlik (Automations)
 > para um endpoint do CRM (`integracao/receber`, autenticado por token). Menos
 > acoplada, porém depende de manutenção no lado Qlik.
+
+## Carga inicial do CAP (implementada — schema v26)
+
+Enquanto a API key não sai, a carga inicial funciona por **arquivo**:
+
+1. Os dados anuais (meta/realizado por vendedor × indicador) foram extraídos do
+   app CAP pelo conector (folha "Exportação CRM (temporária)" criada no app do
+   espaço **Desenvolvimento** — pode ser apagada depois) e viram um JSON
+   `{ tipo: "cap_anual", ano, vendedores: [ { cod, nome, cpf, indicadores:
+   [ { codigo, indicador, meta, realizado } ] } ] }`.
+2. No CRM: **Usuários** ganhou o campo **Cód. vendedor (ERP/CAP)**
+   (`usuarios.cod_vendedor`, migração v26) — é ele que liga o vendedor do
+   Qlik ao usuário do CRM (o e-mail não existe associado no modelo Qlik).
+3. **Integração → "Carga inicial do CAP (arquivo do Qlik)"** (Administrador):
+   upload do JSON → `IntegracaoService::importarCargaCap` substitui as metas
+   do ano (`metas_cap` com período 01/01–31/12 + `realizado_cap` com
+   `data_ref` = dia da carga; unidade deduzida do sufixo do indicador).
+   Vendedores sem `cod_vendedor` correspondente são listados no resultado —
+   preencher o código no cadastro e reimportar (idempotente).
+4. O log aparece no histórico de sincronização (fonte CAPE, entidade metas_cap).

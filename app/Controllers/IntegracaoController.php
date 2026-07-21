@@ -31,6 +31,29 @@ class IntegracaoController
         json_ok();
     }
 
+    /** Upload da carga inicial extraída do Qlik (JSON) — metas/realizado do CAP. */
+    public function importarCarga(): void
+    {
+        Permissoes::exigir(['Administrador']);
+        if (empty($_FILES['arquivo']['tmp_name']) || !is_uploaded_file($_FILES['arquivo']['tmp_name'])) {
+            json_erro('Selecione o arquivo JSON da carga.');
+        }
+        if ($_FILES['arquivo']['size'] > 10 * 1024 * 1024) {
+            json_erro('Arquivo muito grande (máximo 10 MB).');
+        }
+        $carga = json_decode((string) file_get_contents($_FILES['arquivo']['tmp_name']), true);
+        if (!is_array($carga)) {
+            json_erro('O arquivo não é um JSON válido.');
+        }
+        try {
+            $resumo = IntegracaoService::importarCargaCap($carga);
+        } catch (\Exception $e) {
+            json_erro($e->getMessage());
+        }
+        auditar('importar', 'integracao', 0, 'carga CAP ' . ($resumo['ano'] ?? '?') . ' — ' . $resumo['vinculados'] . ' vinculados');
+        json_ok(['resumo' => $resumo]);
+    }
+
     public function sincronizar(): void
     {
         Permissoes::exigir(['Administrador']);

@@ -2190,6 +2190,7 @@ const Usuarios = {
     form.querySelector('[name=perfil]').value = u.perfil;
     form.querySelector('[name=telefone]').value = u.telefone || '';
     form.querySelector('[name=categoria_reembolso_id]').value = u.categoria_reembolso_id || 0;
+    form.querySelector('[name=cod_vendedor]').value = u.cod_vendedor || '';
     form.querySelector('[name=ativo]').value = u.ativo;
     document.getElementById('modalUsuarioTitulo').textContent = 'Editar Usuário';
     new bootstrap.Modal('#modalUsuario').show();

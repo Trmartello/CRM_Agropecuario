@@ -338,6 +338,15 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '25'"
             );
         }
+        if ($versao < 26) {
+            // Integração Qlik/ERP: código do vendedor no ERP vincula as cargas do CAP
+            self::adicionarColuna('usuarios', 'cod_vendedor',
+                'cod_vendedor INT NULL COMMENT "código do vendedor no ERP/CAP (vincula as cargas do Qlik)" AFTER cliente_id');
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '26')
+                 ON DUPLICATE KEY UPDATE valor = '26'"
+            );
+        }
     }
 
     /** Fase 6E (refinamento): características fisiológicas por estágio (cartão ilustrado). */

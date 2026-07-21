@@ -36,6 +36,7 @@ CREATE TABLE usuarios (
   telefone VARCHAR(30),
   categoria_reembolso_id INT NULL COMMENT 'categoria de reembolso de despesas (KM/refeições)',
   cliente_id INT NULL COMMENT 'produtor vinculado (perfil Produtor — portal)',
+  cod_vendedor INT NULL COMMENT 'código do vendedor no ERP/CAP (vincula as cargas do Qlik)',
   ativo TINYINT(1) NOT NULL DEFAULT 1,
   trocar_senha TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = deve definir nova senha no próximo acesso',
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -1337,5 +1338,5 @@ CREATE TABLE sync_processados (
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','25')
-  ON DUPLICATE KEY UPDATE valor = '25';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','26')
+  ON DUPLICATE KEY UPDATE valor = '26';

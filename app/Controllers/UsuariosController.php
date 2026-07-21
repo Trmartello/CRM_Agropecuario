@@ -43,10 +43,17 @@ class UsuariosController
             $categoriaId = null;
         }
 
+        // Código do vendedor no ERP/CAP (vincula as cargas do Qlik)
+        $codVendedor = (int) ($_POST['cod_vendedor'] ?? 0) ?: null;
+        if ($codVendedor !== null
+            && Database::um('SELECT id FROM usuarios WHERE cod_vendedor = ? AND id <> ?', [$codVendedor, $id])) {
+            json_erro('Já existe um usuário com este código de vendedor (ERP).');
+        }
+
         if ($id > 0) {
             Database::executar(
-                'UPDATE usuarios SET nome=?, email=?, perfil=?, telefone=?, categoria_reembolso_id=?, ativo=? WHERE id=?',
-                [$nome, $email, $perfil, trim($_POST['telefone'] ?? '') ?: null, $categoriaId, (int) ($_POST['ativo'] ?? 1), $id]
+                'UPDATE usuarios SET nome=?, email=?, perfil=?, telefone=?, categoria_reembolso_id=?, cod_vendedor=?, ativo=? WHERE id=?',
+                [$nome, $email, $perfil, trim($_POST['telefone'] ?? '') ?: null, $categoriaId, $codVendedor, (int) ($_POST['ativo'] ?? 1), $id]
             );
             if ($senha !== '') {
                 // Senha definida pelo admin é temporária: o usuário cria a própria no
@@ -62,8 +69,8 @@ class UsuariosController
                 json_erro('Informe a senha do novo usuário.');
             }
             Database::executar(
-                'INSERT INTO usuarios (nome, email, perfil, telefone, categoria_reembolso_id, senha_hash, ativo, trocar_senha) VALUES (?,?,?,?,?,?,1,1)',
-                [$nome, $email, $perfil, trim($_POST['telefone'] ?? '') ?: null, $categoriaId, password_hash($senha, PASSWORD_DEFAULT)]
+                'INSERT INTO usuarios (nome, email, perfil, telefone, categoria_reembolso_id, cod_vendedor, senha_hash, ativo, trocar_senha) VALUES (?,?,?,?,?,?,?,1,1)',
+                [$nome, $email, $perfil, trim($_POST['telefone'] ?? '') ?: null, $categoriaId, $codVendedor, password_hash($senha, PASSWORD_DEFAULT)]
             );
             $id = Database::ultimoId();
         }

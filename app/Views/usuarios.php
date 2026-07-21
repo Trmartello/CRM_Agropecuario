@@ -58,6 +58,10 @@
             <input name="telefone" class="form-control">
           </div>
           <div class="col-6">
+            <label class="form-label">Cód. vendedor <span class="text-muted small">(ERP/CAP)</span></label>
+            <input type="number" name="cod_vendedor" class="form-control" min="1" placeholder="vincula as cargas do Qlik">
+          </div>
+          <div class="col-6">
             <label class="form-label">Categoria de reembolso <span class="text-muted small">(KM/refeições)</span></label>
             <select name="categoria_reembolso_id" class="form-select">
               <option value="0">— não recebe —</option>

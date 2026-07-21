@@ -25,7 +25,24 @@
         </form>
       </div>
     </div>
-    <button class="btn btn-outline-success w-100" onclick="Integracao.sincronizar('_tudo')"><i class="bi bi-arrow-repeat me-1"></i>Sincronizar tudo agora</button>
+    <button class="btn btn-outline-success w-100 mb-3" onclick="Integracao.sincronizar('_tudo')"><i class="bi bi-arrow-repeat me-1"></i>Sincronizar tudo agora</button>
+
+    <div class="card">
+      <div class="card-header"><i class="bi bi-cloud-upload me-2 text-success"></i><strong>Carga inicial do CAP (arquivo do Qlik)</strong></div>
+      <div class="card-body">
+        <p class="text-muted small mb-2">
+          Importa as <strong>metas e o realizado anuais</strong> por vendedor extraídos do app
+          "CAP - Copérdia Alta Performance" (arquivo JSON). O vínculo é pelo
+          <strong>Cód. vendedor (ERP)</strong> preenchido no cadastro de Usuários —
+          vendedores sem vínculo são listados após a importação. Reimportar o mesmo ano substitui a carga anterior.
+        </p>
+        <form id="formCargaCap" onsubmit="return Integracao.importarCarga(event)" class="d-flex gap-2 align-items-center flex-wrap">
+          <input type="file" name="arquivo" class="form-control" accept="application/json,.json" required style="max-width:320px">
+          <button class="btn btn-success"><i class="bi bi-upload me-1"></i>Importar</button>
+        </form>
+        <div id="cargaCapResumo" class="small mt-2"></div>
+      </div>
+    </div>
   </div>
 
   <div class="col-lg-7">
@@ -73,6 +90,22 @@ const Integracao = {
       App.alerta('Configuração salva.');
       setTimeout(() => location.reload(), 600);
     } catch (e) { App.alerta(e.message, 'danger'); }
+    return false;
+  },
+  async importarCarga(ev) {
+    ev.preventDefault();
+    const alvo = document.getElementById('cargaCapResumo');
+    alvo.innerHTML = '<span class="text-muted"><span class="spinner-border spinner-border-sm me-1"></span>Importando…</span>';
+    try {
+      const r = await App.json('index.php?r=integracao/importar-carga', { method: 'POST', body: new FormData(ev.target) });
+      const s = r.resumo;
+      alvo.innerHTML = `<div class="alert alert-${s.vinculados > 0 ? 'success' : 'warning'} py-2 mb-1">
+          Carga ${App.escapeHtml(String(s.ano))}: <strong>${s.vinculados}</strong> de ${s.vendedores_arquivo} vendedor(es) vinculados ·
+          <strong>${s.metas_importadas}</strong> metas importadas.
+        </div>` +
+        (s.sem_usuario.length ? `<details><summary class="text-muted">${s.sem_usuario.length} vendedor(es) sem usuário no CRM (preencha o Cód. vendedor no cadastro e reimporte)</summary>
+          <div class="mt-1" style="max-height:160px;overflow:auto">${s.sem_usuario.map(n => `<div class="text-muted">${App.escapeHtml(n)}</div>`).join('')}</div></details>` : '');
+    } catch (e) { alvo.innerHTML = ''; App.alerta(e.message, 'danger'); }
     return false;
   },
   async sincronizar(entidade) {
