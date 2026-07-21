@@ -42,6 +42,121 @@ class CroquiService
         return $limpos;
     }
 
+    /**
+     * Tolerância (m) para considerar um ponto "dentro" da divisa mesmo
+     * ligeiramente fora — absorve o erro natural do GPS ao caminhar a divisa.
+     */
+    public const TOLERANCIA_DIVISA_M = 15;
+
+    /**
+     * REGRA DE NEGÓCIO: o talhão deve ficar DENTRO da divisa da propriedade.
+     * Devolve os índices dos pontos que caem fora (vazio = contido).
+     */
+    public static function pontosFora(array $pontos, array $divisa): array
+    {
+        if (count($divisa) < 3) {
+            return [];
+        }
+        // Projeta tudo na mesma referência métrica (centro da divisa)
+        $lat0 = array_sum(array_column($divisa, 0)) / count($divisa);
+        $mLat = 110574.0;
+        $mLng = 111320.0 * cos(deg2rad($lat0));
+        $proj = fn ($p) => [$p[1] * $mLng, -$p[0] * $mLat];
+        $poligono = array_map($proj, $divisa);
+
+        $fora = [];
+        foreach ($pontos as $i => $p) {
+            $xy = $proj($p);
+            if (!self::dentro($xy, $poligono) && self::distanciaBordaM($xy, $poligono) > self::TOLERANCIA_DIVISA_M) {
+                $fora[] = $i;
+            }
+        }
+        return $fora;
+    }
+
+    /**
+     * Prende na divisa: pontos fora da propriedade são puxados para o ponto
+     * mais próximo da borda (em vez de recusar o desenho). Devolve os pontos
+     * corrigidos [lat,lng].
+     */
+    public static function prenderNaDivisa(array $pontos, array $divisa): array
+    {
+        if (count($divisa) < 3) {
+            return $pontos;
+        }
+        $lat0 = array_sum(array_column($divisa, 0)) / count($divisa);
+        $mLat = 110574.0;
+        $mLng = 111320.0 * cos(deg2rad($lat0));
+        $proj = fn ($p) => [$p[1] * $mLng, -$p[0] * $mLat];
+        $poligono = array_map($proj, $divisa);
+
+        foreach ($pontos as $i => $p) {
+            $xy = $proj($p);
+            if (self::dentro($xy, $poligono)) {
+                continue;
+            }
+            [$bx, $by] = self::pontoMaisProximoBorda($xy, $poligono);
+            $pontos[$i] = [round(-$by / $mLat, 7), round($bx / $mLng, 7)];
+        }
+        return $pontos;
+    }
+
+    /** Ponto da borda do polígono mais próximo de [x,y] (tudo em metros). */
+    private static function pontoMaisProximoBorda(array $p, array $poligono): array
+    {
+        $melhor = $poligono[0];
+        $menor = INF;
+        $n = count($poligono);
+        for ($i = 0; $i < $n; $i++) {
+            [$ax, $ay] = $poligono[$i];
+            [$bx, $by] = $poligono[($i + 1) % $n];
+            $abx = $bx - $ax; $aby = $by - $ay;
+            $len2 = $abx * $abx + $aby * $aby;
+            $t = $len2 > 0 ? max(0, min(1, (($p[0] - $ax) * $abx + ($p[1] - $ay) * $aby) / $len2)) : 0;
+            $cx = $ax + $t * $abx; $cy = $ay + $t * $aby;
+            $d = ($p[0] - $cx) ** 2 + ($p[1] - $cy) ** 2;
+            if ($d < $menor) {
+                $menor = $d;
+                $melhor = [$cx, $cy];
+            }
+        }
+        return $melhor;
+    }
+
+    /** Ray casting: ponto [x,y] dentro do polígono [[x,y],...]. */
+    private static function dentro(array $p, array $poligono): bool
+    {
+        $dentro = false;
+        $n = count($poligono);
+        for ($i = 0, $j = $n - 1; $i < $n; $j = $i++) {
+            [$xi, $yi] = $poligono[$i];
+            [$xj, $yj] = $poligono[$j];
+            if ((($yi > $p[1]) !== ($yj > $p[1]))
+                && $p[0] < ($xj - $xi) * ($p[1] - $yi) / (($yj - $yi) ?: 1e-12) + $xi) {
+                $dentro = !$dentro;
+            }
+        }
+        return $dentro;
+    }
+
+    /** Menor distância (m) do ponto às bordas do polígono (ambos já em metros). */
+    private static function distanciaBordaM(array $p, array $poligono): float
+    {
+        $menor = INF;
+        $n = count($poligono);
+        for ($i = 0; $i < $n; $i++) {
+            [$ax, $ay] = $poligono[$i];
+            [$bx, $by] = $poligono[($i + 1) % $n];
+            $abx = $bx - $ax; $aby = $by - $ay;
+            $len2 = $abx * $abx + $aby * $aby;
+            $t = $len2 > 0 ? max(0, min(1, (($p[0] - $ax) * $abx + ($p[1] - $ay) * $aby) / $len2)) : 0;
+            $dx = $p[0] - ($ax + $t * $abx);
+            $dy = $p[1] - ($ay + $t * $aby);
+            $menor = min($menor, sqrt($dx * $dx + $dy * $dy));
+        }
+        return $menor;
+    }
+
     /** Projeção local equiretangular: [lat,lng] → metros [x,y] em torno do centro. */
     public static function projetar(array $pontos): array
     {

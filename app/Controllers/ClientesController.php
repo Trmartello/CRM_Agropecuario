@@ -324,6 +324,36 @@ class ClientesController
         } catch (\InvalidArgumentException $e) {
             json_erro($e->getMessage());
         }
+
+        // REGRA: talhão JAMAIS sai da divisa da propriedade
+        if ($ehPropriedade) {
+            // Divisa nova não pode deixar talhões já desenhados para fora
+            $foraDaNova = [];
+            foreach (Database::todos(
+                'SELECT nome, contorno FROM talhoes WHERE propriedade_id = ? AND contorno IS NOT NULL', [$alvoId]
+            ) as $t) {
+                $pts = json_decode((string) $t['contorno'], true) ?: [];
+                if ($pts && \App\Services\CroquiService::pontosFora($pts, $pontos)) {
+                    $foraDaNova[] = $t['nome'];
+                }
+            }
+            if ($foraDaNova) {
+                json_erro('A divisa desenhada deixa talhão(ões) para fora da propriedade: '
+                    . implode(', ', $foraDaNova) . '. Amplie a divisa ou ajuste os talhões antes.');
+            }
+        } else {
+            // Talhão fora da divisa é PRESO na borda da propriedade (não recusa —
+            // a fila offline nunca falha e o desenho fica sempre válido)
+            $divisaJson = Database::valor(
+                'SELECT p.contorno FROM propriedades p JOIN talhoes t ON t.propriedade_id = p.id WHERE t.id = ?',
+                [$alvoId]
+            );
+            $divisa = $divisaJson ? (json_decode((string) $divisaJson, true) ?: []) : [];
+            if ($divisa) {
+                $pontos = \App\Services\CroquiService::prenderNaDivisa($pontos, $divisa);
+            }
+        }
+
         $areaGps = \App\Services\CroquiService::areaHa($pontos);
         Database::executar(
             "UPDATE {$tabela} SET contorno = ?, area_gps = ? WHERE id = ?",

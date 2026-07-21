@@ -273,12 +273,13 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
             <?php endif; ?>
           </span>
           <span class="btn-group">
+            <?php /* nome via json_attr: entidades de e() são decodificadas antes do JS rodar (XSS em onclick) */ ?>
             <?php if ($pa): ?>
               <button class="btn btn-sm btn-outline-success" title="Encerrar plantio registrando a colheita"
-                      onclick="Plantios.colheita(<?= (int) $pa['id'] ?>, '<?= e($t['nome']) ?>')"><i class="bi bi-basket me-1"></i>Colheita</button>
+                      onclick="Plantios.colheita(<?= (int) $pa['id'] ?>, <?= json_attr($t['nome']) ?>)"><i class="bi bi-basket me-1"></i>Colheita</button>
             <?php else: ?>
               <button class="btn btn-sm btn-outline-success" title="Registrar plantio (ativa a linha do tempo da cultura)"
-                      onclick="Plantios.abrir(<?= (int) $t['id'] ?>, <?= (int) ($t['cultura_id'] ?? 0) ?>, '<?= e($t['nome']) ?>')"><i class="bi bi-calendar-plus me-1"></i>Plantio</button>
+                      onclick="Plantios.abrir(<?= (int) $t['id'] ?>, <?= (int) ($t['cultura_id'] ?? 0) ?>, <?= json_attr($t['nome']) ?>)"><i class="bi bi-calendar-plus me-1"></i>Plantio</button>
             <?php endif; ?>
             <button class="btn btn-sm btn-outline-secondary" onclick='Clientes.editarTalhao(<?= json_attr($t) ?>)'><i class="bi bi-pencil"></i></button>
           </span>

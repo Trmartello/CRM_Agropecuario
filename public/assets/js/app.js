@@ -751,7 +751,7 @@ const Croqui = {
       const { latitude, longitude, accuracy } = pos.coords;
       status.textContent = `GPS ±${Math.round(accuracy)} m · ${Croqui.pontos.length} ponto(s)`;
       if (accuracy > 35) return; // sinal ruim: não marca
-      const p = [latitude, longitude];
+      const p = Croqui._prender([latitude, longitude]);
       const ultimo = Croqui.pontos[Croqui.pontos.length - 1];
       if (ultimo && Croqui._distM(ultimo, p) < 10) return; // anda ~10 m entre pontos
       Croqui.pontos.push(p);
@@ -787,6 +787,90 @@ const Croqui = {
       soma += (a[1] * mLng) * (-b[0] * mLat) - (b[1] * mLng) * (-a[0] * mLat);
     }
     return Math.abs(soma) / 2 / 10000;
+  },
+
+  /* REGRA: talhão JAMAIS sai da divisa da propriedade (tolerância ~15 m p/ GPS) */
+  TOLERANCIA_DIVISA_M: 15,
+
+  /** Índices dos pontos que caem fora da divisa (espelho do CroquiService). */
+  _pontosFora(pontos, divisa) {
+    if (!divisa || divisa.length < 3) return [];
+    const lat0 = divisa.reduce((s, p) => s + Number(p[0]), 0) / divisa.length;
+    const mLat = 110574, mLng = 111320 * Math.cos(lat0 * Math.PI / 180);
+    const proj = p => [Number(p[1]) * mLng, -Number(p[0]) * mLat];
+    const pol = divisa.map(proj);
+    const dentro = p => {
+      let d = false;
+      for (let i = 0, j = pol.length - 1; i < pol.length; j = i++) {
+        const [xi, yi] = pol[i], [xj, yj] = pol[j];
+        if (((yi > p[1]) !== (yj > p[1])) && p[0] < (xj - xi) * (p[1] - yi) / ((yj - yi) || 1e-12) + xi) d = !d;
+      }
+      return d;
+    };
+    const distBorda = p => {
+      let menor = Infinity;
+      for (let i = 0; i < pol.length; i++) {
+        const [ax, ay] = pol[i], [bx, by] = pol[(i + 1) % pol.length];
+        const abx = bx - ax, aby = by - ay;
+        const len2 = abx * abx + aby * aby;
+        const t = len2 > 0 ? Math.max(0, Math.min(1, ((p[0] - ax) * abx + (p[1] - ay) * aby) / len2)) : 0;
+        menor = Math.min(menor, Math.hypot(p[0] - (ax + t * abx), p[1] - (ay + t * aby)));
+      }
+      return menor;
+    };
+    const fora = [];
+    pontos.forEach((p, i) => {
+      const xy = proj(p);
+      if (!dentro(xy) && distBorda(xy) > Croqui.TOLERANCIA_DIVISA_M) fora.push(i);
+    });
+    return fora;
+  },
+
+  /**
+   * Prende na divisa: desenhando um TALHÃO, ponto que cairia fora da
+   * propriedade é puxado para a borda mais próxima (o servidor faz o mesmo).
+   */
+  _prender(p) {
+    if (Croqui.atualId === 0) return p; // desenhando a própria divisa
+    const divisa = Croqui._contornoDe(0);
+    if (divisa.length < 3) return p;
+    const lat0 = divisa.reduce((s, q) => s + Number(q[0]), 0) / divisa.length;
+    const mLat = 110574, mLng = 111320 * Math.cos(lat0 * Math.PI / 180);
+    const proj = q => [Number(q[1]) * mLng, -Number(q[0]) * mLat];
+    const pol = divisa.map(proj);
+    const xy = proj(p);
+    let dentro = false;
+    for (let i = 0, j = pol.length - 1; i < pol.length; j = i++) {
+      const [xi, yi] = pol[i], [xj, yj] = pol[j];
+      if (((yi > xy[1]) !== (yj > xy[1])) && xy[0] < (xj - xi) * (xy[1] - yi) / ((yj - yi) || 1e-12) + xi) dentro = !dentro;
+    }
+    if (dentro) return p;
+    let melhor = pol[0], menor = Infinity;
+    for (let i = 0; i < pol.length; i++) {
+      const [ax, ay] = pol[i], [bx, by] = pol[(i + 1) % pol.length];
+      const abx = bx - ax, aby = by - ay, len2 = abx * abx + aby * aby;
+      const t = len2 > 0 ? Math.max(0, Math.min(1, ((xy[0] - ax) * abx + (xy[1] - ay) * aby) / len2)) : 0;
+      const cx = ax + t * abx, cy = ay + t * aby;
+      const d = (xy[0] - cx) ** 2 + (xy[1] - cy) ** 2;
+      if (d < menor) { menor = d; melhor = [cx, cy]; }
+    }
+    return [-melhor[1] / mLat, melhor[0] / mLng];
+  },
+
+  /** Situação da regra para o desenho atual: {fora: [índices], talhoesFora: [nomes]} */
+  _validarRegra() {
+    if (Croqui.atualId !== 0) {
+      return { fora: Croqui._pontosFora(Croqui.pontos, Croqui._contornoDe(0)), talhoesFora: [] };
+    }
+    // Editando a divisa: nenhum talhão já desenhado pode ficar para fora
+    const talhoesFora = [];
+    if (Croqui.pontos.length >= 3) {
+      Croqui.talhoes.forEach(t => {
+        const pts = Croqui._contornoDe(t.id);
+        if (pts.length >= 3 && Croqui._pontosFora(pts, Croqui.pontos).length) talhoesFora.push(t.nome);
+      });
+    }
+    return { fora: [], talhoesFora };
   },
 
   render() {
@@ -847,14 +931,17 @@ const Croqui = {
       ? Croqui.COR_PROP
       : Croqui.CORES[Croqui.talhoes.findIndex(x => Number(x.id) === Croqui.atualId) % Croqui.CORES.length];
     if (Croqui.pontos.length) {
+      const foraSet = new Set(Croqui._validarRegra().fora);
       const tela = Croqui.pontos.map(p => Croqui._paraTela(p, larg, alt));
       const pts = tela.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
       svg += Croqui.pontos.length >= 3
         ? `<polygon points="${pts}" fill="${corAtual}" fill-opacity=".28" stroke="${corAtual}" stroke-width="3" stroke-dasharray="8 5"/>`
         : `<polyline points="${pts}" fill="none" stroke="${corAtual}" stroke-width="3" stroke-dasharray="8 5"/>`;
       tela.forEach((p, i) => {
+        const invalido = foraSet.has(i); // ponto fora da divisa da propriedade
         svg += `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="9" class="croqui-vertice" data-idx="${i}"
-                  fill="${i === 0 ? '#fff' : corAtual}" stroke="${corAtual}" stroke-width="3"/>`;
+                  fill="${invalido ? '#dc3545' : (i === 0 ? '#fff' : corAtual)}"
+                  stroke="${invalido ? '#7a121f' : corAtual}" stroke-width="3"/>`;
       });
     }
     // Sede como referência
@@ -894,10 +981,17 @@ const Croqui = {
     const alvo = ehProp ? Croqui.prop : (Croqui.talhoes.find(x => Number(x.id) === Croqui.atualId) || {});
     const medida = Croqui.areaHa(Croqui.pontos);
     const rotuloAlvo = ehProp ? 'Propriedade (área total)' : 'Talhão';
-    document.getElementById('croquiArea').innerHTML = Croqui.pontos.length >= 3
+    const regra = Croqui._validarRegra();
+    let alerta = '';
+    if (regra.fora.length) {
+      alerta = ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> ${regra.fora.length} ponto(s) fora da divisa da propriedade</span>`;
+    } else if (regra.talhoesFora.length) {
+      alerta = ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> divisa deixa fora: ${App.escapeHtml(regra.talhoesFora.join(', '))}</span>`;
+    }
+    document.getElementById('croquiArea').innerHTML = (Croqui.pontos.length >= 3
       ? `<strong>${rotuloAlvo}: ${medida.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha</strong>
          <span class="text-muted">(cadastrada: ${Number(alvo.area_ha || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ha)</span>`
-      : `<span class="text-muted">${Croqui.pontos.length} ponto(s) — marque pelo menos 3 para fechar a área</span>`;
+      : `<span class="text-muted">${Croqui.pontos.length} ponto(s) — marque pelo menos 3 para fechar a área</span>`) + alerta;
     // Resumo: divisa da propriedade × soma dos talhões mapeados
     const areaProp = ehProp && Croqui.pontos.length >= 3 ? medida : Number(Croqui.prop.area_gps || 0);
     let plantio = 0;
@@ -930,7 +1024,7 @@ const Croqui = {
     palco.addEventListener('pointermove', ev => {
       if (Croqui._arrasto !== null && Croqui.vista) {
         const [x, y, w, h] = pos(ev);
-        Croqui.pontos[Croqui._arrasto] = Croqui._paraGeo(x, y, w, h);
+        Croqui.pontos[Croqui._arrasto] = Croqui._prender(Croqui._paraGeo(x, y, w, h));
         Croqui._dirty = true;
         Croqui.render();
         ev.preventDefault();
@@ -956,7 +1050,7 @@ const Croqui = {
         if (foiClique && document.getElementById('croquiModoManual').checked && Croqui.vista
             && !ev.target.closest('.croqui-zoom')) {
           const [x, y, w, h] = pos(ev);
-          Croqui.pontos.push(Croqui._paraGeo(x, y, w, h));
+          Croqui.pontos.push(Croqui._prender(Croqui._paraGeo(x, y, w, h)));
           Croqui._dirty = true;
           Croqui.render();
         }
@@ -981,6 +1075,16 @@ const Croqui = {
   async salvar() {
     if (Croqui.pontos.length > 0 && Croqui.pontos.length < 3) {
       App.alerta('Marque pelo menos 3 pontos para fechar a área (ou Limpar para remover o croqui).', 'warning');
+      return;
+    }
+    // REGRA: talhão dentro da divisa da propriedade (o servidor também valida)
+    const regra = Croqui._validarRegra();
+    if (regra.fora.length) {
+      App.alerta(`O talhão deve ficar DENTRO da divisa da propriedade — ajuste os ${regra.fora.length} ponto(s) em vermelho.`, 'danger');
+      return;
+    }
+    if (regra.talhoesFora.length) {
+      App.alerta('A divisa deixaria talhão(ões) para fora: ' + regra.talhoesFora.join(', ') + '. Amplie a divisa.', 'danger');
       return;
     }
     const ehProp = Croqui.atualId === 0;
