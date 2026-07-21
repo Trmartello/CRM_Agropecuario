@@ -229,7 +229,7 @@
           <div class="col-md-6"><label class="form-label">Descrição curta</label><input name="descricao" class="form-control" placeholder="Início e plena floração"></div>
           <div class="col-12">
             <label class="form-label">Como identificar no campo (características fisiológicas)</label>
-            <textarea name="caracteristicas" class="form-control" rows="2" placeholder="O que o extensionista deve observar na planta para confirmar esta fase…"></textarea>
+            <div class="campo-voz"><textarea name="caracteristicas" class="form-control auto-crescer" oninput="App.autoCrescer(this)" rows="2" placeholder="O que o extensionista deve observar na planta para confirmar esta fase…"></textarea><button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
           </div>
           <div class="col-12">
             <div class="card border-success-subtle">

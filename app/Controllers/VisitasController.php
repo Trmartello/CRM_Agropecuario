@@ -172,6 +172,64 @@ class VisitasController
         $data = trim($_POST['data_visita'] ?? '') ?: date('Y-m-d');
         $completude = $this->calcularCompletude($_POST);
         $finalizada = $completude >= 100 ? 1 : 0;
+
+        // Início da visita (botão "Iniciar Visita"): hora + GPS de segundo plano
+        $horaInicio = preg_match('/^\d{2}:\d{2}$/', $_POST['hora_inicio'] ?? '') ? $_POST['hora_inicio'] : null;
+        $horaFim = preg_match('/^\d{2}:\d{2}$/', $_POST['hora_fim'] ?? '') ? $_POST['hora_fim'] : null;
+        $iniLat = ($_POST['inicio_lat'] ?? '') !== '' ? (float) $_POST['inicio_lat'] : null;
+        $iniLng = ($_POST['inicio_lng'] ?? '') !== '' ? (float) $_POST['inicio_lng'] : null;
+        $iniPrec = ($_POST['inicio_precisao'] ?? '') !== '' ? (int) $_POST['inicio_precisao'] : null;
+
+        $visitaId = (int) ($_POST['id'] ?? 0);
+        $anterior = null;
+        if ($visitaId > 0) {
+            // Completar cadastro: só o dono (ou gestor), e só enquanto não finalizada
+            $anterior = Database::um(
+                'SELECT usuario_id, finalizada, recomendacao, hora_inicio, hora_fim,
+                        inicio_lat, inicio_lng, inicio_precisao, fora_propriedade
+                   FROM visitas WHERE id = ?',
+                [$visitaId]
+            );
+            if (!$anterior || (!Permissoes::ehGestor() && (int) $anterior['usuario_id'] !== Auth::id())) {
+                json_erro('Visita não encontrada.', 404);
+            }
+            if ((int) $anterior['finalizada'] === 1) {
+                json_erro('Esta visita já está finalizada — registre uma nova visita.');
+            }
+            // Herda o início já registrado (rede de segurança se o form não o devolver)
+            if ($horaInicio === null && $anterior['hora_inicio']) {
+                $horaInicio = substr((string) $anterior['hora_inicio'], 0, 5);
+            }
+            if ($horaFim === null && $anterior['hora_fim']) {
+                $horaFim = substr((string) $anterior['hora_fim'], 0, 5);
+            }
+            if ($iniLat === null && $anterior['inicio_lat'] !== null) {
+                $iniLat = (float) $anterior['inicio_lat'];
+                $iniLng = (float) $anterior['inicio_lng'];
+                $iniPrec = $anterior['inicio_precisao'] !== null ? (int) $anterior['inicio_precisao'] : null;
+            }
+            // Finalização definitiva: encerra a visita mesmo com o cadastro incompleto
+            if ((int) ($_POST['finalizar_definitivo'] ?? 0) === 1) {
+                $finalizada = 1;
+            }
+        }
+
+        // ANTIFRAUDE: não existe visita sem o botão "Iniciar Visita" — é ele que
+        // carimba a hora de chegada e o GPS. "Marcar o certo" sozinho não fecha.
+        if ($horaInicio === null) {
+            json_erro('Toque em "Iniciar Visita" (1ª etapa) ao chegar na propriedade — a hora de início e a localização são obrigatórias para registrar a visita.');
+        }
+        if ($finalizada === 1 && $horaFim === null) {
+            $horaFim = date('H:i'); // rede de segurança: o app carimba ao salvar
+        }
+
+        // Onde a visita foi lançada × propriedade cadastrada (croqui > sede > cliente)
+        $pontoLat = $iniLat ?? (($_POST['latitude'] ?? '') !== '' ? (float) $_POST['latitude'] : null);
+        $pontoLng = $iniLng ?? (($_POST['longitude'] ?? '') !== '' ? (float) $_POST['longitude'] : null);
+        $aval = \App\Services\AuditoriaCampoService::avaliarLocal(
+            (int) ($_POST['propriedade_id'] ?? 0) ?: null, $clienteId, $pontoLat, $pontoLng
+        );
+
         $campos = [
             (int) ($_POST['propriedade_id'] ?? 0) ?: null,
             (int) ($_POST['talhao_id'] ?? 0) ?: null,
@@ -190,30 +248,23 @@ class VisitasController
             trim($_POST['recomendacao'] ?? '') ?: null,
             $_POST['latitude'] !== '' ? (float) $_POST['latitude'] : null,
             $_POST['longitude'] !== '' ? (float) $_POST['longitude'] : null,
-            preg_match('/^\d{2}:\d{2}$/', $_POST['hora_inicio'] ?? '') ? $_POST['hora_inicio'] : null,
-            preg_match('/^\d{2}:\d{2}$/', $_POST['hora_fim'] ?? '') ? $_POST['hora_fim'] : null,
+            $horaInicio,
+            $horaFim,
             isset($_POST['produtor_presente']) ? 1 : 0,
+            $iniLat,
+            $iniLng,
+            $iniPrec,
+            $aval['dist'],
+            $aval['fora'],
         ];
 
-        $visitaId = (int) ($_POST['id'] ?? 0);
         if ($visitaId > 0) {
-            // Completar cadastro: só o dono (ou gestor), e só enquanto não finalizada
-            $anterior = Database::um('SELECT usuario_id, finalizada, recomendacao FROM visitas WHERE id = ?', [$visitaId]);
-            if (!$anterior || (!Permissoes::ehGestor() && (int) $anterior['usuario_id'] !== Auth::id())) {
-                json_erro('Visita não encontrada.', 404);
-            }
-            if ((int) $anterior['finalizada'] === 1) {
-                json_erro('Esta visita já está finalizada — registre uma nova visita.');
-            }
-            // Finalização definitiva: encerra a visita mesmo com o cadastro incompleto
-            if ((int) ($_POST['finalizar_definitivo'] ?? 0) === 1) {
-                $finalizada = 1;
-            }
             Database::executar(
                 'UPDATE visitas SET cliente_id=?, propriedade_id=?, talhao_id=?, cultura_id=?, data_visita=?, hora=?,
                         objetivo=?, estagio_cultura=?, desenvolvimento=?, pragas=?, doencas=?, plantas_daninhas=?,
                         deficiencia_nutricional=?, condicoes_climaticas=?, observacoes=?, recomendacao=?,
                         latitude=?, longitude=?, hora_inicio=?, hora_fim=?, produtor_presente=?,
+                        inicio_lat=?, inicio_lng=?, inicio_precisao=?, dist_propriedade_m=?, fora_propriedade=?,
                         finalizada=?, completude=? WHERE id=?',
                 array_merge([$clienteId], $campos, [$finalizada, $completude, $visitaId])
             );
@@ -238,8 +289,9 @@ class VisitasController
                         objetivo, estagio_cultura, desenvolvimento, pragas, doencas, plantas_daninhas,
                         deficiencia_nutricional, condicoes_climaticas, observacoes, recomendacao,
                         latitude, longitude, hora_inicio, hora_fim, produtor_presente,
+                        inicio_lat, inicio_lng, inicio_precisao, dist_propriedade_m, fora_propriedade,
                         sincronizada_offline, finalizada, completude)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                 array_merge(
                     [$clienteId],
                     array_slice($campos, 0, 3),
@@ -275,6 +327,22 @@ class VisitasController
                     [Auth::id(), $clienteId, 'Retorno — ' . $nomeCliente, $retorno,
                      'Retorno combinado na visita de ' . data_br($data)]
                 );
+            }
+        }
+
+        // ALERTA ao Administrador: lançamento feito fora da propriedade cadastrada
+        // (só quando a condição surge agora — não repete a cada "completar")
+        if (($aval['fora'] ?? null) === 1 && (int) ($anterior['fora_propriedade'] ?? 0) !== 1) {
+            $nomeTecnico = (string) (Auth::usuario()['nome'] ?? 'Usuário');
+            $nomeClienteAviso = (string) Database::valor('SELECT nome FROM clientes WHERE id = ?', [$clienteId]);
+            $distTexto = $aval['dist'] >= 1000
+                ? number_format($aval['dist'] / 1000, 1, ',', '.') . ' km'
+                : $aval['dist'] . ' m';
+            foreach (Database::todos("SELECT id FROM usuarios WHERE perfil = 'Administrador' AND ativo = 1") as $adm) {
+                \App\Services\NotificacaoService::criar((int) $adm['id'], 'auditoria',
+                    'Visita fora da propriedade',
+                    "{$nomeTecnico} registrou visita a {$nomeClienteAviso} a {$distTexto} da propriedade cadastrada.",
+                    'index.php?r=gerencial/auditoria-campo');
             }
         }
 
@@ -320,6 +388,8 @@ class VisitasController
         // para JPEG quando o accept do input não inclui HEIC.
         $permitidas = ['jpg', 'jpeg', 'png', 'webp'];
         $ignoradas = 0;
+        // Comentário individual por foto (fotos_legenda[] alinhado por índice)
+        $legendas = is_array($_POST['fotos_legenda'] ?? null) ? $_POST['fotos_legenda'] : [];
         foreach ($_FILES['fotos']['tmp_name'] as $i => $tmp) {
             if (!is_uploaded_file($tmp)) {
                 continue;
@@ -338,9 +408,10 @@ class VisitasController
                     continue;
                 }
             }
+            $legenda = trim((string) ($legendas[$i] ?? ''));
             Database::executar(
-                'INSERT INTO visita_fotos (visita_id, arquivo) VALUES (?,?)',
-                [$visitaId, $arquivo]
+                'INSERT INTO visita_fotos (visita_id, arquivo, legenda) VALUES (?,?,?)',
+                [$visitaId, $arquivo, $legenda !== '' ? mb_substr($legenda, 0, 255) : null]
             );
         }
         return $ignoradas;

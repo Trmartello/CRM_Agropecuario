@@ -157,6 +157,21 @@ class CroquiService
         return $menor;
     }
 
+    /**
+     * Distância (m) de um ponto [lat,lng] até a área de um polígono [[lat,lng],...]:
+     * 0 quando o ponto está dentro; senão a menor distância até a borda.
+     * Usada na auditoria de campo (visita lançada fora da propriedade).
+     */
+    public static function distanciaAteAreaM(array $ponto, array $poligono): float
+    {
+        if (count($poligono) < 3) {
+            return INF;
+        }
+        $proj = self::projetar(array_merge([$ponto], $poligono));
+        $p = array_shift($proj);
+        return self::dentro($p, $proj) ? 0.0 : self::distanciaBordaM($p, $proj);
+    }
+
     /** Projeção local equiretangular: [lat,lng] → metros [x,y] em torno do centro. */
     public static function projetar(array $pontos): array
     {

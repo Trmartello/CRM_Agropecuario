@@ -43,8 +43,8 @@ class PortalController
         $fotosPorVisita = [];
         if ($visitas) {
             $ids = implode(',', array_map(fn ($v) => (int) $v['id'], $visitas));
-            foreach (Database::todos("SELECT visita_id, arquivo FROM visita_fotos WHERE visita_id IN ({$ids}) ORDER BY id") as $f) {
-                $fotosPorVisita[(int) $f['visita_id']][] = $f['arquivo'];
+            foreach (Database::todos("SELECT visita_id, arquivo, legenda FROM visita_fotos WHERE visita_id IN ({$ids}) ORDER BY id") as $f) {
+                $fotosPorVisita[(int) $f['visita_id']][] = ['arquivo' => $f['arquivo'], 'legenda' => $f['legenda']];
             }
         }
         $entregas = Database::todos(

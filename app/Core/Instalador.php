@@ -317,6 +317,27 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '24'"
             );
         }
+        if ($versao < 25) {
+            // Auditoria de campo (antifraude): GPS do "Iniciar Visita" + verificação
+            // do local do lançamento contra a propriedade cadastrada
+            self::adicionarColuna('visitas', 'inicio_lat',
+                'inicio_lat DECIMAL(10,7) NULL COMMENT "GPS capturado ao tocar em Iniciar Visita" AFTER produtor_presente');
+            self::adicionarColuna('visitas', 'inicio_lng',
+                'inicio_lng DECIMAL(10,7) NULL AFTER inicio_lat');
+            self::adicionarColuna('visitas', 'inicio_precisao',
+                'inicio_precisao SMALLINT UNSIGNED NULL COMMENT "precisão do GPS em metros" AFTER inicio_lng');
+            self::adicionarColuna('visitas', 'dist_propriedade_m',
+                'dist_propriedade_m INT NULL COMMENT "distância (m) do lançamento à propriedade (0 = dentro do croqui)" AFTER inicio_precisao');
+            self::adicionarColuna('visitas', 'fora_propriedade',
+                'fora_propriedade TINYINT(1) NULL COMMENT "1 = lançada fora da propriedade cadastrada; NULL = sem GPS/referência" AFTER dist_propriedade_m');
+            // Comentário individual por foto (visita_fotos.legenda já existia)
+            self::adicionarColuna('reclamacao_fotos', 'legenda',
+                'legenda VARCHAR(255) NULL AFTER arquivo');
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '25')
+                 ON DUPLICATE KEY UPDATE valor = '25'"
+            );
+        }
     }
 
     /** Fase 6E (refinamento): características fisiológicas por estágio (cartão ilustrado). */

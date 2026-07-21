@@ -89,7 +89,7 @@ $ehGestor = in_array(Auth::perfil(), ['Administrador', 'Gestor Comercial'], true
           </div>
           <div class="col-md-3">
             <label class="form-label">Observação</label>
-            <input name="observacao" class="form-control">
+            <div class="campo-voz"><textarea name="observacao" rows="1" class="form-control auto-crescer" oninput="App.autoCrescer(this)"></textarea><button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div>
           </div>
         </div>
 

@@ -105,6 +105,8 @@ class ReclamacoesController
             mkdir($dir, 0775, true);
         }
         $permitidas = ['jpg', 'jpeg', 'png', 'webp']; // sem HEIC: navegador não exibe
+        // Comentário individual por foto (fotos_legenda[] alinhado por índice)
+        $legendas = is_array($_POST['fotos_legenda'] ?? null) ? $_POST['fotos_legenda'] : [];
         foreach ($_FILES['fotos']['tmp_name'] as $i => $tmp) {
             if (!is_uploaded_file($tmp)) {
                 continue;
@@ -122,9 +124,10 @@ class ReclamacoesController
                     continue;
                 }
             }
+            $legenda = trim((string) ($legendas[$i] ?? ''));
             Database::executar(
-                'INSERT INTO reclamacao_fotos (reclamacao_id, arquivo) VALUES (?,?)',
-                [$reclamacaoId, $arquivo]
+                'INSERT INTO reclamacao_fotos (reclamacao_id, arquivo, legenda) VALUES (?,?,?)',
+                [$reclamacaoId, $arquivo, $legenda !== '' ? mb_substr($legenda, 0, 255) : null]
             );
         }
     }

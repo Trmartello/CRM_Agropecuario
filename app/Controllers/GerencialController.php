@@ -130,4 +130,25 @@ class GerencialController
             'titulo' => 'Desempenho da Equipe',
         ]);
     }
+
+    /**
+     * Auditoria de campo (antifraude): visitas lançadas fora da propriedade
+     * cadastrada do produtor. Restrita ao Administrador.
+     */
+    public function auditoriaCampo(): void
+    {
+        Permissoes::exigir(['Administrador']);
+        $mes = preg_match('/^\d{4}-\d{2}$/', $_GET['mes'] ?? '') ? $_GET['mes'] : date('Y-m');
+        $inicio = $mes . '-01';
+        $fim = date('Y-m-t', strtotime($inicio));
+
+        render('auditoria_campo', [
+            'mes' => $mes,
+            'resumo' => \App\Services\AuditoriaCampoService::resumo($inicio, $fim),
+            'visitasFora' => \App\Services\AuditoriaCampoService::visitasFora($inicio, $fim),
+            'limiteContorno' => \App\Services\AuditoriaCampoService::LIMITE_CONTORNO_M,
+            'limitePonto' => \App\Services\AuditoriaCampoService::LIMITE_PONTO_M,
+            'titulo' => 'Auditoria de Campo',
+        ]);
+    }
 }

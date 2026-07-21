@@ -65,6 +65,7 @@ async function login(p, email, senha) {
   await p.waitForTimeout(600);
   await p.selectOption('#visitaCultura', { index: 1 });
   await p.fill('[name=objetivo]', MARCA + ' visita');
+  await p.click('#btnIniciarVisita'); // obrigatório: carimba hora/GPS de início
   await p.click('#visitaEtapas [data-etapa="2"]');
   await p.fill('[name=desenvolvimento]', 'ok');
   await p.click('#visitaEtapas [data-etapa="3"]');

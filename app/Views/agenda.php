@@ -89,7 +89,8 @@ $wa = function (?string $tel, string $texto): ?string {
       <div class="modal-body">
         <input type="hidden" name="id" value="0">
         <div class="row g-3">
-          <div class="col-12"><label class="form-label">Título *</label><input name="titulo" class="form-control" required></div>
+          <div class="col-12"><label class="form-label">Título *</label>
+            <div class="campo-voz"><input name="titulo" class="form-control" required><button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div></div>
           <div class="col-6"><label class="form-label">Tipo</label>
             <select name="tipo" class="form-select"><?php foreach ($tipos as $t): ?><option><?= e($t) ?></option><?php endforeach; ?></select></div>
           <div class="col-6"><label class="form-label">Cliente</label>
@@ -97,7 +98,8 @@ $wa = function (?string $tel, string $texto): ?string {
               <?php foreach ($clientes as $c): ?><option value="<?= $c['id'] ?>"><?= e($c['nome']) ?></option><?php endforeach; ?></select></div>
           <div class="col-6"><label class="form-label">Data *</label><input type="date" name="data" class="form-control" value="<?= date('Y-m-d') ?>" required></div>
           <div class="col-6"><label class="form-label">Hora</label><input type="time" name="hora" class="form-control"></div>
-          <div class="col-12"><label class="form-label">Descrição</label><input name="descricao" class="form-control"></div>
+          <div class="col-12"><label class="form-label">Descrição</label>
+            <div class="campo-voz"><textarea name="descricao" rows="1" class="form-control auto-crescer" oninput="App.autoCrescer(this)"></textarea><button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div></div>
         </div>
       </div>
       <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>

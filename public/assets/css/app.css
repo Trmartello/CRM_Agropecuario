@@ -101,6 +101,11 @@ body.menu-recolhido #btnRecolherMenu { background: #e8f0e9; }
   width: 84px; height: 84px; object-fit: cover;
   border-radius: .5rem; border: 1px solid #dee2e6;
 }
+/* Foto escolhida no modal + campo de comentário individual */
+.foto-item { width: 132px; }
+.foto-item .foto-miniatura { width: 132px; height: 96px; }
+.foto-item .campo-voz .form-control-sm { padding-right: 2rem; font-size: .78rem; }
+.foto-legenda { max-width: 132px; font-size: .72rem; line-height: 1.2; }
 
 /* ---------- Linha do tempo ---------- */
 .linha-tempo { position: relative; padding-left: 1.25rem; }

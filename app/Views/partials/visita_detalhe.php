@@ -26,6 +26,20 @@
       <?php endif; ?>
     </dd>
   <?php endif; ?>
+  <?php // Auditoria de campo: só gestores/Administrador veem a checagem do local
+        $ehAuditor = \App\Core\Permissoes::ehGestor() || \App\Core\Auth::perfil() === 'Administrador';
+        if ($ehAuditor && array_key_exists('fora_propriedade', $visita) && $visita['fora_propriedade'] !== null):
+          $distM = (int) $visita['dist_propriedade_m'];
+          $distTxt = $distM >= 1000 ? number_format($distM / 1000, 1, ',', '.') . ' km' : $distM . ' m'; ?>
+    <dt class="col-5">Local do lançamento</dt>
+    <dd class="col-7">
+      <?php if ((int) $visita['fora_propriedade'] === 1): ?>
+        <span class="badge text-bg-danger"><i class="bi bi-geo-alt me-1"></i>Fora da propriedade (<?= $distTxt ?>)</span>
+      <?php else: ?>
+        <span class="badge text-bg-success"><i class="bi bi-geo-alt me-1"></i>Na propriedade<?= $distM > 0 ? ' (' . $distTxt . ' da divisa)' : '' ?></span>
+      <?php endif; ?>
+    </dd>
+  <?php endif; ?>
   <?php if (isset($visita['produtor_presente']) && $visita['produtor_presente'] !== null): ?>
     <dt class="col-5">Produtor presente</dt>
     <dd class="col-7"><span class="badge text-bg-<?= (int) $visita['produtor_presente'] === 1 ? 'success' : 'secondary' ?>"><?= (int) $visita['produtor_presente'] === 1 ? 'Sim' : 'Não' ?></span></dd>
@@ -70,7 +84,10 @@
   <h6 class="text-success">Fotos</h6>
   <div class="d-flex flex-wrap gap-2">
     <?php foreach ($fotos as $f): ?>
-      <a href="<?= e(upload_url($f['arquivo'])) ?>" target="_blank"><img src="<?= e(upload_url($f['arquivo'], true)) ?>" class="foto-miniatura" alt="Foto" loading="lazy" onerror="App.fotoIndisponivel(this)"></a>
+      <div class="d-inline-block align-top text-center">
+        <a href="<?= e(upload_url($f['arquivo'])) ?>" target="_blank"><img src="<?= e(upload_url($f['arquivo'], true)) ?>" class="foto-miniatura" alt="Foto" loading="lazy" onerror="App.fotoIndisponivel(this)"></a>
+        <?php if (!empty($f['legenda'])): ?><div class="foto-legenda text-muted mt-1 mx-auto"><?= e($f['legenda']) ?></div><?php endif; ?>
+      </div>
     <?php endforeach; ?>
   </div>
 <?php endif; ?>

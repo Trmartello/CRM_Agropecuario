@@ -100,21 +100,32 @@ const App = {
     return /^(index\.php|\?|#|\/|uploads\/)/.test(s) ? s : '#';
   },
 
-  /** Renderiza miniaturas das fotos/PDFs escolhidos em um input múltiplo. */
+  /**
+   * Renderiza miniaturas das fotos/PDFs escolhidos em um input múltiplo,
+   * cada uma com um campo de comentário individual opcional (fotos_legenda[],
+   * alinhado por índice com fotos[] no servidor).
+   */
   previewFotosGrid(input, gridId) {
     const grid = document.getElementById(gridId);
     if (!grid) return;
     grid.innerHTML = '';
     for (const arquivo of input.files || []) {
+      const item = document.createElement('div');
+      item.className = 'foto-item';
       if (arquivo.type === 'application/pdf') {
-        grid.insertAdjacentHTML('beforeend',
-          '<div class="foto-miniatura d-flex align-items-center justify-content-center bg-light border"><i class="bi bi-file-earmark-pdf fs-3 text-danger"></i></div>');
+        item.innerHTML = '<div class="foto-miniatura d-flex align-items-center justify-content-center bg-light border"><i class="bi bi-file-earmark-pdf fs-3 text-danger"></i></div>';
       } else {
         const img = document.createElement('img');
         img.className = 'foto-miniatura';
         img.src = URL.createObjectURL(arquivo);
-        grid.appendChild(img);
+        item.appendChild(img);
       }
+      item.insertAdjacentHTML('beforeend',
+        `<div class="campo-voz mt-1">
+           <input type="text" name="fotos_legenda[]" class="form-control form-control-sm" maxlength="255" placeholder="Comentário (opcional)">
+           <button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button>
+         </div>`);
+      grid.appendChild(item);
     }
   },
 
@@ -1201,7 +1212,7 @@ const Visitas = {
     const btnIni = document.getElementById('btnIniciarVisita');
     if (btnIni) btnIni.disabled = false;
     const stIni = document.getElementById('visitaInicioStatus');
-    if (stIni) stIni.textContent = 'Toque ao chegar na propriedade — a duração real da visita é registrada.';
+    if (stIni) stIni.textContent = 'Obrigatório: toque ao chegar na propriedade — hora e local do início são registrados.';
     document.querySelectorAll('#visitaMotivos .motivo-chip').forEach(b => b.classList.remove('active'));
     Visitas.irParaEtapa(1);
     document.getElementById('visitaFotosPreview').innerHTML = '';
@@ -1275,8 +1286,14 @@ const Visitas = {
     if (visita.hora_inicio) {
       form.querySelector('[name=hora_inicio]').value = String(visita.hora_inicio).substring(0, 5);
       if (visita.hora_fim) form.querySelector('[name=hora_fim]').value = String(visita.hora_fim).substring(0, 5);
-      Visitas._mostrarInicio(String(visita.hora_inicio).substring(0, 5));
+      Visitas._mostrarInicio(String(visita.hora_inicio).substring(0, 5),
+        visita.inicio_precisao ? Number(visita.inicio_precisao) : null);
     }
+    // GPS do início já registrado volta ao form (o UPDATE não pode perdê-lo)
+    ['inicio_lat', 'inicio_lng', 'inicio_precisao'].forEach(n => {
+      const el = form.querySelector(`[name=${n}]`);
+      if (el && visita[n] !== null && visita[n] !== undefined) el.value = visita[n];
+    });
     const presente = form.querySelector('[name=produtor_presente]');
     if (presente && visita.produtor_presente !== null && visita.produtor_presente !== undefined) {
       presente.checked = Number(visita.produtor_presente) === 1;
@@ -1301,18 +1318,31 @@ const Visitas = {
     return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
   },
 
-  /** "Iniciar Visita": carimba a chegada; a hora_fim é gravada ao salvar. */
+  /**
+   * "Iniciar Visita": carimba a chegada (a hora_fim é gravada ao salvar) e,
+   * em segundo plano, captura o GPS — o servidor confere se o lançamento
+   * aconteceu na propriedade cadastrada (auditoria de campo).
+   */
   iniciarVisita() {
     const form = document.getElementById('formVisita');
     const hora = Visitas._horaAgora();
     form.querySelector('[name=hora_inicio]').value = hora;
     Visitas._mostrarInicio(hora);
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(pos => {
+        form.querySelector('[name=inicio_lat]').value = pos.coords.latitude.toFixed(7);
+        form.querySelector('[name=inicio_lng]').value = pos.coords.longitude.toFixed(7);
+        form.querySelector('[name=inicio_precisao]').value = Math.round(pos.coords.accuracy);
+        Visitas._mostrarInicio(hora, Math.round(pos.coords.accuracy));
+      }, () => { /* sem GPS: segue só com a hora */ }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 15000 });
+    }
   },
 
-  _mostrarInicio(hora) {
+  _mostrarInicio(hora, precisao) {
     const status = document.getElementById('visitaInicioStatus');
     const btn = document.getElementById('btnIniciarVisita');
-    if (status) status.innerHTML = `<span class="text-success fw-semibold"><i class="bi bi-check-circle-fill me-1"></i>Iniciada às ${App.escapeHtml(hora)}</span> — a duração é registrada ao salvar.`;
+    const gps = (precisao || precisao === 0) ? ` · local registrado (±${precisao} m)` : '';
+    if (status) status.innerHTML = `<span class="text-success fw-semibold"><i class="bi bi-check-circle-fill me-1"></i>Iniciada às ${App.escapeHtml(hora)}${gps}</span> — a duração é registrada ao salvar.`;
     if (btn) btn.disabled = true;
   },
 
@@ -1918,6 +1948,12 @@ const Visitas = {
       return false;
     }
     const definitivo = form.querySelector('[name=finalizar_definitivo]')?.value === '1';
+    // Sem "Iniciar Visita" não há registro: a hora de início e o local são obrigatórios
+    const hIni = form.querySelector('[name=hora_inicio]');
+    if (hIni && !hIni.value) {
+      App.alerta('Toque em "Iniciar Visita" (1ª etapa) ao chegar na propriedade — a hora de início e a localização são obrigatórias.', 'warning');
+      return false;
+    }
     const pct = Visitas.completude();
     if (pct < 100 && !definitivo) { // no fluxo definitivo a confirmação já foi feita
       const faltando = Visitas.camposFaltando();
@@ -1931,7 +1967,6 @@ const Visitas = {
       const nome = sel && sel.selectedOptions[0] ? sel.selectedOptions[0].text : 'Visita';
       const editando = Number(form.querySelector('[name=id]').value) > 0;
       // Visita iniciada: o salvar carimba o fim (duração real no campo)
-      const hIni = form.querySelector('[name=hora_inicio]');
       const hFim = form.querySelector('[name=hora_fim]');
       if (hIni && hFim && hIni.value && !hFim.value) hFim.value = Visitas._horaAgora();
       const r = await App.enviarFormOffline(form, 'index.php?r=visitas/salvar', { modulo: 'Visitas', rotulo: (editando ? 'Completar visita — ' : 'Visita — ') + nome });
@@ -2210,6 +2245,13 @@ if (typeof Chart !== 'undefined') {
 document.addEventListener('DOMContentLoaded', () => {
   Voz.iniciar();
   if (document.getElementById('btnSino')) Notificacoes.atualizarContador();
+
+  // Campos de texto autoajustáveis: dimensiona ao carregar a página e sempre
+  // que um modal abre (escondido, o textarea tem scrollHeight 0)
+  document.querySelectorAll('textarea.auto-crescer').forEach(t => App.autoCrescer(t));
+  document.addEventListener('shown.bs.modal', ev => {
+    ev.target.querySelectorAll('textarea.auto-crescer').forEach(t => App.autoCrescer(t));
+  });
 
   // Recolher/expandir menu lateral (desktop) com preferência lembrada
   if (localStorage.getItem('menuRecolhido') === '1') {

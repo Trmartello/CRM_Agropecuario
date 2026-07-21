@@ -84,8 +84,9 @@
                 <button type="button" class="btn btn-success" id="btnIniciarVisita" onclick="Visitas.iniciarVisita()">
                   <i class="bi bi-play-circle me-1"></i>Iniciar Visita
                 </button>
-                <span id="visitaInicioStatus" class="small text-muted">Toque ao chegar na propriedade — a duração real da visita é registrada.</span>
+                <span id="visitaInicioStatus" class="small text-muted">Obrigatório: toque ao chegar na propriedade — hora e local do início são registrados.</span>
                 <input type="hidden" name="hora_inicio"><input type="hidden" name="hora_fim">
+                <input type="hidden" name="inicio_lat"><input type="hidden" name="inicio_lng"><input type="hidden" name="inicio_precisao">
               </div>
             </div>
           </div>

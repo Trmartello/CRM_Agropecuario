@@ -2,6 +2,9 @@
 <ul class="nav nav-tabs mb-3">
   <li class="nav-item"><a class="nav-link active"><i class="bi bi-speedometer2 me-1"></i>Painel</a></li>
   <li class="nav-item"><a class="nav-link" href="<?= url('gerencial/desempenho') ?>"><i class="bi bi-trophy me-1"></i>Desempenho</a></li>
+  <?php if (\App\Core\Auth::perfil() === 'Administrador'): ?>
+    <li class="nav-item"><a class="nav-link" href="<?= url('gerencial/auditoria-campo') ?>"><i class="bi bi-shield-exclamation me-1"></i>Auditoria de campo</a></li>
+  <?php endif; ?>
 </ul>
 <div class="row g-3 mb-3">
   <div class="col-6 col-md-3"><div class="card indicador h-100"><div class="card-body"><div class="text-muted small">Clientes ativos</div><div class="fs-3 fw-bold"><?= numero($totais['clientes']) ?></div><i class="bi bi-people icone-fundo"></i></div></div></div>

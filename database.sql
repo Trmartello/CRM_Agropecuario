@@ -186,6 +186,11 @@ CREATE TABLE visitas (
   hora_inicio TIME NULL COMMENT 'botão Iniciar Visita (carimba a chegada no campo)',
   hora_fim TIME NULL COMMENT 'preenchida ao salvar quando a visita foi iniciada — dá a duração real',
   produtor_presente TINYINT(1) NULL COMMENT '1/0 = produtor estava presente na visita (NULL = não informado)',
+  inicio_lat DECIMAL(10,7) NULL COMMENT 'GPS capturado ao tocar em Iniciar Visita',
+  inicio_lng DECIMAL(10,7) NULL,
+  inicio_precisao SMALLINT UNSIGNED NULL COMMENT 'precisão do GPS em metros',
+  dist_propriedade_m INT NULL COMMENT 'distância (m) do lançamento à propriedade (0 = dentro do croqui)',
+  fora_propriedade TINYINT(1) NULL COMMENT '1 = lançada fora da propriedade cadastrada; NULL = sem GPS/referência',
   finalizada TINYINT(1) NOT NULL DEFAULT 1 COMMENT '0 = cadastro salvo incompleto (não finalizada)',
   completude TINYINT NOT NULL DEFAULT 100 COMMENT 'percentual de campos do cadastro preenchidos (0-100)',
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -652,6 +657,7 @@ CREATE TABLE reclamacao_fotos (
   id INT AUTO_INCREMENT PRIMARY KEY,
   reclamacao_id INT NOT NULL,
   arquivo VARCHAR(255) NOT NULL,
+  legenda VARCHAR(255),
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (reclamacao_id) REFERENCES reclamacoes(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
@@ -1331,5 +1337,5 @@ CREATE TABLE sync_processados (
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','24')
-  ON DUPLICATE KEY UPDATE valor = '16';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','25')
+  ON DUPLICATE KEY UPDATE valor = '25';

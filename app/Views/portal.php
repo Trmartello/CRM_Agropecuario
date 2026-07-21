@@ -31,8 +31,11 @@
           <?php if ($v['recomendacao']): ?><div class="small mt-1 p-2 bg-success-subtle rounded"><i class="bi bi-file-earmark-medical me-1"></i><?= nl2br(e($v['recomendacao'])) ?></div><?php endif; ?>
           <?php $fv = $fotosPorVisita[(int) $v['id']] ?? []; if ($fv): ?>
           <div class="d-flex gap-2 mt-2 flex-wrap">
-            <?php foreach ($fv as $arq): ?>
-              <a href="<?= e(upload_url($arq)) ?>" target="_blank"><img src="<?= e(upload_url($arq, true)) ?>" class="foto-miniatura" alt="Foto da visita" loading="lazy" onerror="App.fotoIndisponivel(this)"></a>
+            <?php foreach ($fv as $foto): ?>
+              <div class="text-center">
+                <a href="<?= e(upload_url($foto['arquivo'])) ?>" target="_blank"><img src="<?= e(upload_url($foto['arquivo'], true)) ?>" class="foto-miniatura" alt="Foto da visita" loading="lazy" onerror="App.fotoIndisponivel(this)"></a>
+                <?php if (!empty($foto['legenda'])): ?><div class="foto-legenda text-muted mt-1 mx-auto"><?= e($foto['legenda']) ?></div><?php endif; ?>
+              </div>
             <?php endforeach; ?>
           </div>
           <?php endif; ?>

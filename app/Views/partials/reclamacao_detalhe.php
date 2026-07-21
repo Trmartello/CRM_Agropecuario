@@ -35,7 +35,10 @@ $r = $reclamacao;
 <?php if ($fotos): ?>
 <div class="d-flex flex-wrap gap-2 mb-3">
   <?php foreach ($fotos as $f): ?>
-    <a href="<?= e(upload_url($f['arquivo'])) ?>" target="_blank"><img src="<?= e(upload_url($f['arquivo'], true)) ?>" class="foto-miniatura" alt="Foto" loading="lazy" style="height:90px" onerror="App.fotoIndisponivel(this)"></a>
+    <div class="d-inline-block align-top text-center">
+      <a href="<?= e(upload_url($f['arquivo'])) ?>" target="_blank"><img src="<?= e(upload_url($f['arquivo'], true)) ?>" class="foto-miniatura" alt="Foto" loading="lazy" style="height:90px" onerror="App.fotoIndisponivel(this)"></a>
+      <?php if (!empty($f['legenda'])): ?><div class="foto-legenda text-muted mt-1 mx-auto"><?= e($f['legenda']) ?></div><?php endif; ?>
+    </div>
   <?php endforeach; ?>
 </div>
 <?php endif; ?>
@@ -56,7 +59,7 @@ $r = $reclamacao;
       <input type="number" step="0.01" min="0" name="valor_indenizacao" class="form-control" placeholder="Valor da indenização (R$)">
     </div>
     <div class="col-md-3"><button class="btn btn-success w-100"><i class="bi bi-arrow-right-circle me-1"></i>Aplicar</button></div>
-    <div class="col-12"><input name="parecer" class="form-control" placeholder="Parecer/observação (opcional)"></div>
+    <div class="col-12"><div class="campo-voz"><textarea name="parecer" rows="1" class="form-control auto-crescer" oninput="App.autoCrescer(this)" placeholder="Parecer/observação (opcional)"></textarea><button type="button" class="btn-voz" title="Ditar por voz" aria-label="Ditar por voz"><i class="bi bi-mic-fill"></i></button></div></div>
   </div>
 </form>
 <?php elseif ($podeGerir && !$transicoes): ?>
