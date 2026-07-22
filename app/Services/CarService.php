@@ -27,13 +27,16 @@ class CarService
         try {
             $deletados = [];      // "MUN|UF" já limpos nesta carga
             $porMunicipio = [];   // "MUN/UF" => contagem
+            $noLote = 0;          // inseridos na transação atual
             $stmt = $pdo->prepare(
                 'INSERT INTO car_imoveis
                     (cod_imovel, municipio, uf, contorno, area_ha, min_lat, min_lng, max_lat, max_lng)
                  VALUES (?,?,?,?,?,?,?,?,?)'
             );
 
-            $total = \App\Services\ShapefileService::streamImoveis($caminho, function (array $im) use ($pdo, $stmt, $municipioPadrao, $ufPadrao, &$deletados, &$porMunicipio) {
+            // Confirma em LOTES: município inteiro numa única transação geraria
+            // um undo log gigante (risco de estouro/lentidão no MySQL do Railway).
+            \App\Services\ShapefileService::streamImoveis($caminho, function (array $im) use ($pdo, $stmt, $municipioPadrao, $ufPadrao, &$deletados, &$porMunicipio, &$noLote) {
                 $mun = ($im['municipio'] ?? null) ? mb_strtoupper(trim($im['municipio'])) : $municipioPadrao;
                 $uf = ($im['uf'] ?? null) ?: $ufPadrao;
                 if (!$mun || !$uf) {
@@ -54,6 +57,11 @@ class CarService
                 ]);
                 $chave = $mun . '/' . $uf;
                 $porMunicipio[$chave] = ($porMunicipio[$chave] ?? 0) + 1;
+                if (++$noLote >= 2000) {
+                    $pdo->commit();
+                    $pdo->beginTransaction();
+                    $noLote = 0;
+                }
             });
 
             $pdo->commit();

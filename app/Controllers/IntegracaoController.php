@@ -56,6 +56,9 @@ class IntegracaoController
         }
         @set_time_limit(600);
         @ini_set('memory_limit', '768M');
+        // Warnings do parser (registros truncados etc.) NÃO podem vazar para o
+        // corpo — poluiriam o JSON e o cliente veria "Resposta inválida".
+        @ini_set('display_errors', '0');
         try {
             // Streaming: lê registro a registro (aguenta município inteiro sem estourar a memória)
             $r = \App\Services\CarService::importarMunicipioArquivo($_FILES['arquivo']['tmp_name'], $municipio ?: null, $uf ?: null);

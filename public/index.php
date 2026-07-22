@@ -8,6 +8,41 @@ declare(strict_types=1);
 
 require dirname(__DIR__) . '/app/helpers.php';
 
+// Rede de segurança para ERROS FATAIS (falta de memória, tempo esgotado): eles
+// NÃO são capturados pelo try/catch do roteador, então sem isto o cliente AJAX
+// recebe uma resposta não-JSON e mostra "Resposta inválida do servidor". Aqui
+// devolvemos um erro JSON legível dizendo o que de fato aconteceu.
+register_shutdown_function(function (): void {
+    $err = error_get_last();
+    if ($err === null
+        || !in_array($err['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR], true)
+        || headers_sent()) {
+        return; // sem fatal, ou a resposta já começou (não dá para consertar o corpo)
+    }
+    $m = strtolower($err['message']);
+    if (str_contains($m, 'memory')) {
+        $amigavel = 'O servidor ficou sem memória ao processar o arquivo — ele é grande demais. '
+            . 'Suba só a camada AREA_IMOVEL do município (não a de APP).';
+    } elseif (str_contains($m, 'execution time') || str_contains($m, 'timeout')) {
+        $amigavel = 'O processamento passou do tempo limite. O arquivo do município é muito grande; '
+            . 'tente de novo — os municípios já gravados são mantidos.';
+    } else {
+        $amigavel = 'Erro interno ao processar a requisição.';
+    }
+    error_log('[CRM][fatal] ' . $err['message'] . ' em ' . $err['file'] . ':' . $err['line']);
+    http_response_code(500);
+    $ehAjax = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'fetch'
+        || str_starts_with($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json');
+    if ($ehAjax) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => false, 'erro' => $amigavel], JSON_UNESCAPED_UNICODE);
+    } else {
+        header('Content-Type: text/html; charset=utf-8');
+        echo '<!DOCTYPE html><meta charset="utf-8"><div style="font-family:sans-serif;max-width:640px;margin:3rem auto">',
+            '<h1 style="color:#c62828">Erro interno</h1><p>', htmlspecialchars($amigavel), '</p></div>';
+    }
+});
+
 // Cabeçalhos de segurança (defesa em profundidade)
 header_remove('X-Powered-By');
 header('X-Content-Type-Options: nosniff');
