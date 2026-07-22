@@ -725,7 +725,29 @@ const Croqui = {
     Croqui._prepararEventos();
     Croqui.vista = null; // recalcula o enquadramento ao abrir
     new bootstrap.Modal('#modalCroqui').show();
-    setTimeout(() => { Croqui._enquadrar(); Croqui.render(); }, 250);
+    setTimeout(() => {
+      Croqui._enquadrar();
+      Croqui.render();
+      // Propriedade sem nenhuma referência (nova): mostra o satélite na
+      // posição atual para já dar para tocar os pontos ou usar "CAR aqui".
+      if (!Croqui.vista) Croqui._centrarNoGps();
+    }, 250);
+  },
+
+  /** Centraliza o mapa na posição atual quando ainda não há referência. */
+  _centrarNoGps() {
+    if (!navigator.geolocation) return;
+    const status = document.getElementById('croquiGpsStatus');
+    if (status) { status.classList.remove('d-none'); status.textContent = 'Localizando você…'; }
+    navigator.geolocation.getCurrentPosition(pos => {
+      if (Croqui.vista) { if (status) status.classList.add('d-none'); return; }
+      const p = [pos.coords.latitude, pos.coords.longitude];
+      Croqui.vista = { z: 16, cx: Croqui._wx(p), cy: Croqui._wy(p) }; // escala de fazenda
+      if (status) status.classList.add('d-none');
+      Croqui.render();
+    }, () => {
+      if (status) status.textContent = 'GPS indisponível — use "Caminhar a divisa"';
+    }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 10000 });
   },
 
   _contornoDe(id) {
