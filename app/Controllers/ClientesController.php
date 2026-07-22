@@ -363,6 +363,11 @@ class ClientesController
         if ((int) ($_POST['usar_area'] ?? 0) === 1 && $areaGps > 0) {
             Database::executar("UPDATE {$tabela} SET area_ha = ? WHERE id = ?", [$areaGps, $alvoId]);
         }
+        // Divisa vinda do CAR (identificação por GPS) traz o número do imóvel
+        if ($ehPropriedade && trim($_POST['car_numero'] ?? '') !== '') {
+            Database::executar('UPDATE propriedades SET car_numero = ? WHERE id = ?',
+                [mb_substr(trim($_POST['car_numero']), 0, 60), $alvoId]);
+        }
         sync_confirmar($_POST['uuid_offline'] ?? null);
         auditar('salvar', 'croqui', $alvoId, ($ehPropriedade ? 'propriedade' : 'talhão') . ' · ' . count($pontos) . " pontos · {$areaGps} ha");
         json_ok(['area_gps' => $areaGps]);
@@ -427,6 +432,21 @@ class ClientesController
         }
         auditar('importar', 'croqui', $propId, 'CAR shapefile · ' . count($pontos) . " pontos · {$areaGps} ha");
         json_ok(['area_gps' => $areaGps, 'pontos' => count($pontos), 'talhoes_fora' => $fora]);
+    }
+
+    /**
+     * Identifica o imóvel do CAR que contém o ponto (GPS) — base do município.
+     * Usado pelo croqui ("CAR aqui") para puxar a divisa oficial da posição atual.
+     */
+    public function carPorPonto(): void
+    {
+        Permissoes::exigirInterno();
+        $lat = ($_GET['lat'] ?? '') !== '' ? (float) $_GET['lat'] : null;
+        $lng = ($_GET['lng'] ?? '') !== '' ? (float) $_GET['lng'] : null;
+        if ($lat === null || $lng === null) {
+            json_erro('Posição (GPS) não informada.');
+        }
+        json_ok(['imovel' => \App\Services\CarService::imovelNoPonto($lat, $lng)]);
     }
 
     /** Garante que a propriedade pertence a um cliente da carteira do usuário. */

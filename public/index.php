@@ -131,6 +131,8 @@ $router->registrar('clientes/salvar-talhao', ClientesController::class, 'salvarT
 $router->registrar('clientes/croqui-dados', ClientesController::class, 'croquiDados');
 $router->registrar('clientes/salvar-croqui', ClientesController::class, 'salvarCroqui');
 $router->registrar('clientes/importar-car', ClientesController::class, 'importarCar');
+$router->registrar('clientes/car-por-ponto', ClientesController::class, 'carPorPonto');
+$router->registrar('integracao/importar-car-municipio', \App\Controllers\IntegracaoController::class, 'importarCarMunicipio');
 $router->registrar('clientes/salvar-plano-safra', ClientesController::class, 'salvarPlanoSafra');
 $router->registrar('clientes/salvar-documento', ClientesController::class, 'salvarDocumento');
 $router->registrar('clientes/baixar-documento', ClientesController::class, 'baixarDocumento');
@@ -143,6 +145,7 @@ $router->registrar('visitas/modelos', VisitasController::class, 'modelos');
 $router->registrar('visitas/salvar', VisitasController::class, 'salvar');
 $router->registrar('visitas/dados', VisitasController::class, 'dados');
 $router->registrar('sync/carteira', SyncController::class, 'carteira');
+$router->registrar('sync/car-municipio', SyncController::class, 'carMunicipio');
 $router->registrar('visitas/detalhe', VisitasController::class, 'detalhe');
 
 // Funil de oportunidades

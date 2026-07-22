@@ -231,6 +231,214 @@ class ShapefileService
         return $anel;
     }
 
+    /* =====================================================================
+     * Base do CAR por MUNICÍPIO: lê TODOS os imóveis do zip (shapefile) e o
+     * código do CAR de cada um (do .dbf pareado). Usado para identificar o
+     * imóvel por GPS (ponto-dentro-do-polígono), inclusive offline.
+     * ===================================================================== */
+
+    /**
+     * Devolve a lista de imóveis do município:
+     * [ ['cod'=>string|null, 'contorno'=>[[lat,lng],...], 'area_ha'=>float,
+     *    'bbox'=>[minLat,minLng,maxLat,maxLng]], ... ]
+     */
+    public static function imoveisDoZip(string $caminho, int $maxPontos = 60): array
+    {
+        if (!class_exists('ZipArchive')) {
+            throw new \RuntimeException('O servidor está sem suporte a ZIP (extensão php-zip).');
+        }
+        $shp = [];
+        $dbf = [];
+        self::coletarPares($caminho, $shp, $dbf, 0);
+        if (!$shp) {
+            throw new \InvalidArgumentException('O arquivo não contém shapefile (.shp) do CAR do município.');
+        }
+
+        $imoveis = [];
+        foreach ($shp as $base => $binShp) {
+            $rings = self::registrosPoligono($binShp);
+            $codigos = isset($dbf[$base])
+                ? self::lerDbfCampo($dbf[$base], ['cod_imovel', 'codigo', 'cod_car', 'nom_imovel', 'cod_tema'])
+                : [];
+            foreach ($rings as $i => $anel) {
+                if (count($anel) < 3) {
+                    continue;
+                }
+                $n = count($anel);
+                if ($anel[0] === $anel[$n - 1]) {
+                    array_pop($anel);
+                }
+                if (count($anel) < 3) {
+                    continue;
+                }
+                foreach ($anel as $pt) {
+                    if ($pt[0] < -90 || $pt[0] > 90 || $pt[1] < -180 || $pt[1] > 180) {
+                        throw new \InvalidArgumentException(
+                            'O arquivo do município está em coordenadas projetadas (UTM). Baixe o CAR em graus (SIRGAS 2000).'
+                        );
+                    }
+                }
+                $simpl = self::simplificar($anel, $maxPontos);
+                $lats = array_column($simpl, 0);
+                $lngs = array_column($simpl, 1);
+                $imoveis[] = [
+                    'cod' => $codigos[$i] ?? null,
+                    'contorno' => $simpl,
+                    'area_ha' => CroquiService::areaHa($simpl),
+                    'bbox' => [min($lats), min($lngs), max($lats), max($lngs)],
+                ];
+            }
+        }
+        if (!$imoveis) {
+            throw new \InvalidArgumentException('Não encontrei polígonos de imóveis no shapefile do município.');
+        }
+        return $imoveis;
+    }
+
+    /** Coleta binários .shp e .dbf por nome-base, entrando em zips aninhados. */
+    private static function coletarPares(string $caminho, array &$shp, array &$dbf, int $prof): void
+    {
+        if ($prof > 4) {
+            return;
+        }
+        $zip = new \ZipArchive();
+        if ($zip->open($caminho) !== true) {
+            return;
+        }
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $nome = (string) $zip->getNameIndex($i);
+            $ext = strtolower(pathinfo($nome, PATHINFO_EXTENSION));
+            $base = strtolower(pathinfo($nome, PATHINFO_FILENAME));
+            $bin = $zip->getFromIndex($i);
+            if ($bin === false) {
+                continue;
+            }
+            if ($ext === 'zip' || $ext === 'kmz') {
+                $tmp = tempnam(sys_get_temp_dir(), 'carm');
+                if ($tmp !== false) {
+                    file_put_contents($tmp, $bin);
+                    self::coletarPares($tmp, $shp, $dbf, $prof + 1);
+                    @unlink($tmp);
+                }
+            } elseif ($ext === 'shp' && strlen($bin) >= 100) {
+                $shp[$base] = $bin;
+            } elseif ($ext === 'dbf') {
+                $dbf[$base] = $bin;
+            }
+        }
+        $zip->close();
+    }
+
+    /** Um anel (maior por área) por REGISTRO do .shp, mantendo a ordem (alinha com o .dbf). */
+    private static function registrosPoligono(string $bin): array
+    {
+        $tipo = unpack('Vt', substr($bin, 32, 4))['t'];
+        if (!in_array($tipo, [5, 15, 25, 3, 13, 23], true)) {
+            return [];
+        }
+        $len = strlen($bin);
+        $off = 100;
+        $out = [];
+        while ($off + 8 <= $len) {
+            $rec = unpack('Nnum/Nwords', substr($bin, $off, 8));
+            $off += 8;
+            $cl = $rec['words'] * 2;
+            if ($cl <= 0 || $off + $cl > $len) {
+                break;
+            }
+            $shape = substr($bin, $off, $cl);
+            $off += $cl;
+            $st = unpack('Vt', substr($shape, 0, 4))['t'];
+            if ($st === 0) {
+                $out[] = []; // registro nulo — mantém o índice alinhado ao .dbf
+                continue;
+            }
+            $hdr = unpack('Vparts/Vpoints', substr($shape, 36, 8));
+            $numParts = $hdr['parts'];
+            $numPoints = $hdr['points'];
+            if ($numParts < 1 || $numPoints < 3) {
+                $out[] = [];
+                continue;
+            }
+            $parts = array_values(unpack('V' . $numParts, substr($shape, 44, 4 * $numParts)));
+            $pointsOff = 44 + 4 * $numParts;
+            $coords = array_values(unpack('d' . ($numPoints * 2), substr($shape, $pointsOff, 16 * $numPoints)));
+            $melhor = [];
+            $melhorArea = -1.0;
+            for ($p = 0; $p < $numParts; $p++) {
+                $ini = $parts[$p];
+                $fim = ($p + 1 < $numParts) ? $parts[$p + 1] : $numPoints;
+                $anel = [];
+                for ($k = $ini; $k < $fim; $k++) {
+                    $anel[] = [$coords[$k * 2 + 1], $coords[$k * 2]];
+                }
+                if (count($anel) < 3) {
+                    continue;
+                }
+                $a = abs(self::areaShoelace($anel));
+                if ($a > $melhorArea) {
+                    $melhorArea = $a;
+                    $melhor = $anel;
+                }
+            }
+            $out[] = $melhor;
+        }
+        return $out;
+    }
+
+    /** Lê um campo do .dbf (dBASE) para todos os registros, na ordem. */
+    private static function lerDbfCampo(string $bin, array $preferidos): array
+    {
+        if (strlen($bin) < 32) {
+            return [];
+        }
+        $h = unpack('Cver/C3d/Vnrec/vhsize/vrsize', substr($bin, 0, 12));
+        $nrec = $h['nrec'];
+        $hsize = $h['hsize'];
+        $rsize = $h['rsize'];
+        // Descritores dos campos (32 bytes cada) a partir do byte 32, até 0x0D
+        $campos = [];
+        $pos = 32;
+        $offset = 1; // 1º byte de cada registro é a flag de deleção
+        while ($pos < $hsize - 1 && ord($bin[$pos]) !== 0x0D) {
+            $nomeCampo = rtrim(substr($bin, $pos, 11), "\0");
+            $tam = ord($bin[$pos + 16]);
+            $campos[] = ['nome' => $nomeCampo, 'off' => $offset, 'tam' => $tam];
+            $offset += $tam;
+            $pos += 32;
+        }
+        // Escolhe o campo do código: preferidos primeiro, depois heurística
+        $alvo = null;
+        foreach ($preferidos as $pref) {
+            foreach ($campos as $c) {
+                if (strcasecmp($c['nome'], $pref) === 0) {
+                    $alvo = $c;
+                    break 2;
+                }
+            }
+        }
+        if (!$alvo) {
+            foreach ($campos as $c) {
+                if (stripos($c['nome'], 'imovel') !== false || stripos($c['nome'], 'cod') !== false) {
+                    $alvo = $c;
+                    break;
+                }
+            }
+        }
+        if (!$alvo) {
+            return [];
+        }
+        $out = [];
+        for ($i = 0; $i < $nrec; $i++) {
+            $recOff = $hsize + $i * $rsize;
+            if ($recOff + $rsize > strlen($bin)) {
+                break;
+            }
+            $out[] = trim(substr($bin, $recOff + $alvo['off'], $alvo['tam']));
+        }
+        return $out;
+    }
+
     /**
      * Percorre um .shp binário e devolve [anelMaior, areaMaior]. O anel externo
      * de um polígono é sempre o de maior área (buracos têm área menor).

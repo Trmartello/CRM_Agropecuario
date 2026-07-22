@@ -711,12 +711,15 @@ const Croqui = {
     Croqui.talhoes = dados.talhoes;
     Croqui.tiles = dados.tiles && dados.tiles.url ? dados.tiles : null;
     Croqui._dirty = false;
+    // Garante a base do CAR do município no aparelho para o "CAR aqui" offline
+    if (typeof Offline !== 'undefined') Offline.baixarCarMunicipio();
     document.getElementById('croquiPropNome').textContent = dados.propriedade.nome;
     const sel = document.getElementById('croquiTalhao');
     sel.innerHTML = '<option value="0">🏠 Propriedade — área total</option>' + Croqui.talhoes.map(t =>
       `<option value="${Number(t.id)}">${App.escapeHtml(t.nome)}${t.cultura ? ' (' + App.escapeHtml(t.cultura) + ')' : ''}</option>`).join('');
     Croqui.atualId = 0; // começa pela divisa da propriedade (área total)
     Croqui.pontos = Croqui._contornoDe(0);
+    Croqui._carCod = '';
     document.getElementById('croquiUsarArea').checked = false;
     document.getElementById('croquiModoManual').checked = true;
     Croqui._prepararEventos();
@@ -774,11 +777,53 @@ const Croqui = {
     Croqui.atualId = Number(document.getElementById('croquiTalhao').value);
     Croqui.pontos = Croqui._contornoDe(Croqui.atualId);
     Croqui._dirty = false;
+    Croqui._carCod = '';
     const rotulo = document.querySelector('label[for="croquiUsarArea"]');
     if (rotulo) rotulo.textContent = Croqui.atualId === 0
       ? 'Usar a área medida como área oficial da propriedade'
       : 'Usar a área medida como área oficial do talhão';
     Croqui.render();
+  },
+
+  /**
+   * "CAR aqui": identifica o imóvel do CAR na posição atual (GPS) — online
+   * pelo servidor, ou offline pela base do município no snapshot — e traz a
+   * divisa oficial para o croqui da propriedade.
+   */
+  async carAqui() {
+    if (Croqui.atualId !== 0) {
+      App.alerta('Selecione "🏠 Propriedade" no seletor para trazer a divisa do CAR.', 'warning');
+      return;
+    }
+    if (!navigator.geolocation) { App.alerta('GPS indisponível neste aparelho.', 'warning'); return; }
+    App.alerta('Localizando o imóvel do CAR na sua posição…', 'info');
+    navigator.geolocation.getCurrentPosition(async pos => {
+      const lat = pos.coords.latitude, lng = pos.coords.longitude;
+      let imovel = null;
+      try {
+        if (navigator.onLine) {
+          const r = await App.json(`index.php?r=clientes/car-por-ponto&lat=${lat.toFixed(7)}&lng=${lng.toFixed(7)}`);
+          imovel = r.imovel;
+        } else {
+          imovel = await OfflineView.carNoPonto(lat, lng); // base do município no snapshot
+        }
+      } catch (e) {
+        // sem conexão no meio: tenta o offline
+        imovel = await OfflineView.carNoPonto(lat, lng);
+      }
+      if (!imovel) {
+        App.alerta('Nenhum imóvel do CAR encontrado nesta posição. Confira se o município foi importado (Integração) ou desenhe manualmente.', 'warning');
+        return;
+      }
+      if (Croqui.pontos.length >= 3 && !confirm('Substituir a divisa atual pela divisa oficial do CAR?')) return;
+      Croqui.pontos = imovel.contorno.map(p => [Number(p[0]), Number(p[1])]);
+      Croqui._carCod = imovel.cod || '';
+      Croqui._dirty = true;
+      Croqui._enquadrar();
+      Croqui.render();
+      App.alerta('Divisa do CAR carregada' + (imovel.cod ? ' (' + App.escapeHtml(imovel.cod) + ')' : '') + '. Confira e toque em "Salvar croqui".', 'success');
+    }, () => App.alerta('Não consegui obter sua posição (permita a localização).', 'warning'),
+    { enableHighAccuracy: true, timeout: 12000, maximumAge: 10000 });
   },
 
   trocarModo() {
@@ -1190,6 +1235,8 @@ const Croqui = {
     fd.append(ehProp ? 'propriedade_id' : 'talhao_id', ehProp ? Croqui.prop.id : Croqui.atualId);
     fd.append('contorno', JSON.stringify(Croqui.pontos.map(p => [Number(Number(p[0]).toFixed(7)), Number(Number(p[1]).toFixed(7))])));
     fd.append('usar_area', document.getElementById('croquiUsarArea').checked ? '1' : '0');
+    // Divisa veio do CAR (identificação por GPS): grava o nº do imóvel junto
+    if (ehProp && Croqui._carCod) fd.append('car_numero', Croqui._carCod);
     try {
       const r = await App.enviarFormOffline(fd, 'index.php?r=clientes/salvar-croqui',
         { modulo: 'Croqui', rotulo: 'Croqui — ' + (ehProp ? 'propriedade ' + Croqui.prop.nome : (alvo ? alvo.nome : 'talhão')) });
@@ -2391,6 +2438,27 @@ const Pendencias = {
 /* ============ LEITURA OFFLINE das telas a partir do snapshot (O2) ============ */
 
 const OfflineView = {
+  /** Identifica o imóvel do CAR na posição (GPS) usando a base do município no snapshot. */
+  async carNoPonto(lat, lng) {
+    if (typeof Offline === 'undefined') return null;
+    const base = await Offline.lerCarMunicipio();
+    if (!base || !base.imoveis) return null;
+    const dentro = (p, pol) => {
+      let d = false;
+      for (let i = 0, j = pol.length - 1; i < pol.length; j = i++) {
+        const yi = pol[i][0], xi = pol[i][1], yj = pol[j][0], xj = pol[j][1];
+        if (((yi > p[0]) !== (yj > p[0])) && p[1] < (xj - xi) * (p[0] - yi) / ((yj - yi) || 1e-12) + xi) d = !d;
+      }
+      return d;
+    };
+    for (const im of base.imoveis) {
+      const [minLat, minLng, maxLat, maxLng] = im.bbox;
+      if (lat < minLat || lat > maxLat || lng < minLng || lng > maxLng) continue;
+      if (dentro([lat, lng], im.contorno)) return { cod: im.cod, contorno: im.contorno };
+    }
+    return null;
+  },
+
   async aplicar() {
     if (navigator.onLine || typeof Offline === 'undefined') return;
     const snap = await Offline.lerSnapshot();

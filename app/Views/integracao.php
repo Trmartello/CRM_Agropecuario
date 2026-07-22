@@ -44,6 +44,40 @@
         <div id="cargaCapResumo" class="small mt-2"></div>
       </div>
     </div>
+
+    <div class="card mt-3">
+      <div class="card-header"><i class="bi bi-geo-alt me-2 text-success"></i><strong>Base do CAR por município (SICAR)</strong></div>
+      <div class="card-body">
+        <p class="text-muted small mb-2">
+          Baixe o <strong>shapefile do município</strong> na consulta pública do SICAR e importe aqui.
+          O app passa a <strong>identificar o imóvel pela posição (GPS)</strong> e desenhar a divisa oficial no croqui —
+          inclusive <strong>offline</strong> no campo. Reimportar o mesmo município substitui a base.
+        </p>
+        <form id="formCarMunicipio" onsubmit="return Integracao.importarCarMunicipio(event)">
+          <div class="row g-2 align-items-end">
+            <div class="col-7"><label class="form-label small mb-1">Município</label>
+              <input name="municipio" class="form-control form-control-sm" placeholder="Concórdia" required></div>
+            <div class="col-5"><label class="form-label small mb-1">UF</label>
+              <input name="uf" class="form-control form-control-sm" placeholder="SC" maxlength="2" required></div>
+            <div class="col-12"><label class="form-label small mb-1">Arquivo .zip do CAR (Shapefile)</label>
+              <input type="file" name="arquivo" class="form-control form-control-sm" accept=".zip,application/zip" required></div>
+            <div class="col-12"><button class="btn btn-success btn-sm w-100"><i class="bi bi-upload me-1"></i>Importar município</button></div>
+          </div>
+        </form>
+        <div id="carMunicipioResumo" class="small mt-2"></div>
+        <?php if (!empty($carMunicipios)): ?>
+          <div class="mt-2 small">
+            <div class="text-muted mb-1">Municípios carregados:</div>
+            <?php foreach ($carMunicipios as $m): ?>
+              <div class="d-flex justify-content-between border-bottom py-1">
+                <span><i class="bi bi-geo me-1 text-success"></i><?= e($m['municipio']) ?>/<?= e($m['uf']) ?></span>
+                <span class="text-muted"><?= numero($m['imoveis']) ?> imóveis</span>
+              </div>
+            <?php endforeach; ?>
+          </div>
+        <?php endif; ?>
+      </div>
+    </div>
   </div>
 
   <div class="col-lg-7">
@@ -113,6 +147,17 @@ const Integracao = {
           (s.sem_usuario.length ? `<details><summary class="text-muted">${s.sem_usuario.length} vendedor(es) sem usuário no CRM (preencha o Cód. vendedor no cadastro e reimporte)</summary>
             <div class="mt-1" style="max-height:160px;overflow:auto">${s.sem_usuario.map(n => `<div class="text-muted">${App.escapeHtml(n)}</div>`).join('')}</div></details>` : '');
       }
+    } catch (e) { alvo.innerHTML = ''; App.alerta(e.message, 'danger'); }
+    return false;
+  },
+  async importarCarMunicipio(ev) {
+    ev.preventDefault();
+    const alvo = document.getElementById('carMunicipioResumo');
+    alvo.innerHTML = '<span class="text-muted"><span class="spinner-border spinner-border-sm me-1"></span>Lendo o shapefile do município (pode levar um minuto)…</span>';
+    try {
+      const r = await App.json('index.php?r=integracao/importar-car-municipio', { method: 'POST', body: new FormData(ev.target) });
+      alvo.innerHTML = `<div class="alert alert-success py-2 mb-1">${App.escapeHtml(r.municipio)}/${App.escapeHtml(r.uf)}: <strong>${r.imoveis}</strong> imóveis importados.</div>`;
+      setTimeout(() => location.reload(), 1200);
     } catch (e) { alvo.innerHTML = ''; App.alerta(e.message, 'danger'); }
     return false;
   },

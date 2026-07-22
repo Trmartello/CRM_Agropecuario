@@ -365,6 +365,32 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '28'"
             );
         }
+        if ($versao < 29) {
+            // Base do CAR por município (identificar imóvel por GPS, offline)
+            if (!self::temTabela('car_imoveis')) {
+                Database::executar(
+                    'CREATE TABLE car_imoveis (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        cod_imovel VARCHAR(80) NOT NULL,
+                        municipio VARCHAR(120) NOT NULL,
+                        uf CHAR(2) NOT NULL DEFAULT "SC",
+                        contorno MEDIUMTEXT NOT NULL,
+                        area_ha DECIMAL(10,2) NULL,
+                        min_lat DECIMAL(10,7) NOT NULL,
+                        min_lng DECIMAL(10,7) NOT NULL,
+                        max_lat DECIMAL(10,7) NOT NULL,
+                        max_lng DECIMAL(10,7) NOT NULL,
+                        criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        INDEX idx_car_municipio (municipio, uf),
+                        INDEX idx_car_bbox (min_lat, max_lat, min_lng, max_lng)
+                     ) ENGINE=InnoDB'
+                );
+            }
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '29')
+                 ON DUPLICATE KEY UPDATE valor = '29'"
+            );
+        }
     }
 
     /** Fase 6E (refinamento): características fisiológicas por estágio (cartão ilustrado). */

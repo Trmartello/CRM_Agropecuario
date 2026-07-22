@@ -261,6 +261,41 @@ const Offline = {
     } catch (e) { /* offline/erro: mantém o snapshot anterior */ }
   },
 
+  // ---------- Base do CAR do município (offline — pesada, muda pouco) ----------
+
+  async lerCarMunicipio() {
+    const db = await Offline.abrirBanco();
+    return new Promise(resolver => {
+      const tx = db.transaction('snapshot', 'readonly');
+      const req = tx.objectStore('snapshot').get('car_municipio');
+      req.onsuccess = () => resolver(req.result || null);
+      req.onerror = () => resolver(null);
+    });
+  },
+
+  /**
+   * Baixa a base do CAR do município uma vez (ou a cada 7 dias) e guarda no
+   * IndexedDB — é grande, então não refaz a cada load.
+   */
+  async baixarCarMunicipio(forcar) {
+    if (!navigator.onLine) return;
+    try {
+      const atual = await Offline.lerCarMunicipio();
+      const idade = atual ? (Date.now() - new Date(atual.atualizado_em).getTime()) : Infinity;
+      if (!forcar && atual && idade < 7 * 864e5) return; // fresca o suficiente
+      const resp = await fetch('index.php?r=sync/car-municipio', { headers: { 'X-Requested-With': 'fetch' } });
+      const dados = await resp.json();
+      if (dados && dados.ok) {
+        const db = await Offline.abrirBanco();
+        await new Promise(r => {
+          const tx = db.transaction('snapshot', 'readwrite');
+          tx.objectStore('snapshot').put({ chave: 'car_municipio', imoveis: dados.imoveis, atualizado_em: dados.atualizado_em });
+          tx.oncomplete = r;
+        });
+      }
+    } catch (e) { /* mantém a base anterior */ }
+  },
+
   // Compatibilidade: chamada antiga de visitas continua funcionando.
   async guardarVisita(form) {
     await Offline.enfileirar('visitas/salvar', form, { modulo: 'visitas', rotulo: 'Visita técnica' });

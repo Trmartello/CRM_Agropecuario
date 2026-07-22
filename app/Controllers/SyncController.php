@@ -124,4 +124,24 @@ class SyncController
             'fenologia' => $fenologia ?: new \stdClass(),
         ]);
     }
+
+    /**
+     * Base do CAR do município para uso offline (identificar imóvel por GPS).
+     * É grande e muda pouco — o cliente baixa separado e só quando necessário.
+     */
+    public function carMunicipio(): void
+    {
+        Permissoes::exigirInterno();
+        $imoveis = array_map(function ($im) {
+            return [
+                'cod' => $im['cod'],
+                'contorno' => json_decode((string) $im['contorno'], true),
+                'bbox' => [
+                    (float) $im['min_lat'], (float) $im['min_lng'],
+                    (float) $im['max_lat'], (float) $im['max_lng'],
+                ],
+            ];
+        }, \App\Services\CarService::paraSnapshot());
+        json_ok(['atualizado_em' => date('c'), 'imoveis' => $imoveis]);
+    }
 }
