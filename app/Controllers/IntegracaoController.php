@@ -28,9 +28,23 @@ class IntegracaoController
     public function importarCarMunicipio(): void
     {
         Permissoes::exigir(['Administrador']);
+        // POST que estoura o post_max_size chega VAZIO (o PHP descarta o corpo):
+        // detecta e explica em vez de deixar dar "resposta inválida".
+        $tamEnviado = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
+        if (empty($_FILES) && empty($_POST) && $tamEnviado > 0) {
+            json_erro('O arquivo passou do limite de upload do servidor (' . round($tamEnviado / 1048576) . ' MB). '
+                . 'Suba só a camada AREA_IMOVEL (não a APP) ou reduza o arquivo.');
+        }
         // Município/UF são OPCIONAIS: se em branco, são detectados do próprio arquivo (.dbf)
         $municipio = trim($_POST['municipio'] ?? '');
         $uf = trim($_POST['uf'] ?? '');
+        $erroUp = $_FILES['arquivo']['error'] ?? UPLOAD_ERR_NO_FILE;
+        if (in_array($erroUp, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
+            json_erro('O arquivo passou do limite de upload do servidor. Suba só a camada AREA_IMOVEL ou reduza o arquivo.');
+        }
+        if ($erroUp === UPLOAD_ERR_PARTIAL) {
+            json_erro('O envio foi interrompido (conexão caiu no meio). Tente de novo com uma conexão estável.');
+        }
         if (empty($_FILES['arquivo']['tmp_name']) || !is_uploaded_file($_FILES['arquivo']['tmp_name'])) {
             json_erro('Selecione o arquivo .zip do CAR do município (Shapefile).');
         }

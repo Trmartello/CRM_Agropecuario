@@ -319,31 +319,48 @@ class ShapefileService
             if (!$stream) {
                 continue;
             }
-            $dbfBin = isset($dbfNames[$base]) ? (string) $zip->getFromName($dbfNames[$base]) : '';
-            $n += self::streamUmShp($stream, $dbfBin, $cb, $maxPontos);
+            // O .dbf pode ser ENORME (município: >1 GB) — lê também em fluxo,
+            // registro a registro, em paralelo com o .shp (mesma ordem).
+            $dbfStream = isset($dbfNames[$base]) ? $zip->getStream($dbfNames[$base]) : null;
+            $n += self::streamUmShp($stream, $dbfStream, $cb, $maxPontos);
             fclose($stream);
-            unset($dbfBin);
+            if ($dbfStream) {
+                fclose($dbfStream);
+            }
         }
-        // Zips aninhados (caso raro no download por município): extrai e recorre
+        // Zips aninhados: extrai em PEDAÇOS para um temp (sem carregar o zip
+        // interno inteiro na memória) e recorre.
         foreach ($aninhados as $nm) {
-            $bin = $zip->getFromName($nm);
-            if ($bin === false) {
+            $in = $zip->getStream($nm);
+            if (!$in) {
                 continue;
             }
             $tmp = tempnam(sys_get_temp_dir(), 'carm');
-            if ($tmp !== false) {
-                file_put_contents($tmp, $bin);
-                unset($bin);
-                $n += self::streamImoveis($tmp, $cb, $maxPontos);
-                @unlink($tmp);
+            if ($tmp === false) {
+                fclose($in);
+                continue;
             }
+            $out = fopen($tmp, 'wb');
+            if ($out !== false) {
+                while (!feof($in)) {
+                    $pedaco = fread($in, 1 << 20); // 1 MB por vez
+                    if ($pedaco === false || $pedaco === '') {
+                        break;
+                    }
+                    fwrite($out, $pedaco);
+                }
+                fclose($out);
+                $n += self::streamImoveis($tmp, $cb, $maxPontos);
+            }
+            fclose($in);
+            @unlink($tmp);
         }
         $zip->close();
         return $n;
     }
 
-    /** Processa um .shp (stream aberto) registro a registro, com o .dbf pareado. */
-    private static function streamUmShp($stream, string $dbfBin, callable $cb, int $maxPontos): int
+    /** Processa um .shp (stream) registro a registro, lendo o .dbf (stream) em paralelo. */
+    private static function streamUmShp($stream, $dbfStream, callable $cb, int $maxPontos): int
     {
         $hdr = self::freadN($stream, 100);
         if (strlen($hdr) < 100) {
@@ -353,8 +370,8 @@ class ShapefileService
         if (!in_array($tipo, [5, 15, 25, 3, 13, 23], true)) {
             return 0;
         }
-        $dbf = self::prepararDbf($dbfBin);
-        $i = 0;
+        // Cabeçalho do .dbf (campos + tamanho do registro) para leitura em fluxo
+        $dbf = $dbfStream ? self::prepararDbfStream($dbfStream) : null;
         $n = 0;
         while (true) {
             $rh = self::freadN($stream, 8);
@@ -371,8 +388,12 @@ class ShapefileService
                 break;
             }
             $anel = self::maiorAnelDoShape($shape);
-            $meta = $dbf ? self::dbfRegistro($dbf, $dbfBin, $i) : [];
-            $i++;
+            // Avança o .dbf UM registro (mantém o alinhamento mesmo se pular o shape)
+            $meta = [];
+            if ($dbf) {
+                $recBin = self::freadN($dbfStream, $dbf['rsize']);
+                $meta = self::extrairCampos($dbf['alvos'], $recBin);
+            }
             if (count($anel) < 3) {
                 continue;
             }
@@ -457,21 +478,9 @@ class ShapefileService
         return $melhor;
     }
 
-    /** Prepara os descritores do .dbf (uma vez) para leitura por registro. */
-    private static function prepararDbf(string $bin): ?array
+    /** Resolve os campos-alvo (cod/municipio/estado) a partir dos descritores do .dbf. */
+    private static function resolverAlvos(array $campos): array
     {
-        if (strlen($bin) < 32) {
-            return null;
-        }
-        $h = unpack('Cver/C3d/Vnrec/vhsize/vrsize', substr($bin, 0, 12));
-        $campos = [];
-        $pos = 32;
-        $offset = 1;
-        while ($pos < $h['hsize'] - 1 && ord($bin[$pos]) !== 0x0D) {
-            $campos[] = ['nome' => rtrim(substr($bin, $pos, 11), "\0"), 'off' => $offset, 'tam' => ord($bin[$pos + 16])];
-            $offset += ord($bin[$pos + 16]);
-            $pos += 32;
-        }
         $alvos = [];
         foreach (self::DBF_ALIASES as $alias => $nomes) {
             foreach ($nomes as $pref) {
@@ -491,19 +500,44 @@ class ShapefileService
                 }
             }
         }
-        return ['hsize' => $h['hsize'], 'rsize' => $h['rsize'], 'nrec' => $h['nrec'], 'alvos' => $alvos];
+        return $alvos;
     }
 
-    /** Lê os campos de um registro do .dbf já preparado. */
-    private static function dbfRegistro(array $dbf, string $bin, int $i): array
+    /**
+     * Lê o cabeçalho do .dbf de um STREAM (sem carregar o arquivo — pode ter >1 GB)
+     * e deixa o stream posicionado no 1º registro. Retorna rsize + campos-alvo.
+     */
+    private static function prepararDbfStream($stream): ?array
     {
-        $recOff = $dbf['hsize'] + $i * $dbf['rsize'];
-        if ($recOff + $dbf['rsize'] > strlen($bin)) {
-            return [];
+        $head = self::freadN($stream, 32);
+        if (strlen($head) < 32) {
+            return null;
         }
+        $h = unpack('Cver/C3d/Vnrec/vhsize/vrsize', substr($head, 0, 12));
+        $hsize = $h['hsize'];
+        $rsize = $h['rsize'];
+        // Descritores dos campos = do byte 32 até hsize (terminador 0x0D)
+        $desc = self::freadN($stream, $hsize - 32);
+        $campos = [];
+        $pos = 0;
+        $offset = 1; // 1º byte de cada registro é a flag de deleção
+        while ($pos + 32 <= strlen($desc) && ord($desc[$pos]) !== 0x0D) {
+            $campos[] = ['nome' => rtrim(substr($desc, $pos, 11), "\0"), 'off' => $offset, 'tam' => ord($desc[$pos + 16])];
+            $offset += ord($desc[$pos + 16]);
+            $pos += 32;
+        }
+        return ['rsize' => $rsize, 'alvos' => self::resolverAlvos($campos)];
+    }
+
+    /** Extrai os campos-alvo de um registro (binário de rsize bytes) do .dbf. */
+    private static function extrairCampos(array $alvos, string $recBin): array
+    {
         $out = [];
-        foreach ($dbf['alvos'] as $alias => $c) {
-            $val = trim(substr($bin, $recOff + $c['off'], $c['tam']));
+        foreach ($alvos as $alias => $c) {
+            if ($c['off'] + $c['tam'] > strlen($recBin)) {
+                continue;
+            }
+            $val = trim(substr($recBin, $c['off'], $c['tam']));
             if ($val !== '' && !mb_check_encoding($val, 'UTF-8')) {
                 $val = mb_convert_encoding($val, 'UTF-8', 'Windows-1252');
             }
