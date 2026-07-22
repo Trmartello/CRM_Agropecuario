@@ -850,8 +850,20 @@ class ShapefileService
     private static function simplificar(array $anel, int $max): array
     {
         $arred = fn ($p) => [round($p[0], 7), round($p[1], 7)];
-        if (count($anel) <= $max) {
+        $n = count($anel);
+        if ($n <= $max) {
             return array_map($arred, $anel);
+        }
+        // Anéis enormes (imóveis detalhados do município): pré-decima uniformemente
+        // ANTES do Douglas-Peucker, para limitar drasticamente o custo/memória.
+        $teto = max($max * 8, 400);
+        if ($n > $teto) {
+            $passo = (int) ceil($n / $teto);
+            $reduzido = [];
+            for ($j = 0; $j < $n; $j += $passo) {
+                $reduzido[] = $anel[$j];
+            }
+            $anel = $reduzido;
         }
         $lat0 = array_sum(array_column($anel, 0)) / count($anel);
         $mLat = 110574.0;
