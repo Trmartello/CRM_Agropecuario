@@ -827,7 +827,7 @@ const Croqui = {
     if (!navigator.geolocation) { App.alerta('GPS indisponível neste aparelho.', 'warning'); return; }
     App.alerta('Localizando o imóvel do CAR na sua posição…', 'info');
     navigator.geolocation.getCurrentPosition(
-      pos => Croqui._aplicarCarDoPonto(pos.coords.latitude, pos.coords.longitude),
+      pos => Croqui._aplicarCarDoPonto(pos.coords.latitude, pos.coords.longitude, 'gps'),
       () => App.alerta('Não consegui obter sua posição (permita a localização).', 'warning'),
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 10000 });
   },
@@ -845,11 +845,11 @@ const Croqui = {
       return;
     }
     App.alerta('Localizando o imóvel do CAR na posição da sede…', 'info');
-    Croqui._aplicarCarDoPonto(Number(lat), Number(lng));
+    Croqui._aplicarCarDoPonto(Number(lat), Number(lng), 'sede');
   },
 
   /** Núcleo comum do "CAR aqui"/"CAR pela sede": busca o imóvel no ponto e traz a divisa. */
-  async _aplicarCarDoPonto(lat, lng) {
+  async _aplicarCarDoPonto(lat, lng, origem = 'gps') {
     let imovel = null;
     try {
       if (navigator.onLine) {
@@ -863,7 +863,9 @@ const Croqui = {
       imovel = await OfflineView.carNoPonto(lat, lng);
     }
     if (!imovel) {
-      App.alerta('Nenhum imóvel do CAR encontrado nesta posição. Confira se o município foi importado (Integração) ou desenhe manualmente.', 'warning');
+      App.alerta(origem === 'sede'
+        ? 'Nenhum imóvel do CAR bate com a posição da sede. A coordenada da sede pode estar aproximada e cair fora do perímetro — confira/ajuste a localização da propriedade no cadastro, use "CAR aqui" quando estiver na propriedade, ou desenhe manualmente. (Se o município ainda não foi importado, avise o Administrador.)'
+        : 'Nenhum imóvel do CAR encontrado nesta posição. Confira se o município foi importado (Integração) ou desenhe manualmente.', 'warning');
       return;
     }
     if (Croqui.pontos.length >= 3 && !confirm('Substituir a divisa atual pela divisa oficial do CAR?')) return;
