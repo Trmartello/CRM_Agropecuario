@@ -283,6 +283,236 @@ class ShapefileService
      * ===================================================================== */
 
     /**
+     * Versão em FLUXO (streaming) para arquivos grandes (município inteiro):
+     * lê o .shp registro a registro direto do zip (sem carregar tudo na
+     * memória) e chama $cb(imovel) para cada imóvel. Devolve a contagem.
+     * O .dbf (menor) é lido inteiro para acesso aleatório por registro.
+     */
+    public static function streamImoveis(string $caminho, callable $cb, int $maxPontos = 60): int
+    {
+        if (!class_exists('ZipArchive')) {
+            throw new \RuntimeException('O servidor está sem suporte a ZIP (extensão php-zip).');
+        }
+        $zip = new \ZipArchive();
+        if ($zip->open($caminho) !== true) {
+            throw new \InvalidArgumentException('Não consegui abrir o arquivo .zip do CAR do município.');
+        }
+        $shpNames = [];
+        $dbfNames = [];
+        $aninhados = [];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $nm = (string) $zip->getNameIndex($i);
+            $ext = strtolower(pathinfo($nm, PATHINFO_EXTENSION));
+            $base = strtolower(pathinfo($nm, PATHINFO_FILENAME));
+            if ($ext === 'shp') {
+                $shpNames[$base] = $nm;
+            } elseif ($ext === 'dbf') {
+                $dbfNames[$base] = $nm;
+            } elseif ($ext === 'zip' || $ext === 'kmz') {
+                $aninhados[] = $nm;
+            }
+        }
+
+        $n = 0;
+        foreach ($shpNames as $base => $shpName) {
+            $stream = $zip->getStream($shpName); // lê descomprimido sob demanda
+            if (!$stream) {
+                continue;
+            }
+            $dbfBin = isset($dbfNames[$base]) ? (string) $zip->getFromName($dbfNames[$base]) : '';
+            $n += self::streamUmShp($stream, $dbfBin, $cb, $maxPontos);
+            fclose($stream);
+            unset($dbfBin);
+        }
+        // Zips aninhados (caso raro no download por município): extrai e recorre
+        foreach ($aninhados as $nm) {
+            $bin = $zip->getFromName($nm);
+            if ($bin === false) {
+                continue;
+            }
+            $tmp = tempnam(sys_get_temp_dir(), 'carm');
+            if ($tmp !== false) {
+                file_put_contents($tmp, $bin);
+                unset($bin);
+                $n += self::streamImoveis($tmp, $cb, $maxPontos);
+                @unlink($tmp);
+            }
+        }
+        $zip->close();
+        return $n;
+    }
+
+    /** Processa um .shp (stream aberto) registro a registro, com o .dbf pareado. */
+    private static function streamUmShp($stream, string $dbfBin, callable $cb, int $maxPontos): int
+    {
+        $hdr = self::freadN($stream, 100);
+        if (strlen($hdr) < 100) {
+            return 0;
+        }
+        $tipo = unpack('Vt', substr($hdr, 32, 4))['t'];
+        if (!in_array($tipo, [5, 15, 25, 3, 13, 23], true)) {
+            return 0;
+        }
+        $dbf = self::prepararDbf($dbfBin);
+        $i = 0;
+        $n = 0;
+        while (true) {
+            $rh = self::freadN($stream, 8);
+            if (strlen($rh) < 8) {
+                break;
+            }
+            $rec = unpack('Nnum/Nwords', $rh);
+            $cl = $rec['words'] * 2;
+            if ($cl <= 0 || $cl > 50_000_000) {
+                break;
+            }
+            $shape = self::freadN($stream, $cl);
+            if (strlen($shape) < $cl) {
+                break;
+            }
+            $anel = self::maiorAnelDoShape($shape);
+            $meta = $dbf ? self::dbfRegistro($dbf, $dbfBin, $i) : [];
+            $i++;
+            if (count($anel) < 3) {
+                continue;
+            }
+            $m = count($anel);
+            if ($anel[0] === $anel[$m - 1]) {
+                array_pop($anel);
+            }
+            if (count($anel) < 3) {
+                continue;
+            }
+            // Descarta imóvel em coordenadas projetadas (não trava o arquivo todo)
+            if ($anel[0][0] < -90 || $anel[0][0] > 90 || $anel[0][1] < -180 || $anel[0][1] > 180) {
+                continue;
+            }
+            $simpl = self::simplificar($anel, $maxPontos);
+            $lats = array_column($simpl, 0);
+            $lngs = array_column($simpl, 1);
+            $cb([
+                'cod' => ($meta['cod'] ?? '') !== '' ? $meta['cod'] : null,
+                'municipio' => ($meta['municipio'] ?? '') !== '' ? $meta['municipio'] : null,
+                'uf' => isset($meta['estado']) && $meta['estado'] !== '' ? self::ufDeEstado($meta['estado']) : null,
+                'contorno' => $simpl,
+                'area_ha' => CroquiService::areaHa($simpl),
+                'bbox' => [min($lats), min($lngs), max($lats), max($lngs)],
+            ]);
+            $n++;
+        }
+        return $n;
+    }
+
+    /** Lê exatamente N bytes de um stream (o zip pode entregar em pedaços). */
+    private static function freadN($stream, int $n): string
+    {
+        $buf = '';
+        while (strlen($buf) < $n && !feof($stream)) {
+            $pedaco = fread($stream, $n - strlen($buf));
+            if ($pedaco === false || $pedaco === '') {
+                break;
+            }
+            $buf .= $pedaco;
+        }
+        return $buf;
+    }
+
+    /** Maior anel (por área) de UM registro .shp (binário do shape). [lat,lng]. */
+    private static function maiorAnelDoShape(string $shape): array
+    {
+        if (strlen($shape) < 44) {
+            return [];
+        }
+        $st = unpack('Vt', substr($shape, 0, 4))['t'];
+        if ($st === 0) {
+            return [];
+        }
+        $hdr = unpack('Vparts/Vpoints', substr($shape, 36, 8));
+        $numParts = $hdr['parts'];
+        $numPoints = $hdr['points'];
+        if ($numParts < 1 || $numPoints < 3) {
+            return [];
+        }
+        $parts = array_values(unpack('V' . $numParts, substr($shape, 44, 4 * $numParts)));
+        $pointsOff = 44 + 4 * $numParts;
+        $coords = array_values(unpack('d' . ($numPoints * 2), substr($shape, $pointsOff, 16 * $numPoints)));
+        $melhor = [];
+        $melhorArea = -1.0;
+        for ($p = 0; $p < $numParts; $p++) {
+            $ini = $parts[$p];
+            $fim = ($p + 1 < $numParts) ? $parts[$p + 1] : $numPoints;
+            $anel = [];
+            for ($k = $ini; $k < $fim; $k++) {
+                $anel[] = [$coords[$k * 2 + 1], $coords[$k * 2]];
+            }
+            if (count($anel) < 3) {
+                continue;
+            }
+            $a = abs(self::areaShoelace($anel));
+            if ($a > $melhorArea) {
+                $melhorArea = $a;
+                $melhor = $anel;
+            }
+        }
+        return $melhor;
+    }
+
+    /** Prepara os descritores do .dbf (uma vez) para leitura por registro. */
+    private static function prepararDbf(string $bin): ?array
+    {
+        if (strlen($bin) < 32) {
+            return null;
+        }
+        $h = unpack('Cver/C3d/Vnrec/vhsize/vrsize', substr($bin, 0, 12));
+        $campos = [];
+        $pos = 32;
+        $offset = 1;
+        while ($pos < $h['hsize'] - 1 && ord($bin[$pos]) !== 0x0D) {
+            $campos[] = ['nome' => rtrim(substr($bin, $pos, 11), "\0"), 'off' => $offset, 'tam' => ord($bin[$pos + 16])];
+            $offset += ord($bin[$pos + 16]);
+            $pos += 32;
+        }
+        $alvos = [];
+        foreach (self::DBF_ALIASES as $alias => $nomes) {
+            foreach ($nomes as $pref) {
+                foreach ($campos as $c) {
+                    if (strcasecmp($c['nome'], $pref) === 0) {
+                        $alvos[$alias] = $c;
+                        break 2;
+                    }
+                }
+            }
+            if (!isset($alvos[$alias]) && $alias === 'cod') {
+                foreach ($campos as $c) {
+                    if (stripos($c['nome'], 'imovel') !== false || stripos($c['nome'], 'cod') !== false) {
+                        $alvos[$alias] = $c;
+                        break;
+                    }
+                }
+            }
+        }
+        return ['hsize' => $h['hsize'], 'rsize' => $h['rsize'], 'nrec' => $h['nrec'], 'alvos' => $alvos];
+    }
+
+    /** Lê os campos de um registro do .dbf já preparado. */
+    private static function dbfRegistro(array $dbf, string $bin, int $i): array
+    {
+        $recOff = $dbf['hsize'] + $i * $dbf['rsize'];
+        if ($recOff + $dbf['rsize'] > strlen($bin)) {
+            return [];
+        }
+        $out = [];
+        foreach ($dbf['alvos'] as $alias => $c) {
+            $val = trim(substr($bin, $recOff + $c['off'], $c['tam']));
+            if ($val !== '' && !mb_check_encoding($val, 'UTF-8')) {
+                $val = mb_convert_encoding($val, 'UTF-8', 'Windows-1252');
+            }
+            $out[$alias] = $val;
+        }
+        return $out;
+    }
+
+    /**
      * Devolve a lista de imóveis do município:
      * [ ['cod'=>string|null, 'contorno'=>[[lat,lng],...], 'area_ha'=>float,
      *    'bbox'=>[minLat,minLng,maxLat,maxLng]], ... ]

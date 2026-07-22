@@ -13,9 +13,71 @@ use App\Core\Database;
 class CarService
 {
     /**
-     * Substitui a base pelos imóveis importados. Cada imóvel usa o seu próprio
-     * município/UF (lidos do .dbf); se faltar, cai no padrão informado no
-     * formulário. Devolve ['imoveis'=>n, 'municipios'=>[['municipio','uf','n'],...]].
+     * Importa a base do CAR de um arquivo (município inteiro) em FLUXO —
+     * lê o shapefile registro a registro e insere em transação, sem carregar
+     * tudo na memória. Substitui apenas os municípios presentes no arquivo.
+     */
+    public static function importarMunicipioArquivo(string $caminho, ?string $municipioPadrao = null, ?string $ufPadrao = null): array
+    {
+        $municipioPadrao = $municipioPadrao !== null && trim($municipioPadrao) !== '' ? mb_strtoupper(trim($municipioPadrao)) : null;
+        $ufPadrao = $ufPadrao !== null && trim($ufPadrao) !== '' ? strtoupper(substr(trim($ufPadrao), 0, 2)) : null;
+
+        $pdo = Database::conexao();
+        $pdo->beginTransaction();
+        try {
+            $deletados = [];      // "MUN|UF" já limpos nesta carga
+            $porMunicipio = [];   // "MUN/UF" => contagem
+            $stmt = $pdo->prepare(
+                'INSERT INTO car_imoveis
+                    (cod_imovel, municipio, uf, contorno, area_ha, min_lat, min_lng, max_lat, max_lng)
+                 VALUES (?,?,?,?,?,?,?,?,?)'
+            );
+
+            $total = \App\Services\ShapefileService::streamImoveis($caminho, function (array $im) use ($pdo, $stmt, $municipioPadrao, $ufPadrao, &$deletados, &$porMunicipio) {
+                $mun = ($im['municipio'] ?? null) ? mb_strtoupper(trim($im['municipio'])) : $municipioPadrao;
+                $uf = ($im['uf'] ?? null) ?: $ufPadrao;
+                if (!$mun || !$uf) {
+                    return; // sem como classificar
+                }
+                $uf = strtoupper(substr($uf, 0, 2));
+                $chaveDel = $mun . '|' . $uf;
+                if (!isset($deletados[$chaveDel])) {
+                    $pdo->prepare('DELETE FROM car_imoveis WHERE municipio = ? AND uf = ?')->execute([$mun, $uf]);
+                    $deletados[$chaveDel] = true;
+                }
+                [$minLat, $minLng, $maxLat, $maxLng] = $im['bbox'];
+                $stmt->execute([
+                    mb_substr((string) ($im['cod'] ?? ''), 0, 80) ?: '(sem código)',
+                    $mun, $uf, json_encode($im['contorno']),
+                    round((float) ($im['area_ha'] ?? 0), 2),
+                    $minLat, $minLng, $maxLat, $maxLng,
+                ]);
+                $chave = $mun . '/' . $uf;
+                $porMunicipio[$chave] = ($porMunicipio[$chave] ?? 0) + 1;
+            });
+
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+
+        $resumo = [];
+        $inseridos = 0;
+        foreach ($porMunicipio as $chave => $qtd) {
+            [$m, $u] = explode('/', $chave);
+            $resumo[] = ['municipio' => $m, 'uf' => $u, 'imoveis' => $qtd];
+            $inseridos += $qtd;
+        }
+        return ['imoveis' => $inseridos, 'municipios' => $resumo];
+    }
+
+    /**
+     * Substitui a base pelos imóveis importados (lista em memória — arquivos
+     * pequenos/testes). Para município inteiro, use importarMunicipioArquivo.
+     * Devolve ['imoveis'=>n, 'municipios'=>[['municipio','uf','n'],...]].
      */
     public static function importarMunicipio(array $imoveis, ?string $municipioPadrao = null, ?string $ufPadrao = null): array
     {

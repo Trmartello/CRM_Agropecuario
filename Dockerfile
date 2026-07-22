@@ -22,4 +22,4 @@ RUN mkdir -p dados/uploads public/uploads
 ENV PHP_CLI_SERVER_WORKERS=8
 
 # Railway injeta a porta em $PORT (padrão 8080)
-CMD ["sh", "-c", "php -d upload_max_filesize=20M -d post_max_size=25M -d memory_limit=256M -S 0.0.0.0:${PORT:-8080} -t public"]
+CMD ["sh", "-c", "php -d upload_max_filesize=250M -d post_max_size=260M -d memory_limit=512M -S 0.0.0.0:${PORT:-8080} -t public"]

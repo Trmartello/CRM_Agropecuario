@@ -37,15 +37,15 @@ class IntegracaoController
         if (strtolower(pathinfo($_FILES['arquivo']['name'], PATHINFO_EXTENSION)) !== 'zip') {
             json_erro('Envie o .zip do CAR do município (Shapefile).');
         }
-        if ($_FILES['arquivo']['size'] > 200 * 1024 * 1024) {
-            json_erro('Arquivo muito grande (máximo 200 MB).');
+        if ($_FILES['arquivo']['size'] > 250 * 1024 * 1024) {
+            json_erro('Arquivo muito grande (máximo 250 MB). Suba apenas a camada AREA_IMOVEL (não a de APP).');
         }
-        @set_time_limit(300);
-        @ini_set('memory_limit', '512M');
+        @set_time_limit(600);
+        @ini_set('memory_limit', '768M');
         try {
-            $imoveis = \App\Services\ShapefileService::imoveisDoZip($_FILES['arquivo']['tmp_name']);
-            $r = \App\Services\CarService::importarMunicipio($imoveis, $municipio ?: null, $uf ?: null);
-        } catch (\Exception $e) {
+            // Streaming: lê registro a registro (aguenta município inteiro sem estourar a memória)
+            $r = \App\Services\CarService::importarMunicipioArquivo($_FILES['arquivo']['tmp_name'], $municipio ?: null, $uf ?: null);
+        } catch (\Throwable $e) {
             json_erro($e->getMessage());
         }
         if ($r['imoveis'] === 0) {
