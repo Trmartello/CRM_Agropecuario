@@ -419,7 +419,8 @@ const Clientes = {
       App.alerta('Lendo o shapefile do CAR…', 'info');
       try {
         const r = await App.json('index.php?r=clientes/importar-car', { method: 'POST', body: fd });
-        App.alerta(`Divisa do CAR importada: ${r.pontos} pontos · ${Number(r.area_gps).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ha.`, 'success');
+        App.alerta(`Divisa do CAR importada: ${r.pontos} pontos · ${Number(r.area_gps).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ha`
+          + (r.car_numero ? ` · nº ${App.escapeHtml(r.car_numero)}` : '') + '.', 'success');
         if (r.talhoes_fora && r.talhoes_fora.length) {
           App.alerta('Atenção: talhão(ões) fora da divisa oficial do CAR: ' + r.talhoes_fora.join(', ') + '. Ajuste no croqui.', 'warning');
         }

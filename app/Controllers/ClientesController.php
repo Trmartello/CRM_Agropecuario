@@ -398,8 +398,8 @@ class ClientesController
         }
 
         try {
-            $pontos = \App\Services\ShapefileService::contornoDoCarZip($_FILES['arquivo']['tmp_name']);
-            $pontos = \App\Services\CroquiService::validarContorno(json_encode($pontos));
+            $lido = \App\Services\ShapefileService::lerCarZip($_FILES['arquivo']['tmp_name']);
+            $pontos = \App\Services\CroquiService::validarContorno(json_encode($lido['contorno']));
         } catch (\Exception $e) {
             json_erro($e->getMessage());
         }
@@ -418,7 +418,8 @@ class ClientesController
             }
         }
 
-        $car = trim($_POST['car_numero'] ?? '');
+        // Número do CAR: usa o que o usuário digitou; senão, o código lido do próprio arquivo (.dbf)
+        $car = trim($_POST['car_numero'] ?? '') ?: (string) ($lido['cod'] ?? '');
         if ($car !== '') {
             Database::executar(
                 'UPDATE propriedades SET contorno = ?, area_gps = ?, car_numero = ? WHERE id = ?',
@@ -431,7 +432,7 @@ class ClientesController
             );
         }
         auditar('importar', 'croqui', $propId, 'CAR shapefile · ' . count($pontos) . " pontos · {$areaGps} ha");
-        json_ok(['area_gps' => $areaGps, 'pontos' => count($pontos), 'talhoes_fora' => $fora]);
+        json_ok(['area_gps' => $areaGps, 'pontos' => count($pontos), 'talhoes_fora' => $fora, 'car_numero' => $car ?: null]);
     }
 
     /**

@@ -17,11 +17,21 @@ class ShapefileService
 {
     /**
      * Abre o arquivo baixado do CAR e devolve a divisa do imóvel [[lat,lng],...].
-     * Aceita o que o SICAR (e apps de GIS) entregam: Shapefile (.shp),
-     * KML/KMZ e GeoJSON — inclusive quando vêm dentro de zips aninhados
-     * (o download individual costuma empacotar um zip por camada).
+     * Compatibilidade: mantém o retorno como lista de pontos.
      */
     public static function contornoDoCarZip(string $caminho): array
+    {
+        return self::lerCarZip($caminho)['contorno'];
+    }
+
+    /**
+     * Lê o .zip do CAR e devolve ['contorno'=>[[lat,lng],...], 'cod'=>string|null].
+     * Aceita o que o SICAR (e apps de GIS) entregam: Shapefile (.shp),
+     * KML/KMZ e GeoJSON — inclusive quando vêm dentro de zips aninhados
+     * (o download individual empacota um zip por camada). Quando o polígono
+     * vem de um shapefile, extrai o número do imóvel (cod_imovel) do .dbf pareado.
+     */
+    public static function lerCarZip(string $caminho): array
     {
         if (!class_exists('ZipArchive')) {
             throw new \RuntimeException('O servidor está sem suporte a ZIP (extensão php-zip).');
@@ -32,29 +42,34 @@ class ShapefileService
 
         $melhorAnel = [];
         $melhorArea = -1.0;
-        $avaliar = function (array $anel, float $area) use (&$melhorAnel, &$melhorArea) {
+        $melhorBase = null; // nome-base do shapefile vencedor (parear com o .dbf)
+
+        // 1) Shapefile (.shp) — formato oficial do CAR
+        foreach ($arquivos['shp'] ?? [] as $base => $bin) {
+            [$anel, $area] = self::maiorAnel($bin);
             if ($anel && $area > $melhorArea) {
                 $melhorArea = $area;
                 $melhorAnel = $anel;
+                $melhorBase = $base;
             }
-        };
-
-        // 1) Shapefile (.shp) — formato oficial do CAR
-        foreach ($arquivos['shp'] ?? [] as $bin) {
-            [$anel, $area] = self::maiorAnel($bin);
-            $avaliar($anel, $area);
         }
-        // 2) KML/KMZ  3) GeoJSON — fallbacks para outros downloads
+        // 2) KML/KMZ  3) GeoJSON — fallbacks para outros downloads (sem código)
         if (!$melhorAnel) {
             foreach ($arquivos['kml'] ?? [] as $bin) {
                 [$anel, $area] = self::maiorAnelTexto(self::aneisDeKml($bin));
-                $avaliar($anel, $area);
+                if ($anel && $area > $melhorArea) {
+                    $melhorArea = $area;
+                    $melhorAnel = $anel;
+                }
             }
         }
         if (!$melhorAnel) {
             foreach ($arquivos['geojson'] ?? [] as $bin) {
                 [$anel, $area] = self::maiorAnelTexto(self::aneisDeGeoJson($bin));
-                $avaliar($anel, $area);
+                if ($anel && $area > $melhorArea) {
+                    $melhorArea = $area;
+                    $melhorAnel = $anel;
+                }
             }
         }
 
@@ -84,7 +99,22 @@ class ShapefileService
         if (count($melhorAnel) < 3) {
             throw new \InvalidArgumentException('O polígono do imóvel tem menos de 3 pontos.');
         }
-        return self::simplificar($melhorAnel, CroquiService::MAX_PONTOS - 5);
+
+        // Número do imóvel (cod_imovel) do .dbf pareado com o shapefile vencedor
+        $cod = null;
+        if ($melhorBase !== null && !empty($arquivos['dbf'][$melhorBase])) {
+            foreach (self::lerDbfCampo($arquivos['dbf'][$melhorBase], ['recibo', 'cod_imovel', 'codigo', 'cod_car', 'nom_imovel']) as $v) {
+                if (trim((string) $v) !== '') {
+                    $cod = trim((string) $v);
+                    break;
+                }
+            }
+        }
+
+        return [
+            'contorno' => self::simplificar($melhorAnel, CroquiService::MAX_PONTOS - 5),
+            'cod' => $cod,
+        ];
     }
 
     /**
@@ -113,6 +143,7 @@ class ShapefileService
         for ($i = 0; $i < $zip->numFiles; $i++) {
             $nome = (string) $zip->getNameIndex($i);
             $ext = strtolower(pathinfo($nome, PATHINFO_EXTENSION));
+            $base = strtolower(pathinfo($nome, PATHINFO_FILENAME));
             $bin = $zip->getFromIndex($i);
             if ($bin === false) {
                 continue;
@@ -126,7 +157,9 @@ class ShapefileService
                     @unlink($tmp);
                 }
             } elseif ($ext === 'shp' && strlen($bin) >= 100) {
-                $saida['shp'][] = $bin;
+                $saida['shp'][$base] = $bin; // por nome, para parear com o .dbf
+            } elseif ($ext === 'dbf') {
+                $saida['dbf'][$base] = $bin;
             } elseif ($ext === 'kml') {
                 $saida['kml'][] = $bin;
             } elseif ($ext === 'geojson' || $ext === 'json') {
@@ -258,7 +291,7 @@ class ShapefileService
         foreach ($shp as $base => $binShp) {
             $rings = self::registrosPoligono($binShp);
             $codigos = isset($dbf[$base])
-                ? self::lerDbfCampo($dbf[$base], ['cod_imovel', 'codigo', 'cod_car', 'nom_imovel', 'cod_tema'])
+                ? self::lerDbfCampo($dbf[$base], ['recibo', 'cod_imovel', 'codigo', 'cod_car', 'nom_imovel', 'cod_tema'])
                 : [];
             foreach ($rings as $i => $anel) {
                 if (count($anel) < 3) {
