@@ -18,6 +18,8 @@
           <span id="croquiGpsStatus" class="badge text-bg-light border d-none"></span>
           <button class="btn btn-sm btn-outline-primary" onclick="Croqui.carAqui()"
                   title="Identificar o imóvel pela sua posição (GPS) na base do CAR e puxar a divisa oficial"><i class="bi bi-crosshair me-1"></i>CAR aqui</button>
+          <button class="btn btn-sm btn-outline-primary" onclick="Croqui.carDaSede()"
+                  title="Puxar a divisa oficial do CAR pela posição da sede (sem GPS) — para preparar a divisa no escritório, antes de ir à propriedade"><i class="bi bi-house-door me-1"></i>CAR pela sede</button>
           <div class="ms-auto d-flex flex-wrap gap-2 align-items-center">
             <span class="small" id="croquiArea"></span>
             <button class="btn btn-sm btn-outline-secondary" onclick="Croqui.desfazer()" title="Remover o último ponto"><i class="bi bi-arrow-counterclockwise"></i> Desfazer</button>

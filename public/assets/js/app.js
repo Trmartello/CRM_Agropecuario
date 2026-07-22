@@ -808,45 +808,71 @@ const Croqui = {
     Croqui.render();
   },
 
+  /** Só faz sentido puxar a divisa do CAR sobre a divisa da PROPRIEDADE (área total). */
+  _podeCar() {
+    if (Croqui.atualId !== 0) {
+      App.alerta('Selecione "🏠 Propriedade" no seletor para trazer a divisa do CAR.', 'warning');
+      return false;
+    }
+    return true;
+  },
+
   /**
    * "CAR aqui": identifica o imóvel do CAR na posição atual (GPS) — online
    * pelo servidor, ou offline pela base do município no snapshot — e traz a
    * divisa oficial para o croqui da propriedade.
    */
   async carAqui() {
-    if (Croqui.atualId !== 0) {
-      App.alerta('Selecione "🏠 Propriedade" no seletor para trazer a divisa do CAR.', 'warning');
-      return;
-    }
+    if (!Croqui._podeCar()) return;
     if (!navigator.geolocation) { App.alerta('GPS indisponível neste aparelho.', 'warning'); return; }
     App.alerta('Localizando o imóvel do CAR na sua posição…', 'info');
-    navigator.geolocation.getCurrentPosition(async pos => {
-      const lat = pos.coords.latitude, lng = pos.coords.longitude;
-      let imovel = null;
-      try {
-        if (navigator.onLine) {
-          const r = await App.json(`index.php?r=clientes/car-por-ponto&lat=${lat.toFixed(7)}&lng=${lng.toFixed(7)}`);
-          imovel = r.imovel;
-        } else {
-          imovel = await OfflineView.carNoPonto(lat, lng); // base do município no snapshot
-        }
-      } catch (e) {
-        // sem conexão no meio: tenta o offline
-        imovel = await OfflineView.carNoPonto(lat, lng);
+    navigator.geolocation.getCurrentPosition(
+      pos => Croqui._aplicarCarDoPonto(pos.coords.latitude, pos.coords.longitude),
+      () => App.alerta('Não consegui obter sua posição (permita a localização).', 'warning'),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 10000 });
+  },
+
+  /**
+   * "CAR pela sede": usa a posição CADASTRADA da sede da propriedade (sem GPS),
+   * o mesmo ponto marcado como "sede" no mapa. Deixa o extensionista puxar a
+   * divisa oficial no escritório, antes de ir à propriedade.
+   */
+  async carDaSede() {
+    if (!Croqui._podeCar()) return;
+    const lat = Croqui.prop && Croqui.prop.latitude, lng = Croqui.prop && Croqui.prop.longitude;
+    if (lat === null || lat === undefined || lat === '' || lng === null || lng === undefined || lng === '') {
+      App.alerta('Esta propriedade ainda não tem a posição da sede cadastrada. Informe a localização da propriedade no cadastro, ou use "CAR aqui" no local.', 'warning');
+      return;
+    }
+    App.alerta('Localizando o imóvel do CAR na posição da sede…', 'info');
+    Croqui._aplicarCarDoPonto(Number(lat), Number(lng));
+  },
+
+  /** Núcleo comum do "CAR aqui"/"CAR pela sede": busca o imóvel no ponto e traz a divisa. */
+  async _aplicarCarDoPonto(lat, lng) {
+    let imovel = null;
+    try {
+      if (navigator.onLine) {
+        const r = await App.json(`index.php?r=clientes/car-por-ponto&lat=${lat.toFixed(7)}&lng=${lng.toFixed(7)}`);
+        imovel = r.imovel;
+      } else {
+        imovel = await OfflineView.carNoPonto(lat, lng); // base do município no snapshot
       }
-      if (!imovel) {
-        App.alerta('Nenhum imóvel do CAR encontrado nesta posição. Confira se o município foi importado (Integração) ou desenhe manualmente.', 'warning');
-        return;
-      }
-      if (Croqui.pontos.length >= 3 && !confirm('Substituir a divisa atual pela divisa oficial do CAR?')) return;
-      Croqui.pontos = imovel.contorno.map(p => [Number(p[0]), Number(p[1])]);
-      Croqui._carCod = imovel.cod || '';
-      Croqui._dirty = true;
-      Croqui._enquadrar();
-      Croqui.render();
-      App.alerta('Divisa do CAR carregada' + (imovel.cod ? ' (' + App.escapeHtml(imovel.cod) + ')' : '') + '. Confira e toque em "Salvar croqui".', 'success');
-    }, () => App.alerta('Não consegui obter sua posição (permita a localização).', 'warning'),
-    { enableHighAccuracy: true, timeout: 12000, maximumAge: 10000 });
+    } catch (e) {
+      // sem conexão no meio: tenta o offline
+      imovel = await OfflineView.carNoPonto(lat, lng);
+    }
+    if (!imovel) {
+      App.alerta('Nenhum imóvel do CAR encontrado nesta posição. Confira se o município foi importado (Integração) ou desenhe manualmente.', 'warning');
+      return;
+    }
+    if (Croqui.pontos.length >= 3 && !confirm('Substituir a divisa atual pela divisa oficial do CAR?')) return;
+    Croqui.pontos = imovel.contorno.map(p => [Number(p[0]), Number(p[1])]);
+    Croqui._carCod = imovel.cod || '';
+    Croqui._dirty = true;
+    Croqui._enquadrar();
+    Croqui.render();
+    App.alerta('Divisa do CAR carregada' + (imovel.cod ? ' (' + App.escapeHtml(imovel.cod) + ')' : '') + '. Confira e toque em "Salvar croqui".', 'success');
   },
 
   trocarModo() {
