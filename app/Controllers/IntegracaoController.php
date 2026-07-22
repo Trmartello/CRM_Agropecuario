@@ -63,7 +63,8 @@ class IntegracaoController
             json_erro($e->getMessage());
         }
         if ($r['imoveis'] === 0) {
-            json_erro('Não consegui identificar o município dos imóveis. Preencha Município e UF e importe de novo.');
+            json_erro('O arquivo do CAR por município não traz o nome do município. '
+                . 'Digite o Município no campo acima (a UF é detectada sozinha) e importe de novo.');
         }
         $rotulo = implode(', ', array_map(fn ($m) => $m['municipio'] . '/' . $m['uf'] . " ({$m['imoveis']})", $r['municipios']));
         auditar('importar', 'car_municipio', 0, $rotulo);

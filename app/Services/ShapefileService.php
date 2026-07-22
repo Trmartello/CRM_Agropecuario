@@ -411,10 +411,16 @@ class ShapefileService
             $simpl = self::simplificar($anel, $maxPontos);
             $lats = array_column($simpl, 0);
             $lngs = array_column($simpl, 1);
+            $cod = ($meta['cod'] ?? '') !== '' ? $meta['cod'] : null;
+            // UF: primeiro do campo estado; senão do prefixo do cód. do CAR (SC-4204202-...)
+            $uf = isset($meta['estado']) && $meta['estado'] !== '' ? self::ufDeEstado($meta['estado']) : null;
+            if (!$uf && $cod !== null) {
+                $uf = self::ufDeCodImovel($cod);
+            }
             $cb([
-                'cod' => ($meta['cod'] ?? '') !== '' ? $meta['cod'] : null,
+                'cod' => $cod,
                 'municipio' => ($meta['municipio'] ?? '') !== '' ? $meta['municipio'] : null,
-                'uf' => isset($meta['estado']) && $meta['estado'] !== '' ? self::ufDeEstado($meta['estado']) : null,
+                'uf' => $uf,
                 'contorno' => $simpl,
                 'area_ha' => CroquiService::areaHa($simpl),
                 'bbox' => [min($lats), min($lngs), max($lats), max($lngs)],
@@ -701,7 +707,7 @@ class ShapefileService
     private const DBF_ALIASES = [
         'cod' => ['recibo', 'cod_imovel', 'codigo', 'cod_car', 'nom_imovel', 'cod_tema'],
         'municipio' => ['municipio', 'nome_munic', 'nm_mun', 'municipi', 'nm_municip', 'nome_mun'],
-        'estado' => ['estado', 'uf', 'nome_uf', 'sigla_uf', 'nm_uf'],
+        'estado' => ['estado', 'uf', 'nome_uf', 'sigla_uf', 'nm_uf', 'cod_estado', 'cod_uf'],
     ];
 
     /** Estados por nome (normalizado, sem acento) → sigla UF. */
@@ -730,6 +736,22 @@ class ShapefileService
             'Í' => 'I', 'Ó' => 'O', 'Ô' => 'O', 'Õ' => 'O', 'Ú' => 'U', 'Ç' => 'C']);
         $k = preg_replace('/\s+/', ' ', $k);
         return self::ESTADOS[$k] ?? null;
+    }
+
+    /**
+     * UF a partir do código do imóvel do SICAR. Na base por município o
+     * cod_imovel vem no formato "UF-IBGE-hash" (ex.: "SC-4204202-ABC..."),
+     * então a sigla é o prefixo — usada quando o .dbf não traz o estado.
+     */
+    private static function ufDeCodImovel(string $cod): ?string
+    {
+        if (preg_match('/^\s*([A-Za-z]{2})[-\s]/', $cod, $m)) {
+            $uf = strtoupper($m[1]);
+            if (in_array($uf, self::ESTADOS, true)) {
+                return $uf;
+            }
+        }
+        return null;
     }
 
     /**
