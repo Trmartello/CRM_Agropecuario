@@ -431,8 +431,19 @@ class ClientesController
                 [json_encode($pontos), $areaGps, $propId]
             );
         }
+        // Município detectado no arquivo preenche o cadastro da propriedade se estiver vazio
+        if (!empty($lido['municipio'])) {
+            Database::executar(
+                "UPDATE propriedades SET municipio = ? WHERE id = ? AND (municipio IS NULL OR municipio = '')",
+                [mb_substr((string) $lido['municipio'], 0, 120), $propId]
+            );
+        }
         auditar('importar', 'croqui', $propId, 'CAR shapefile · ' . count($pontos) . " pontos · {$areaGps} ha");
-        json_ok(['area_gps' => $areaGps, 'pontos' => count($pontos), 'talhoes_fora' => $fora, 'car_numero' => $car ?: null]);
+        json_ok([
+            'area_gps' => $areaGps, 'pontos' => count($pontos), 'talhoes_fora' => $fora,
+            'car_numero' => $car ?: null,
+            'municipio' => $lido['municipio'] ?? null, 'uf' => $lido['uf'] ?? null,
+        ]);
     }
 
     /**

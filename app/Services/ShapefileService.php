@@ -100,12 +100,22 @@ class ShapefileService
             throw new \InvalidArgumentException('O polígono do imóvel tem menos de 3 pontos.');
         }
 
-        // Número do imóvel (cod_imovel) do .dbf pareado com o shapefile vencedor
+        // Número do imóvel + município/UF do .dbf pareado com o shapefile vencedor
         $cod = null;
+        $municipio = null;
+        $uf = null;
         if ($melhorBase !== null && !empty($arquivos['dbf'][$melhorBase])) {
-            foreach (self::lerDbfCampo($arquivos['dbf'][$melhorBase], ['recibo', 'cod_imovel', 'codigo', 'cod_car', 'nom_imovel']) as $v) {
-                if (trim((string) $v) !== '') {
-                    $cod = trim((string) $v);
+            foreach (self::lerDbfLinhas($arquivos['dbf'][$melhorBase], self::DBF_ALIASES) as $r) {
+                if ($cod === null && trim((string) ($r['cod'] ?? '')) !== '') {
+                    $cod = trim($r['cod']);
+                }
+                if ($municipio === null && trim((string) ($r['municipio'] ?? '')) !== '') {
+                    $municipio = trim($r['municipio']);
+                }
+                if ($uf === null && trim((string) ($r['estado'] ?? '')) !== '') {
+                    $uf = self::ufDeEstado($r['estado']);
+                }
+                if ($cod !== null && $municipio !== null && $uf !== null) {
                     break;
                 }
             }
@@ -114,6 +124,8 @@ class ShapefileService
         return [
             'contorno' => self::simplificar($melhorAnel, CroquiService::MAX_PONTOS - 5),
             'cod' => $cod,
+            'municipio' => $municipio,
+            'uf' => $uf,
         ];
     }
 
@@ -290,9 +302,7 @@ class ShapefileService
         $imoveis = [];
         foreach ($shp as $base => $binShp) {
             $rings = self::registrosPoligono($binShp);
-            $codigos = isset($dbf[$base])
-                ? self::lerDbfCampo($dbf[$base], ['recibo', 'cod_imovel', 'codigo', 'cod_car', 'nom_imovel', 'cod_tema'])
-                : [];
+            $linhas = isset($dbf[$base]) ? self::lerDbfLinhas($dbf[$base], self::DBF_ALIASES) : [];
             foreach ($rings as $i => $anel) {
                 if (count($anel) < 3) {
                     continue;
@@ -314,8 +324,11 @@ class ShapefileService
                 $simpl = self::simplificar($anel, $maxPontos);
                 $lats = array_column($simpl, 0);
                 $lngs = array_column($simpl, 1);
+                $r = $linhas[$i] ?? [];
                 $imoveis[] = [
-                    'cod' => $codigos[$i] ?? null,
+                    'cod' => ($r['cod'] ?? '') !== '' ? $r['cod'] : null,
+                    'municipio' => ($r['municipio'] ?? '') !== '' ? $r['municipio'] : null,
+                    'uf' => isset($r['estado']) && $r['estado'] !== '' ? self::ufDeEstado($r['estado']) : null,
                     'contorno' => $simpl,
                     'area_ha' => CroquiService::areaHa($simpl),
                     'bbox' => [min($lats), min($lngs), max($lats), max($lngs)],
@@ -420,7 +433,46 @@ class ShapefileService
     }
 
     /** Lê um campo do .dbf (dBASE) para todos os registros, na ordem. */
-    private static function lerDbfCampo(string $bin, array $preferidos): array
+    /** Nomes de campo do .dbf do CAR por informação (o SICAR usa "recibo", "municipio", "estado"). */
+    private const DBF_ALIASES = [
+        'cod' => ['recibo', 'cod_imovel', 'codigo', 'cod_car', 'nom_imovel', 'cod_tema'],
+        'municipio' => ['municipio', 'nome_munic', 'nm_mun', 'municipi', 'nm_municip', 'nome_mun'],
+        'estado' => ['estado', 'uf', 'nome_uf', 'sigla_uf', 'nm_uf'],
+    ];
+
+    /** Estados por nome (normalizado, sem acento) → sigla UF. */
+    private const ESTADOS = [
+        'ACRE' => 'AC', 'ALAGOAS' => 'AL', 'AMAPA' => 'AP', 'AMAZONAS' => 'AM', 'BAHIA' => 'BA',
+        'CEARA' => 'CE', 'DISTRITO FEDERAL' => 'DF', 'ESPIRITO SANTO' => 'ES', 'GOIAS' => 'GO',
+        'MARANHAO' => 'MA', 'MATO GROSSO' => 'MT', 'MATO GROSSO DO SUL' => 'MS', 'MINAS GERAIS' => 'MG',
+        'PARA' => 'PA', 'PARAIBA' => 'PB', 'PARANA' => 'PR', 'PERNAMBUCO' => 'PE', 'PIAUI' => 'PI',
+        'RIO DE JANEIRO' => 'RJ', 'RIO GRANDE DO NORTE' => 'RN', 'RIO GRANDE DO SUL' => 'RS',
+        'RONDONIA' => 'RO', 'RORAIMA' => 'RR', 'SANTA CATARINA' => 'SC', 'SAO PAULO' => 'SP',
+        'SERGIPE' => 'SE', 'TOCANTINS' => 'TO',
+    ];
+
+    /** Nome (ou sigla) do estado → UF de 2 letras. */
+    private static function ufDeEstado(string $v): ?string
+    {
+        $v = trim($v);
+        if ($v === '') {
+            return null;
+        }
+        if (preg_match('/^[A-Za-z]{2}$/', $v)) {
+            return strtoupper($v);
+        }
+        $k = mb_strtoupper($v, 'UTF-8');
+        $k = strtr($k, ['Á' => 'A', 'À' => 'A', 'Â' => 'A', 'Ã' => 'A', 'É' => 'E', 'Ê' => 'E',
+            'Í' => 'I', 'Ó' => 'O', 'Ô' => 'O', 'Õ' => 'O', 'Ú' => 'U', 'Ç' => 'C']);
+        $k = preg_replace('/\s+/', ' ', $k);
+        return self::ESTADOS[$k] ?? null;
+    }
+
+    /**
+     * Lê o .dbf (dBASE) devolvendo uma linha por registro com os campos pedidos
+     * (aliases → possíveis nomes de coluna). Ordem preservada (alinha com o .shp).
+     */
+    private static function lerDbfLinhas(string $bin, array $aliases): array
     {
         if (strlen($bin) < 32) {
             return [];
@@ -434,42 +486,55 @@ class ShapefileService
         $pos = 32;
         $offset = 1; // 1º byte de cada registro é a flag de deleção
         while ($pos < $hsize - 1 && ord($bin[$pos]) !== 0x0D) {
-            $nomeCampo = rtrim(substr($bin, $pos, 11), "\0");
-            $tam = ord($bin[$pos + 16]);
-            $campos[] = ['nome' => $nomeCampo, 'off' => $offset, 'tam' => $tam];
-            $offset += $tam;
+            $campos[] = ['nome' => rtrim(substr($bin, $pos, 11), "\0"), 'off' => $offset, 'tam' => ord($bin[$pos + 16])];
+            $offset += ord($bin[$pos + 16]);
             $pos += 32;
         }
-        // Escolhe o campo do código: preferidos primeiro, depois heurística
-        $alvo = null;
-        foreach ($preferidos as $pref) {
-            foreach ($campos as $c) {
-                if (strcasecmp($c['nome'], $pref) === 0) {
-                    $alvo = $c;
-                    break 2;
+        // Resolve cada alias para um campo (nomes preferidos; heurística só para o código)
+        $alvos = [];
+        foreach ($aliases as $alias => $nomes) {
+            $achado = null;
+            foreach ($nomes as $pref) {
+                foreach ($campos as $c) {
+                    if (strcasecmp($c['nome'], $pref) === 0) {
+                        $achado = $c;
+                        break 2;
+                    }
                 }
             }
-        }
-        if (!$alvo) {
-            foreach ($campos as $c) {
-                if (stripos($c['nome'], 'imovel') !== false || stripos($c['nome'], 'cod') !== false) {
-                    $alvo = $c;
-                    break;
+            if (!$achado && $alias === 'cod') {
+                foreach ($campos as $c) {
+                    if (stripos($c['nome'], 'imovel') !== false || stripos($c['nome'], 'cod') !== false) {
+                        $achado = $c;
+                        break;
+                    }
                 }
             }
+            if ($achado) {
+                $alvos[$alias] = $achado;
+            }
         }
-        if (!$alvo) {
+        if (!$alvos) {
             return [];
         }
-        $out = [];
+        $rows = [];
         for ($i = 0; $i < $nrec; $i++) {
             $recOff = $hsize + $i * $rsize;
             if ($recOff + $rsize > strlen($bin)) {
                 break;
             }
-            $out[] = trim(substr($bin, $recOff + $alvo['off'], $alvo['tam']));
+            $row = [];
+            foreach ($alvos as $alias => $c) {
+                $val = trim(substr($bin, $recOff + $c['off'], $c['tam']));
+                // .dbf costuma vir em Windows-1252/latin1 (acentos): normaliza para UTF-8
+                if ($val !== '' && !mb_check_encoding($val, 'UTF-8')) {
+                    $val = mb_convert_encoding($val, 'UTF-8', 'Windows-1252');
+                }
+                $row[$alias] = $val;
+            }
+            $rows[] = $row;
         }
-        return $out;
+        return $rows;
     }
 
     /**

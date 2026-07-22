@@ -28,11 +28,9 @@ class IntegracaoController
     public function importarCarMunicipio(): void
     {
         Permissoes::exigir(['Administrador']);
+        // Município/UF são OPCIONAIS: se em branco, são detectados do próprio arquivo (.dbf)
         $municipio = trim($_POST['municipio'] ?? '');
         $uf = trim($_POST['uf'] ?? '');
-        if ($municipio === '' || strlen($uf) !== 2) {
-            json_erro('Informe o município e a UF (ex.: Concórdia / SC).');
-        }
         if (empty($_FILES['arquivo']['tmp_name']) || !is_uploaded_file($_FILES['arquivo']['tmp_name'])) {
             json_erro('Selecione o arquivo .zip do CAR do município (Shapefile).');
         }
@@ -46,12 +44,16 @@ class IntegracaoController
         @ini_set('memory_limit', '512M');
         try {
             $imoveis = \App\Services\ShapefileService::imoveisDoZip($_FILES['arquivo']['tmp_name']);
-            $n = \App\Services\CarService::importarMunicipio($imoveis, $municipio, $uf);
+            $r = \App\Services\CarService::importarMunicipio($imoveis, $municipio ?: null, $uf ?: null);
         } catch (\Exception $e) {
             json_erro($e->getMessage());
         }
-        auditar('importar', 'car_municipio', 0, mb_strtoupper($municipio) . '/' . strtoupper($uf) . " — {$n} imóveis");
-        json_ok(['municipio' => mb_strtoupper($municipio), 'uf' => strtoupper($uf), 'imoveis' => $n]);
+        if ($r['imoveis'] === 0) {
+            json_erro('Não consegui identificar o município dos imóveis. Preencha Município e UF e importe de novo.');
+        }
+        $rotulo = implode(', ', array_map(fn ($m) => $m['municipio'] . '/' . $m['uf'] . " ({$m['imoveis']})", $r['municipios']));
+        auditar('importar', 'car_municipio', 0, $rotulo);
+        json_ok(['imoveis' => $r['imoveis'], 'municipios' => $r['municipios']]);
     }
 
     public function salvarConfig(): void

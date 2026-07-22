@@ -55,13 +55,14 @@
         </p>
         <form id="formCarMunicipio" onsubmit="return Integracao.importarCarMunicipio(event)">
           <div class="row g-2 align-items-end">
-            <div class="col-7"><label class="form-label small mb-1">Município</label>
-              <input name="municipio" class="form-control form-control-sm" placeholder="Concórdia" required></div>
+            <div class="col-7"><label class="form-label small mb-1">Município <span class="text-muted">(opcional)</span></label>
+              <input name="municipio" class="form-control form-control-sm" placeholder="detectado do arquivo"></div>
             <div class="col-5"><label class="form-label small mb-1">UF</label>
-              <input name="uf" class="form-control form-control-sm" placeholder="SC" maxlength="2" required></div>
+              <input name="uf" class="form-control form-control-sm" placeholder="auto" maxlength="2"></div>
             <div class="col-12"><label class="form-label small mb-1">Arquivo .zip do CAR (Shapefile)</label>
               <input type="file" name="arquivo" class="form-control form-control-sm" accept=".zip,application/zip" required></div>
             <div class="col-12"><button class="btn btn-success btn-sm w-100"><i class="bi bi-upload me-1"></i>Importar município</button></div>
+            <div class="col-12"><div class="form-text">Deixe Município/UF em branco para detectar automaticamente do próprio arquivo.</div></div>
           </div>
         </form>
         <div id="carMunicipioResumo" class="small mt-2"></div>
@@ -156,8 +157,9 @@ const Integracao = {
     alvo.innerHTML = '<span class="text-muted"><span class="spinner-border spinner-border-sm me-1"></span>Lendo o shapefile do município (pode levar um minuto)…</span>';
     try {
       const r = await App.json('index.php?r=integracao/importar-car-municipio', { method: 'POST', body: new FormData(ev.target) });
-      alvo.innerHTML = `<div class="alert alert-success py-2 mb-1">${App.escapeHtml(r.municipio)}/${App.escapeHtml(r.uf)}: <strong>${r.imoveis}</strong> imóveis importados.</div>`;
-      setTimeout(() => location.reload(), 1200);
+      const munis = (r.municipios || []).map(m => `${App.escapeHtml(m.municipio)}/${App.escapeHtml(m.uf)} (${m.imoveis})`).join(', ');
+      alvo.innerHTML = `<div class="alert alert-success py-2 mb-1"><strong>${r.imoveis}</strong> imóveis importados — ${munis}.</div>`;
+      setTimeout(() => location.reload(), 1400);
     } catch (e) { alvo.innerHTML = ''; App.alerta(e.message, 'danger'); }
     return false;
   },

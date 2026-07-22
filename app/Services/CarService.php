@@ -12,18 +12,41 @@ use App\Core\Database;
  */
 class CarService
 {
-    /** Substitui a base de um município pelos imóveis recém-importados. */
-    public static function importarMunicipio(array $imoveis, string $municipio, string $uf): int
+    /**
+     * Substitui a base pelos imóveis importados. Cada imóvel usa o seu próprio
+     * município/UF (lidos do .dbf); se faltar, cai no padrão informado no
+     * formulário. Devolve ['imoveis'=>n, 'municipios'=>[['municipio','uf','n'],...]].
+     */
+    public static function importarMunicipio(array $imoveis, ?string $municipioPadrao = null, ?string $ufPadrao = null): array
     {
-        $municipio = mb_strtoupper(trim($municipio));
-        $uf = strtoupper(substr(trim($uf), 0, 2));
-        Database::executar('DELETE FROM car_imoveis WHERE municipio = ? AND uf = ?', [$municipio, $uf]);
+        $municipioPadrao = $municipioPadrao !== null ? mb_strtoupper(trim($municipioPadrao)) : null;
+        $ufPadrao = $ufPadrao !== null ? strtoupper(substr(trim($ufPadrao), 0, 2)) : null;
 
-        $n = 0;
+        // Resolve município/UF de cada imóvel e agrupa
+        $prontos = [];
+        $tocados = []; // "MUNICIPIO|UF" => [municipio, uf]
         foreach ($imoveis as $im) {
             if (empty($im['contorno']) || count($im['contorno']) < 3) {
                 continue;
             }
+            $mun = ($im['municipio'] ?? null) ? mb_strtoupper(trim($im['municipio'])) : $municipioPadrao;
+            $uf = ($im['uf'] ?? null) ?: $ufPadrao;
+            if (!$mun || !$uf) {
+                continue; // sem como classificar o imóvel
+            }
+            $im['_mun'] = $mun;
+            $im['_uf'] = strtoupper(substr($uf, 0, 2));
+            $prontos[] = $im;
+            $tocados[$mun . '|' . $im['_uf']] = [$mun, $im['_uf']];
+        }
+
+        // Substitui apenas os municípios presentes no arquivo
+        foreach ($tocados as [$mun, $uf]) {
+            Database::executar('DELETE FROM car_imoveis WHERE municipio = ? AND uf = ?', [$mun, $uf]);
+        }
+
+        $porMunicipio = [];
+        foreach ($prontos as $im) {
             [$minLat, $minLng, $maxLat, $maxLng] = $im['bbox'];
             Database::executar(
                 'INSERT INTO car_imoveis
@@ -31,14 +54,21 @@ class CarService
                  VALUES (?,?,?,?,?,?,?,?,?)',
                 [
                     mb_substr((string) ($im['cod'] ?? ''), 0, 80) ?: '(sem código)',
-                    $municipio, $uf, json_encode($im['contorno']),
+                    $im['_mun'], $im['_uf'], json_encode($im['contorno']),
                     round((float) ($im['area_ha'] ?? 0), 2),
                     $minLat, $minLng, $maxLat, $maxLng,
                 ]
             );
-            $n++;
+            $chave = $im['_mun'] . '/' . $im['_uf'];
+            $porMunicipio[$chave] = ($porMunicipio[$chave] ?? 0) + 1;
         }
-        return $n;
+
+        $resumo = [];
+        foreach ($porMunicipio as $chave => $qtd) {
+            [$m, $u] = explode('/', $chave);
+            $resumo[] = ['municipio' => $m, 'uf' => $u, 'imoveis' => $qtd];
+        }
+        return ['imoveis' => count($prontos), 'municipios' => $resumo];
     }
 
     /** Municípios com base carregada (para a tela e para o snapshot). */
