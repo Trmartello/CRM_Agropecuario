@@ -15,71 +15,220 @@ namespace App\Services;
  */
 class ShapefileService
 {
-    /** Abre o .zip do CAR e devolve a divisa do imóvel [[lat,lng],...]. */
-    public static function contornoDoCarZip(string $zipPath): array
+    /**
+     * Abre o arquivo baixado do CAR e devolve a divisa do imóvel [[lat,lng],...].
+     * Aceita o que o SICAR (e apps de GIS) entregam: Shapefile (.shp),
+     * KML/KMZ e GeoJSON — inclusive quando vêm dentro de zips aninhados
+     * (o download individual costuma empacotar um zip por camada).
+     */
+    public static function contornoDoCarZip(string $caminho): array
     {
         if (!class_exists('ZipArchive')) {
             throw new \RuntimeException('O servidor está sem suporte a ZIP (extensão php-zip).');
         }
-        $zip = new \ZipArchive();
-        if ($zip->open($zipPath) !== true) {
-            throw new \InvalidArgumentException('Não consegui abrir o arquivo. Envie o .zip baixado do CAR (formato Shapefile).');
-        }
-
-        // Prioriza o shapefile do PERÍMETRO do imóvel; se não achar pelo nome,
-        // avalia todos os .shp e fica com o maior polígono (o perímetro).
-        $preferidos = [];
-        $todos = [];
-        for ($i = 0; $i < $zip->numFiles; $i++) {
-            $nome = (string) $zip->getNameIndex($i);
-            if (!preg_match('/\.shp$/i', $nome)) {
-                continue;
-            }
-            $todos[] = $i;
-            if (preg_match('/area[_ ]?imovel/i', $nome)) {
-                $preferidos[] = $i;
-            }
-        }
-        $candidatos = $preferidos ?: $todos;
-        if (!$candidatos) {
-            $zip->close();
-            throw new \InvalidArgumentException('O .zip não contém um shapefile (.shp) do CAR.');
-        }
+        // Coleta os arquivos geográficos por extensão (recursivo em zips/kmz)
+        $arquivos = [];
+        self::coletar($caminho, $arquivos, 0);
 
         $melhorAnel = [];
         $melhorArea = -1.0;
-        foreach ($candidatos as $idx) {
-            $bin = $zip->getFromIndex($idx);
-            if ($bin === false || strlen($bin) < 100) {
-                continue;
-            }
-            [$anel, $area] = self::maiorAnel($bin);
+        $avaliar = function (array $anel, float $area) use (&$melhorAnel, &$melhorArea) {
             if ($anel && $area > $melhorArea) {
                 $melhorArea = $area;
                 $melhorAnel = $anel;
             }
+        };
+
+        // 1) Shapefile (.shp) — formato oficial do CAR
+        foreach ($arquivos['shp'] ?? [] as $bin) {
+            [$anel, $area] = self::maiorAnel($bin);
+            $avaliar($anel, $area);
         }
-        $zip->close();
+        // 2) KML/KMZ  3) GeoJSON — fallbacks para outros downloads
+        if (!$melhorAnel) {
+            foreach ($arquivos['kml'] ?? [] as $bin) {
+                [$anel, $area] = self::maiorAnelTexto(self::aneisDeKml($bin));
+                $avaliar($anel, $area);
+            }
+        }
+        if (!$melhorAnel) {
+            foreach ($arquivos['geojson'] ?? [] as $bin) {
+                [$anel, $area] = self::maiorAnelTexto(self::aneisDeGeoJson($bin));
+                $avaliar($anel, $area);
+            }
+        }
 
         if (!$melhorAnel) {
-            throw new \InvalidArgumentException('Não encontrei um polígono de área no shapefile do CAR.');
+            $vistos = array_keys($arquivos);
+            $lista = $vistos ? implode(', ', $vistos) : 'nenhum arquivo reconhecido';
+            throw new \InvalidArgumentException(
+                'Não encontrei o polígono do imóvel no arquivo (conteúdo: ' . $lista . '). '
+                . 'Na consulta pública do CAR, baixe o imóvel em Shapefile (ou KML/GeoJSON) e envie o arquivo .zip.'
+            );
         }
 
         // Coordenadas devem ser geográficas (graus). Projetadas (UTM) têm valores gigantes.
         foreach ($melhorAnel as $pt) {
             if ($pt[0] < -90 || $pt[0] > 90 || $pt[1] < -180 || $pt[1] > 180) {
                 throw new \InvalidArgumentException(
-                    'O shapefile está em coordenadas projetadas (UTM). Baixe o CAR em coordenadas geográficas (graus/SIRGAS 2000).'
+                    'O arquivo está em coordenadas projetadas (UTM). Baixe o CAR em coordenadas geográficas (graus/SIRGAS 2000).'
                 );
             }
         }
 
-        // Fecha repetido no fim (shapefile repete o 1º ponto) e simplifica.
+        // Fecha repetido no fim (o anel repete o 1º ponto) e simplifica.
         $n = count($melhorAnel);
         if ($n > 1 && $melhorAnel[0] === $melhorAnel[$n - 1]) {
             array_pop($melhorAnel);
         }
+        if (count($melhorAnel) < 3) {
+            throw new \InvalidArgumentException('O polígono do imóvel tem menos de 3 pontos.');
+        }
         return self::simplificar($melhorAnel, CroquiService::MAX_PONTOS - 5);
+    }
+
+    /**
+     * Percorre um zip (ou kmz) e guarda os binários geográficos por extensão,
+     * entrando em zips aninhados (o CAR empacota um zip por camada). Também
+     * aceita um arquivo solto .kml/.geojson que não seja zip.
+     */
+    private static function coletar(string $caminho, array &$saida, int $profundidade): void
+    {
+        if ($profundidade > 4) {
+            return; // trava contra zip-bomba/recursão
+        }
+        $zip = new \ZipArchive();
+        if ($zip->open($caminho) !== true) {
+            // não é zip: talvez um .kml/.geojson solto
+            $bin = @file_get_contents($caminho);
+            if ($bin !== false && $bin !== '') {
+                if (stripos($bin, '<kml') !== false || stripos($bin, '<coordinates') !== false) {
+                    $saida['kml'][] = $bin;
+                } elseif (stripos($bin, '"coordinates"') !== false || stripos($bin, '"FeatureCollection"') !== false) {
+                    $saida['geojson'][] = $bin;
+                }
+            }
+            return;
+        }
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $nome = (string) $zip->getNameIndex($i);
+            $ext = strtolower(pathinfo($nome, PATHINFO_EXTENSION));
+            $bin = $zip->getFromIndex($i);
+            if ($bin === false) {
+                continue;
+            }
+            if ($ext === 'zip' || $ext === 'kmz') {
+                // extrai para arquivo temporário e recorre
+                $tmp = tempnam(sys_get_temp_dir(), 'car');
+                if ($tmp !== false) {
+                    file_put_contents($tmp, $bin);
+                    self::coletar($tmp, $saida, $profundidade + 1);
+                    @unlink($tmp);
+                }
+            } elseif ($ext === 'shp' && strlen($bin) >= 100) {
+                $saida['shp'][] = $bin;
+            } elseif ($ext === 'kml') {
+                $saida['kml'][] = $bin;
+            } elseif ($ext === 'geojson' || $ext === 'json') {
+                $saida['geojson'][] = $bin;
+            }
+        }
+        $zip->close();
+    }
+
+    /** Maior anel (por área) de uma lista de anéis já em [[lat,lng],...]. */
+    private static function maiorAnelTexto(array $aneis): array
+    {
+        $melhor = [];
+        $area = -1.0;
+        foreach ($aneis as $anel) {
+            if (count($anel) < 3) {
+                continue;
+            }
+            $a = abs(self::areaShoelace($anel));
+            if ($a > $area) {
+                $area = $a;
+                $melhor = $anel;
+            }
+        }
+        return [$melhor, $area];
+    }
+
+    /** Extrai os anéis (listas de pontos) de todos os <coordinates> de um KML. */
+    private static function aneisDeKml(string $kml): array
+    {
+        $aneis = [];
+        if (!preg_match_all('/<coordinates>(.*?)<\/coordinates>/is', $kml, $m)) {
+            return $aneis;
+        }
+        foreach ($m[1] as $blob) {
+            $anel = [];
+            foreach (preg_split('/\s+/', trim($blob)) as $tok) {
+                if ($tok === '') {
+                    continue;
+                }
+                $p = explode(',', $tok);
+                if (count($p) < 2 || !is_numeric($p[0]) || !is_numeric($p[1])) {
+                    continue;
+                }
+                $anel[] = [(float) $p[1], (float) $p[0]]; // KML = lng,lat
+            }
+            if (count($anel) >= 3) {
+                $aneis[] = $anel;
+            }
+        }
+        return $aneis;
+    }
+
+    /** Extrai os anéis de Polygon/MultiPolygon de um GeoJSON. */
+    private static function aneisDeGeoJson(string $texto): array
+    {
+        $dados = json_decode($texto, true);
+        if (!is_array($dados)) {
+            return [];
+        }
+        $aneis = [];
+        $coletaGeom = function ($geom) use (&$aneis, &$coletaGeom) {
+            if (!is_array($geom) || empty($geom['type'])) {
+                return;
+            }
+            $tipo = $geom['type'];
+            if ($tipo === 'Polygon' && !empty($geom['coordinates'][0])) {
+                $aneis[] = self::pontosGeoJson($geom['coordinates'][0]);
+            } elseif ($tipo === 'MultiPolygon' && !empty($geom['coordinates'])) {
+                foreach ($geom['coordinates'] as $poly) {
+                    if (!empty($poly[0])) {
+                        $aneis[] = self::pontosGeoJson($poly[0]);
+                    }
+                }
+            } elseif ($tipo === 'GeometryCollection' && !empty($geom['geometries'])) {
+                foreach ($geom['geometries'] as $g) {
+                    $coletaGeom($g);
+                }
+            }
+        };
+        if (!empty($dados['features'])) {
+            foreach ($dados['features'] as $f) {
+                $coletaGeom($f['geometry'] ?? null);
+            }
+        } elseif (!empty($dados['geometry'])) {
+            $coletaGeom($dados['geometry']);
+        } else {
+            $coletaGeom($dados);
+        }
+        return array_filter($aneis, fn ($a) => count($a) >= 3);
+    }
+
+    /** Converte a lista de pontos GeoJSON [lng,lat] para [[lat,lng],...]. */
+    private static function pontosGeoJson(array $ring): array
+    {
+        $anel = [];
+        foreach ($ring as $p) {
+            if (is_array($p) && count($p) >= 2 && is_numeric($p[0]) && is_numeric($p[1])) {
+                $anel[] = [(float) $p[1], (float) $p[0]];
+            }
+        }
+        return $anel;
     }
 
     /**
