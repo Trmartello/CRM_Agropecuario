@@ -28,6 +28,9 @@ class IntegracaoController
     public function importarCarMunicipio(): void
     {
         Permissoes::exigir(['Administrador']);
+        // Import demorado (município inteiro): libera o lock da sessão para não
+        // travar o sino/navegação do mesmo admin (senão dá "upstream error").
+        liberar_sessao();
         // POST que estoura o post_max_size chega VAZIO (o PHP descarta o corpo):
         // detecta e explica em vez de deixar dar "resposta inválida".
         $tamEnviado = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
@@ -86,6 +89,7 @@ class IntegracaoController
     public function importarCarga(): void
     {
         Permissoes::exigir(['Administrador']);
+        liberar_sessao(); // não segura o lock da sessão durante a importação
         if (empty($_FILES['arquivo']['tmp_name']) || !is_uploaded_file($_FILES['arquivo']['tmp_name'])) {
             json_erro('Selecione o arquivo JSON da carga.');
         }

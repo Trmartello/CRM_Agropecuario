@@ -16,6 +16,7 @@ class BackupController
     public function baixar(): void
     {
         Permissoes::exigir(['Administrador']);
+        liberar_sessao(); // dump longo: não segura o lock da sessão do admin
         $pdo = Database::conexao();
 
         header('Content-Type: application/sql; charset=utf-8');

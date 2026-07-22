@@ -39,6 +39,21 @@ function json_erro(string $mensagem, int $status = 400): never
 }
 
 /**
+ * Libera o LOCK da sessão. O PHP tranca o arquivo da sessão durante toda a
+ * requisição — então uma rota LONGA (import do CAR, dump de backup) que segura
+ * a sessão faz as OUTRAS requisições do MESMO usuário (sino de notificações,
+ * navegação) ficarem presas em `session_start()` até estourar o timeout do
+ * proxy ("upstream error"). Chamar logo após checar a permissão: o `$_SESSION`
+ * segue legível em memória (Auth::id() etc.), só não persiste novas gravações.
+ */
+function liberar_sessao(): void
+{
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
+}
+
+/**
  * Idempotência do offline (O3) — ATÔMICA.
  * Abre uma transação e insere o uuid do reenvio como "trava" (PK). Se o uuid já
  * existe (reenvio de uma requisição cuja resposta se perdeu), desfaz e responde
