@@ -474,6 +474,22 @@ class ClientesController
     }
 
     /**
+     * Imóveis do CAR numa área (para o overlay do croqui — o técnico vê todos
+     * e toca no que é do produtor). Recebe lat/lng do centro + raio (m).
+     */
+    public function carProximos(): void
+    {
+        Permissoes::exigirInterno();
+        $lat = ($_GET['lat'] ?? '') !== '' ? (float) $_GET['lat'] : null;
+        $lng = ($_GET['lng'] ?? '') !== '' ? (float) $_GET['lng'] : null;
+        if ($lat === null || $lng === null) {
+            json_erro('Posição não informada.');
+        }
+        $raio = min(8000.0, max(500.0, (float) ($_GET['raio'] ?? 3000)));
+        json_ok(['imoveis' => \App\Services\CarService::imoveisNaArea($lat, $lng, $raio, 500)]);
+    }
+
+    /**
      * Grava o número do CAR no cadastro da propriedade assim que o imóvel é
      * identificado (pelo croqui — "CAR aqui"/"CAR pela sede"/auto), sem depender
      * de salvar o desenho. Idempotente (só atualiza o campo).

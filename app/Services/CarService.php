@@ -218,6 +218,30 @@ class CarService
         return null;
     }
 
+    /**
+     * Imóveis do CAR numa ÁREA (bbox por raio) para desenhar o overlay no croqui —
+     * o usuário vê todos os imóveis e toca no que é do produtor. Devolve
+     * [ ['cod','contorno'=>[[lat,lng],...],'area_ha'], ... ] (limitado).
+     */
+    public static function imoveisNaArea(float $lat, float $lng, float $raioMetros = 3000.0, int $limite = 500): array
+    {
+        $grau = $raioMetros / 111000.0;
+        $rows = Database::todos(
+            'SELECT cod_imovel, contorno, area_ha FROM car_imoveis
+              WHERE max_lat >= ? AND min_lat <= ? AND max_lng >= ? AND min_lng <= ?
+              LIMIT ' . max(1, (int) $limite),
+            [$lat - $grau, $lat + $grau, $lng - $grau, $lng + $grau]
+        );
+        $out = [];
+        foreach ($rows as $r) {
+            $pts = json_decode((string) $r['contorno'], true);
+            if (is_array($pts) && count($pts) >= 3) {
+                $out[] = ['cod' => $r['cod_imovel'], 'contorno' => $pts, 'area_ha' => (float) $r['area_ha']];
+            }
+        }
+        return $out;
+    }
+
     /** Há algum imóvel do CAR até ~6 km do ponto? (base do município importada na região). */
     public static function temBasePerto(float $lat, float $lng): bool
     {

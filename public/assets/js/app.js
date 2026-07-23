@@ -683,6 +683,9 @@ const Croqui = {
   _pinch: null,        // zoom de pinça (dois dedos)
   _ponteiros: new Map(),
   _eventosOk: false,
+  carLayer: [],        // imóveis do CAR próximos (overlay p/ selecionar no mapa)
+  carLayerOn: false,   // overlay do CAR visível/ativo (toque na área seleciona)
+  _carLayerCentro: null, // [lat,lng] do último carregamento (evita recarregar à toa)
 
   /* --- Web Mercator (mesma projeção dos tiles de satélite) --- */
   _wx(p) { return (Number(p[1]) + 180) / 360; },
@@ -721,6 +724,8 @@ const Croqui = {
     Croqui.atualId = 0; // começa pela divisa da propriedade (área total)
     Croqui.pontos = Croqui._contornoDe(0);
     Croqui._carCod = '';
+    Croqui.carLayer = []; Croqui.carLayerOn = false; Croqui._carLayerCentro = null;
+    { const b = document.getElementById('croquiCarMapaBtn'); if (b) b.classList.remove('active'); }
     document.getElementById('croquiUsarArea').checked = false;
     document.getElementById('croquiModoManual').checked = true;
     Croqui._prepararEventos();
@@ -734,6 +739,8 @@ const Croqui = {
       if (!Croqui.vista) Croqui._centrarNoGps();
       // Já traz a divisa oficial do CAR da sede, se ainda não houver divisa.
       Croqui._autoCarSede();
+      // E mostra todos os imóveis do CAR no mapa p/ o técnico escolher a área do produtor.
+      Croqui._autoMostrarCar();
     }, 250);
   },
 
@@ -933,6 +940,83 @@ const Croqui = {
     } catch (e) { /* silencioso: o nº ainda vai junto ao "Salvar croqui" */ }
   },
 
+  /** Liga/desliga o overlay dos imóveis do CAR no mapa (toque na área seleciona a divisa). */
+  async toggleCarLayer() {
+    Croqui.carLayerOn = !Croqui.carLayerOn;
+    const btn = document.getElementById('croquiCarMapaBtn');
+    if (btn) btn.classList.toggle('active', Croqui.carLayerOn);
+    if (Croqui.carLayerOn) {
+      if (!Croqui.carLayer.length) await Croqui._carregarCarLayer();
+      App.alerta(Croqui.carLayer.length
+        ? 'Imóveis do CAR no mapa. Toque na área que é do produtor para adotar a divisa.'
+        : 'Nenhum imóvel do CAR carregado nesta região (importe o município na Integração).', Croqui.carLayer.length ? 'info' : 'warning');
+    }
+    Croqui.render();
+  },
+
+  /** Carrega os imóveis do CAR ao redor do centro atual (online, ou snapshot offline). */
+  async _carregarCarLayer(silencioso = false) {
+    if (!Croqui.vista) return;
+    const c = Croqui._geo(Croqui.vista.cx, Croqui.vista.cy); // [lat,lng] do centro da tela
+    try {
+      if (navigator.onLine) {
+        const r = await App.json(`index.php?r=clientes/car-proximos&lat=${c[0].toFixed(7)}&lng=${c[1].toFixed(7)}&raio=5000`);
+        Croqui.carLayer = r.imoveis || [];
+      } else if (typeof Offline !== 'undefined') {
+        const base = await Offline.lerCarMunicipio();
+        Croqui.carLayer = (base && base.imoveis) ? base.imoveis.map(im => ({ cod: im.cod, contorno: im.contorno })) : [];
+      }
+      Croqui._carLayerCentro = c;
+    } catch (e) {
+      if (!silencioso) App.alerta('Não consegui carregar os imóveis do CAR aqui.', 'warning');
+    }
+  },
+
+  /** Imóvel do overlay que contém o ponto [lat,lng] (o de menor área, se houver sobreposição). */
+  _carDoMapaNoPonto(lat, lng) {
+    const dentro = (pol) => {
+      let d = false;
+      for (let i = 0, j = pol.length - 1; i < pol.length; j = i++) {
+        const yi = pol[i][0], xi = pol[i][1], yj = pol[j][0], xj = pol[j][1];
+        if (((yi > lat) !== (yj > lat)) && lng < (xj - xi) * (lat - yi) / ((yj - yi) || 1e-12) + xi) d = !d;
+      }
+      return d;
+    };
+    let achado = null, menorArea = Infinity;
+    for (const im of Croqui.carLayer) {
+      if (!im.contorno || im.contorno.length < 3 || !dentro(im.contorno)) continue;
+      const a = Croqui.areaHa(im.contorno);
+      if (a < menorArea) { menorArea = a; achado = im; }
+    }
+    return achado;
+  },
+
+  /** Adota o imóvel do CAR escolhido no mapa como divisa da propriedade. */
+  _selecionarCarDoMapa(im) {
+    if (Croqui.atualId !== 0) { App.alerta('Selecione "🏠 Propriedade" no seletor para adotar a divisa do CAR.', 'warning'); return; }
+    if (Croqui.pontos.length >= 3 && !confirm('Substituir a divisa atual pela área do CAR escolhida?')) return;
+    Croqui.pontos = im.contorno.map(p => [Number(p[0]), Number(p[1])]);
+    Croqui._carCod = im.cod || '';
+    Croqui._dirty = true;
+    Croqui.render();
+    // o técnico escolheu explicitamente a área => grava o nº do CAR na hora
+    if (im.cod && im.cod !== (Croqui.prop.car_numero || '')) Croqui._persistirCarNumero(im.cod);
+    App.alerta('Área do CAR adotada' + (im.cod ? ' (' + App.escapeHtml(im.cod) + ')' : '')
+      + (im.cod ? '. Nº do CAR gravado no cadastro' : '') + '. Confira e toque em "Salvar croqui".', 'success');
+  },
+
+  /** Ao abrir: mostra o overlay do CAR se houver base na região (o técnico escolhe a área). */
+  async _autoMostrarCar() {
+    if (Croqui.carLayerOn) return;
+    await Croqui._carregarCarLayer(true);
+    if (Croqui.carLayer.length) {
+      Croqui.carLayerOn = true;
+      const btn = document.getElementById('croquiCarMapaBtn');
+      if (btn) btn.classList.add('active');
+      Croqui.render();
+    }
+  },
+
   trocarModo() {
     if (document.getElementById('croquiModoGps').checked) Croqui._iniciarGPS();
     else Croqui._pararGPS();
@@ -1105,6 +1189,29 @@ const Croqui = {
 
     let svg = '';
     const legenda = [];
+    // Overlay dos imóveis do CAR (tracejado amarelo, como no SICAR) — sob tudo,
+    // recortado ao viewport p/ não pesar; a área adotada (=_carCod) fica destacada.
+    if (Croqui.carLayerOn && Croqui.carLayer.length) {
+      const tl = Croqui._paraGeo(0, 0, larg, alt), br = Croqui._paraGeo(larg, alt, larg, alt);
+      const vMinLat = Math.min(tl[0], br[0]), vMaxLat = Math.max(tl[0], br[0]);
+      const vMinLng = Math.min(tl[1], br[1]), vMaxLng = Math.max(tl[1], br[1]);
+      let desenhados = 0;
+      for (const im of Croqui.carLayer) {
+        if (desenhados > 600) break;
+        const c = im.contorno;
+        if (!c || c.length < 3) continue;
+        let iMinLat = 91, iMaxLat = -91, iMinLng = 181, iMaxLng = -181;
+        for (const p of c) { if (p[0] < iMinLat) iMinLat = p[0]; if (p[0] > iMaxLat) iMaxLat = p[0]; if (p[1] < iMinLng) iMinLng = p[1]; if (p[1] > iMaxLng) iMaxLng = p[1]; }
+        if (iMaxLat < vMinLat || iMinLat > vMaxLat || iMaxLng < vMinLng || iMinLng > vMaxLng) continue; // fora da tela
+        const tela = c.map(p => Croqui._paraTela(p, larg, alt));
+        const sel = im.cod && im.cod === Croqui._carCod;
+        svg += `<polygon points="${tela.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ')}"
+                  fill="#ffd400" fill-opacity="${sel ? '.20' : '0'}" stroke="#ffd400" stroke-width="${sel ? 3 : 1.5}"
+                  stroke-dasharray="${sel ? 'none' : '5 4'}" style="pointer-events:none"/>`;
+        desenhados++;
+      }
+      legenda.push('<span><span class="croqui-cor" style="background:#ffd400"></span>Imóveis do CAR (toque p/ adotar)</span>');
+    }
     // Divisa da propriedade (amarela tracejada) — por baixo dos talhões
     const divisa = Croqui.atualId === 0 ? Croqui.pontos : Croqui._contornoDe(0);
     if (Croqui.atualId !== 0 && divisa.length >= 3) {
@@ -1295,12 +1402,18 @@ const Croqui = {
         // Gesto CANCELADO pelo navegador (ligação, palm rejection) nunca vira ponto
         const foiClique = ev.type === 'pointerup' && ev.isPrimary && !Croqui._pan.moved;
         Croqui._pan = null;
-        if (foiClique && document.getElementById('croquiModoManual').checked && Croqui.vista
-            && !ev.target.closest('.croqui-zoom')) {
+        if (foiClique && Croqui.vista && !ev.target.closest('.croqui-zoom')) {
           const [x, y, w, h] = pos(ev);
-          Croqui.pontos.push(Croqui._prender(Croqui._paraGeo(x, y, w, h)));
-          Croqui._dirty = true;
-          Croqui.render();
+          const geo = Croqui._paraGeo(x, y, w, h);
+          if (Croqui.carLayerOn) {
+            // Modo "CAR no mapa": toque na área do produtor adota a divisa (não desenha ponto)
+            const im = Croqui._carDoMapaNoPonto(geo[0], geo[1]);
+            if (im) Croqui._selecionarCarDoMapa(im);
+          } else if (document.getElementById('croquiModoManual').checked) {
+            Croqui.pontos.push(Croqui._prender(geo));
+            Croqui._dirty = true;
+            Croqui.render();
+          }
         }
       }
     }));
