@@ -732,7 +732,20 @@ const Croqui = {
       // Propriedade sem nenhuma referência (nova): mostra o satélite na
       // posição atual para já dar para tocar os pontos ou usar "CAR aqui".
       if (!Croqui.vista) Croqui._centrarNoGps();
+      // Já traz a divisa oficial do CAR da sede, se ainda não houver divisa.
+      Croqui._autoCarSede();
     }, 250);
+  },
+
+  /**
+   * Ao abrir: se a propriedade ainda não tem divisa e tem sede cadastrada,
+   * puxa a divisa oficial do CAR automaticamente (silencioso se não achar).
+   */
+  async _autoCarSede() {
+    if (Croqui.atualId !== 0 || Croqui.pontos.length >= 3) return; // não sobrescreve divisa existente
+    const lat = Croqui.prop && Croqui.prop.latitude, lng = Croqui.prop && Croqui.prop.longitude;
+    if (lat === null || lat === undefined || lng === null || lng === undefined) return;
+    await Croqui._aplicarCarDoPonto(Number(lat), Number(lng), 'auto');
   },
 
   /** Centraliza o mapa na posição atual quando ainda não há referência. */
@@ -848,24 +861,35 @@ const Croqui = {
     Croqui._aplicarCarDoPonto(Number(lat), Number(lng), 'sede');
   },
 
-  /** Núcleo comum do "CAR aqui"/"CAR pela sede": busca o imóvel no ponto e traz a divisa. */
+  _TOL_CAR_M: 250, // tolerância p/ pegar o imóvel mais próximo quando a sede cai logo fora
+
+  /**
+   * Núcleo comum do "CAR aqui"/"CAR pela sede"/auto-abertura: busca o imóvel no
+   * ponto (exato ou mais próximo dentro da tolerância) e traz a divisa. `origem`
+   * = 'gps' | 'sede' | 'auto' (auto = ao abrir, falha em silêncio).
+   */
   async _aplicarCarDoPonto(lat, lng, origem = 'gps') {
-    let imovel = null;
+    let imovel = null, contexto = null;
     try {
       if (navigator.onLine) {
         const r = await App.json(`index.php?r=clientes/car-por-ponto&lat=${lat.toFixed(7)}&lng=${lng.toFixed(7)}`);
-        imovel = r.imovel;
+        imovel = r.imovel; contexto = r.contexto;
       } else {
-        imovel = await OfflineView.carNoPonto(lat, lng); // base do município no snapshot
+        imovel = await OfflineView.carNoPonto(lat, lng, Croqui._TOL_CAR_M); // base do município no snapshot
       }
     } catch (e) {
       // sem conexão no meio: tenta o offline
-      imovel = await OfflineView.carNoPonto(lat, lng);
+      imovel = await OfflineView.carNoPonto(lat, lng, Croqui._TOL_CAR_M);
     }
     if (!imovel) {
-      App.alerta(origem === 'sede'
-        ? 'Nenhum imóvel do CAR bate com a posição da sede. A coordenada da sede pode estar aproximada e cair fora do perímetro — confira/ajuste a localização da propriedade no cadastro, use "CAR aqui" quando estiver na propriedade, ou desenhe manualmente. (Se o município ainda não foi importado, avise o Administrador.)'
-        : 'Nenhum imóvel do CAR encontrado nesta posição. Confira se o município foi importado (Integração) ou desenhe manualmente.', 'warning');
+      if (origem === 'auto') return; // auto-abertura: não incomoda se não achar
+      App.alerta(
+        contexto === 'sem_base_perto'
+          ? 'Não há base do CAR carregada nesta região. Peça ao Administrador para importar o município na Integração ("Base do CAR por município").'
+          : (origem === 'sede'
+              ? 'A posição da sede não caiu em nenhum imóvel do CAR (nem há um próximo o bastante). Ajuste a localização da propriedade no cadastro, use "CAR aqui" quando estiver na propriedade, ou desenhe manualmente.'
+              : 'Nenhum imóvel do CAR encontrado nesta posição. Confira se o município foi importado (Integração) ou desenhe manualmente.'),
+        'warning');
       return;
     }
     if (Croqui.pontos.length >= 3 && !confirm('Substituir a divisa atual pela divisa oficial do CAR?')) return;
@@ -874,7 +898,12 @@ const Croqui = {
     Croqui._dirty = true;
     Croqui._enquadrar();
     Croqui.render();
-    App.alerta('Divisa do CAR carregada' + (imovel.cod ? ' (' + App.escapeHtml(imovel.cod) + ')' : '') + '. Confira e toque em "Salvar croqui".', 'success');
+    const cod = imovel.cod ? ' (' + App.escapeHtml(imovel.cod) + ')' : '';
+    if (imovel.aproximado) {
+      App.alerta(`Imóvel do CAR mais próximo${cod} carregado (~${imovel.dist_m} m ${origem === 'sede' ? 'da sede' : 'do ponto'}). Confira se é o correto e ajuste antes de salvar.`, 'warning');
+    } else {
+      App.alerta((origem === 'auto' ? 'Divisa oficial do CAR carregada da sede' : 'Divisa do CAR carregada') + cod + '. Confira e toque em "Salvar croqui".', 'success');
+    }
   },
 
   trocarModo() {
@@ -2489,8 +2518,12 @@ const Pendencias = {
 /* ============ LEITURA OFFLINE das telas a partir do snapshot (O2) ============ */
 
 const OfflineView = {
-  /** Identifica o imóvel do CAR na posição (GPS) usando a base do município no snapshot. */
-  async carNoPonto(lat, lng) {
+  /**
+   * Identifica o imóvel do CAR na posição usando a base do município no snapshot.
+   * Igual ao servidor: polígono que CONTÉM o ponto e, se nenhum contém e
+   * tolMetros > 0, o imóvel mais PRÓXIMO dentro do raio (marcado 'aproximado').
+   */
+  async carNoPonto(lat, lng, tolMetros = 0) {
     if (typeof Offline === 'undefined') return null;
     const base = await Offline.lerCarMunicipio();
     if (!base || !base.imoveis) return null;
@@ -2502,12 +2535,37 @@ const OfflineView = {
       }
       return d;
     };
+    const g = tolMetros > 0 ? tolMetros / 111000 : 0;
+    let melhor = null, melhorDist = Infinity;
     for (const im of base.imoveis) {
       const [minLat, minLng, maxLat, maxLng] = im.bbox;
-      if (lat < minLat || lat > maxLat || lng < minLng || lng > maxLng) continue;
-      if (dentro([lat, lng], im.contorno)) return { cod: im.cod, contorno: im.contorno };
+      if (lat < minLat - g || lat > maxLat + g || lng < minLng - g || lng > maxLng + g) continue;
+      if (dentro([lat, lng], im.contorno)) return { cod: im.cod, contorno: im.contorno, aproximado: false, dist_m: 0 };
+      if (tolMetros > 0) {
+        const d = OfflineView._distPoligono(lat, lng, im.contorno);
+        if (d < melhorDist) { melhorDist = d; melhor = im; }
+      }
+    }
+    if (tolMetros > 0 && melhor && melhorDist <= tolMetros) {
+      return { cod: melhor.cod, contorno: melhor.contorno, aproximado: true, dist_m: Math.round(melhorDist) };
     }
     return null;
+  },
+
+  /** Menor distância (m) do ponto ao polígono [[lat,lng],...] (0 se dentro). */
+  _distPoligono(lat, lng, pol) {
+    const mLat = 110574, mLng = 111320 * Math.cos(lat * Math.PI / 180);
+    const px = lng * mLng, py = lat * mLat;
+    let min = Infinity;
+    for (let i = 0, j = pol.length - 1; i < pol.length; j = i++) {
+      const ax = pol[j][1] * mLng, ay = pol[j][0] * mLat;
+      const bx = pol[i][1] * mLng, by = pol[i][0] * mLat;
+      const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
+      const t = len2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)) : 0;
+      const d = Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+      if (d < min) min = d;
+    }
+    return min;
   },
 
   async aplicar() {

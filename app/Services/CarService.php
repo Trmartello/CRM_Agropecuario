@@ -155,11 +155,20 @@ class CarService
         return (int) Database::valor('SELECT COUNT(*) FROM car_imoveis');
     }
 
+    /** Raio (m) para aceitar o imóvel MAIS PRÓXIMO quando o ponto (ex.: sede
+     *  aproximada) cai logo fora do polígono do CAR. */
+    public const TOLERANCIA_PONTO_M = 250.0;
+    /** Raio (m) para dizer que HÁ base do CAR na região (município importado). */
+    private const RAIO_BASE_PERTO_M = 6000.0;
+
     /**
-     * Imóvel cujo polígono contém o ponto [lat,lng] (pré-filtro por caixa
-     * delimitadora + ray casting). Retorna null se o ponto não cai em nenhum.
+     * Imóvel do CAR no ponto [lat,lng]: primeiro o polígono que CONTÉM o ponto
+     * (bbox + ray casting); se nenhum contém e $tolMetros > 0, o imóvel mais
+     * PRÓXIMO dentro do raio (marcado 'aproximado' + 'dist_m') — cobre a sede
+     * cadastrada de forma aproximada, que às vezes cai logo fora da divisa.
+     * Retorna null se não há imóvel no ponto nem próximo o bastante.
      */
-    public static function imovelNoPonto(float $lat, float $lng): ?array
+    public static function imovelNoPonto(float $lat, float $lng, float $tolMetros = 0.0): ?array
     {
         $candidatos = Database::todos(
             'SELECT cod_imovel, contorno, area_ha FROM car_imoveis
@@ -173,10 +182,80 @@ class CarService
                     'cod' => $c['cod_imovel'],
                     'contorno' => $pontos,
                     'area_ha' => (float) $c['area_ha'],
+                    'aproximado' => false,
+                    'dist_m' => 0,
                 ];
             }
         }
+        if ($tolMetros <= 0) {
+            return null;
+        }
+        // Tolerante: imóvel mais próximo dentro do raio (pré-filtro por bbox com folga)
+        $grau = $tolMetros / 111000.0;
+        $perto = Database::todos(
+            'SELECT cod_imovel, contorno, area_ha FROM car_imoveis
+              WHERE max_lat >= ? AND min_lat <= ? AND max_lng >= ? AND min_lng <= ?',
+            [$lat - $grau, $lat + $grau, $lng - $grau, $lng + $grau]
+        );
+        $melhor = null;
+        $melhorDist = INF;
+        foreach ($perto as $c) {
+            $pontos = json_decode((string) $c['contorno'], true);
+            if (!is_array($pontos)) {
+                continue;
+            }
+            $d = self::distanciaAoPoligono($lat, $lng, $pontos);
+            if ($d < $melhorDist) {
+                $melhorDist = $d;
+                $melhor = ['cod' => $c['cod_imovel'], 'contorno' => $pontos, 'area_ha' => (float) $c['area_ha']];
+            }
+        }
+        if ($melhor !== null && $melhorDist <= $tolMetros) {
+            $melhor['aproximado'] = true;
+            $melhor['dist_m'] = (int) round($melhorDist);
+            return $melhor;
+        }
         return null;
+    }
+
+    /** Há algum imóvel do CAR até ~6 km do ponto? (base do município importada na região). */
+    public static function temBasePerto(float $lat, float $lng): bool
+    {
+        $grau = self::RAIO_BASE_PERTO_M / 111000.0;
+        return (int) Database::valor(
+            'SELECT COUNT(*) FROM car_imoveis
+              WHERE max_lat >= ? AND min_lat <= ? AND max_lng >= ? AND min_lng <= ?',
+            [$lat - $grau, $lat + $grau, $lng - $grau, $lng + $grau]
+        ) > 0;
+    }
+
+    /** Menor distância (m) do ponto ao polígono: 0 se dentro, senão à aresta mais próxima. */
+    private static function distanciaAoPoligono(float $lat, float $lng, array $pol): float
+    {
+        if (self::dentro($lat, $lng, $pol)) {
+            return 0.0;
+        }
+        $mLat = 110574.0;
+        $mLng = 111320.0 * cos(deg2rad($lat));
+        $px = $lng * $mLng;
+        $py = $lat * $mLat;
+        $min = INF;
+        $n = count($pol);
+        for ($i = 0, $j = $n - 1; $i < $n; $j = $i++) {
+            $ax = ((float) $pol[$j][1]) * $mLng;
+            $ay = ((float) $pol[$j][0]) * $mLat;
+            $bx = ((float) $pol[$i][1]) * $mLng;
+            $by = ((float) $pol[$i][0]) * $mLat;
+            $dx = $bx - $ax;
+            $dy = $by - $ay;
+            $len2 = $dx * $dx + $dy * $dy;
+            $t = $len2 > 0 ? max(0.0, min(1.0, (($px - $ax) * $dx + ($py - $ay) * $dy) / $len2)) : 0.0;
+            $d = hypot($px - ($ax + $t * $dx), $py - ($ay + $t * $dy));
+            if ($d < $min) {
+                $min = $d;
+            }
+        }
+        return $min;
     }
 
     /** Ray casting: o ponto [lat,lng] está dentro do polígono [[lat,lng],...]? */

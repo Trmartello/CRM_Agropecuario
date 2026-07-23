@@ -458,7 +458,15 @@ class ClientesController
         if ($lat === null || $lng === null) {
             json_erro('Posição (GPS) não informada.');
         }
-        json_ok(['imovel' => \App\Services\CarService::imovelNoPonto($lat, $lng)]);
+        $imovel = \App\Services\CarService::imovelNoPonto($lat, $lng, \App\Services\CarService::TOLERANCIA_PONTO_M);
+        // contexto ajuda o cliente a explicar quando não acha: base ausente vs. ponto fora da divisa
+        $contexto = 'ok';
+        if ($imovel === null) {
+            $contexto = \App\Services\CarService::temBasePerto($lat, $lng) ? 'fora_do_poligono' : 'sem_base_perto';
+        } elseif (!empty($imovel['aproximado'])) {
+            $contexto = 'aproximado';
+        }
+        json_ok(['imovel' => $imovel, 'contexto' => $contexto]);
     }
 
     /** Garante que a propriedade pertence a um cliente da carteira do usuário. */
