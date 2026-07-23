@@ -494,51 +494,82 @@ class ClientesController
             json_erro('Informe ao menos o município.');
         }
         $bbox = fn ($r) => [(float) $r['mila'], (float) $r['milo'], (float) $r['mala'], (float) $r['malo']];
+        $tem = fn ($r) => $r && $r['la'] !== null;
+        $munN = self::semAcento($mun);   // normalizado (maiúsculo, sem acento) p/ comparar
+        $linhaN = self::semAcento($linha);
+        $LIN = self::semAcentoSql('linha');
+        $MUN = self::semAcentoSql('municipio');
+        $sqlCli = 'SELECT AVG(latitude) la, AVG(longitude) lo, MIN(latitude) mila, MAX(latitude) mala, MIN(longitude) milo, MAX(longitude) malo FROM clientes WHERE ';
+        $sqlCar = 'SELECT AVG((min_lat+max_lat)/2) la, AVG((min_lng+max_lng)/2) lo, MIN(min_lat) mila, MAX(max_lat) mala, MIN(min_lng) milo, MAX(max_lng) malo FROM car_imoveis WHERE ';
 
-        // 1) Linha (mais específico): média das coordenadas dos clientes na linha
+        // A) Linha (mais específico): média das coords dos clientes na linha — sem acento e "contém"
+        // ("barro preto" acha "Linha Barro Preto"; "santo antonio" acha "Santo Antônio")
         if ($linha !== '') {
-            $cond = 'latitude IS NOT NULL AND UPPER(linha) = UPPER(?)';
-            $par = [$linha];
-            if ($mun !== '') { $cond .= ' AND UPPER(municipio) = UPPER(?)'; $par[] = $mun; }
-            if ($uf !== '') { $cond .= ' AND UPPER(estado) = ?'; $par[] = $uf; }
-            $r = Database::um(
-                "SELECT AVG(latitude) la, AVG(longitude) lo, MIN(latitude) mila, MAX(latitude) mala,
-                        MIN(longitude) milo, MAX(longitude) malo FROM clientes WHERE {$cond}",
-                $par
-            );
-            if ($r && $r['la'] !== null) {
+            $cond = "latitude IS NOT NULL AND {$LIN} LIKE CONCAT('%', ?, '%')";
+            $par = [$linhaN];
+            if ($mun !== '') { $cond .= " AND {$MUN} LIKE CONCAT('%', ?, '%')"; $par[] = $munN; }
+            $r = Database::um($sqlCli . $cond, $par);
+            if ($tem($r)) {
                 json_ok(['lat' => (float) $r['la'], 'lng' => (float) $r['lo'], 'bbox' => $bbox($r), 'fonte' => 'linha']);
             }
         }
 
         if ($mun !== '') {
-            // 2) Município via base do CAR (centro dos imóveis importados)
-            $cond = 'UPPER(municipio) = UPPER(?)';
-            $par = [$mun];
-            if ($uf !== '') { $cond .= ' AND uf = ?'; $par[] = $uf; }
-            $r = Database::um(
-                "SELECT AVG((min_lat + max_lat) / 2) la, AVG((min_lng + max_lng) / 2) lo,
-                        MIN(min_lat) mila, MAX(max_lat) mala, MIN(min_lng) milo, MAX(max_lng) malo
-                   FROM car_imoveis WHERE {$cond}",
-                $par
-            );
-            if ($r && $r['la'] !== null) {
-                json_ok(['lat' => (float) $r['la'], 'lng' => (float) $r['lo'], 'bbox' => $bbox($r), 'fonte' => 'car']);
+            // B) Município via base do CAR (não depende de coordenada de cliente). Acha o NOME
+            // exato na base (sem acento, exato→contém) e consulta por igualdade (usa índice).
+            $muns = Database::todos('SELECT DISTINCT municipio FROM car_imoveis' . ($uf !== '' ? ' WHERE uf = ?' : ''), $uf !== '' ? [$uf] : []);
+            $match = null;
+            foreach ($muns as $m) { if (self::semAcento($m['municipio']) === $munN) { $match = $m['municipio']; break; } }
+            if ($match === null) {
+                foreach ($muns as $m) { if ($munN !== '' && str_contains(self::semAcento($m['municipio']), $munN)) { $match = $m['municipio']; break; } }
             }
-            // 3) Município via clientes (fallback quando não há base do CAR)
-            $cond = 'latitude IS NOT NULL AND UPPER(municipio) = UPPER(?)';
-            $par = [$mun];
-            if ($uf !== '') { $cond .= ' AND UPPER(estado) = ?'; $par[] = $uf; }
-            $r = Database::um(
-                "SELECT AVG(latitude) la, AVG(longitude) lo, MIN(latitude) mila, MAX(latitude) mala,
-                        MIN(longitude) milo, MAX(longitude) malo FROM clientes WHERE {$cond}",
-                $par
-            );
-            if ($r && $r['la'] !== null) {
-                json_ok(['lat' => (float) $r['la'], 'lng' => (float) $r['lo'], 'bbox' => $bbox($r), 'fonte' => 'clientes']);
+            if ($match !== null) {
+                $cond = 'municipio = ?';
+                $par = [$match];
+                if ($uf !== '') { $cond .= ' AND uf = ?'; $par[] = $uf; }
+                $r = Database::um($sqlCar . $cond, $par);
+                if ($tem($r)) {
+                    json_ok(['lat' => (float) $r['la'], 'lng' => (float) $r['lo'], 'bbox' => $bbox($r), 'fonte' => 'car']);
+                }
+            }
+            // C) Município via clientes com coordenadas — sem acento (exato, depois "contém")
+            foreach (["{$MUN} = ?", "{$MUN} LIKE CONCAT('%', ?, '%')"] as $cmp) {
+                $r = Database::um($sqlCli . "latitude IS NOT NULL AND {$cmp}", [$munN]);
+                if ($tem($r)) {
+                    json_ok(['lat' => (float) $r['la'], 'lng' => (float) $r['lo'], 'bbox' => $bbox($r), 'fonte' => 'clientes']);
+                }
             }
         }
-        json_erro('Não localizei esse município/linha pelos dados atuais. Confira o nome, ou importe a base do CAR do município na Integração.');
+        // Diagnóstico: a base do CAR da UF existe mas não desse município? ou nada importado?
+        $temCarUf = $uf !== '' && (int) Database::valor('SELECT COUNT(*) FROM car_imoveis WHERE uf = ?', [$uf]) > 0;
+        json_erro($mun !== ''
+            ? ('Não achei coordenadas para “' . $mun . ($uf ? '/' . $uf : '') . '”. '
+                . ($temCarUf ? 'Confira o nome do município ou ' : '')
+                . 'importe a base do CAR desse município na Integração (“Base do CAR por município”).')
+            : 'Não achei essa linha. Informe também o município.');
+    }
+
+    /** Acentos PT-BR (maiúsculas) → letra base. Usado p/ comparar município/linha sem acento. */
+    private const ACENTOS = [
+        'Á' => 'A', 'À' => 'A', 'Â' => 'A', 'Ã' => 'A', 'Ä' => 'A', 'É' => 'E', 'È' => 'E', 'Ê' => 'E', 'Ë' => 'E',
+        'Í' => 'I', 'Ì' => 'I', 'Î' => 'I', 'Ï' => 'I', 'Ó' => 'O', 'Ò' => 'O', 'Ô' => 'O', 'Õ' => 'O', 'Ö' => 'O',
+        'Ú' => 'U', 'Ù' => 'U', 'Û' => 'U', 'Ü' => 'U', 'Ç' => 'C', 'Ñ' => 'N',
+    ];
+
+    /** Normaliza um texto para comparação: maiúsculo, sem acento, sem espaços nas pontas. */
+    private static function semAcento(string $s): string
+    {
+        return strtr(mb_strtoupper(trim($s), 'UTF-8'), self::ACENTOS);
+    }
+
+    /** Expressão SQL que devolve a coluna em maiúsculo e sem acento (mesma normalização). */
+    private static function semAcentoSql(string $col): string
+    {
+        $e = "UPPER({$col})";
+        foreach (self::ACENTOS as $de => $para) {
+            $e = "REPLACE({$e}, '{$de}', '{$para}')";
+        }
+        return $e;
     }
 
     /**
