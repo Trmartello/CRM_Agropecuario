@@ -718,6 +718,9 @@ const Croqui = {
     // Garante a base do CAR do município no aparelho para o "CAR aqui" offline
     if (typeof Offline !== 'undefined') Offline.baixarCarMunicipio();
     document.getElementById('croquiPropNome').textContent = dados.propriedade.nome;
+    // pré-preenche o "Ir para" com o endereço do produtor (município/UF/linha)
+    { const s = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+      s('croquiIrMun', dados.propriedade.municipio); s('croquiIrUf', dados.propriedade.estado); s('croquiIrLinha', dados.propriedade.linha); }
     const sel = document.getElementById('croquiTalhao');
     sel.innerHTML = '<option value="0">🏠 Propriedade — área total</option>' + Croqui.talhoes.map(t =>
       `<option value="${Number(t.id)}">${App.escapeHtml(t.nome)}${t.cultura ? ' (' + App.escapeHtml(t.cultura) + ')' : ''}</option>`).join('');
@@ -1015,6 +1018,46 @@ const Croqui = {
       if (btn) btn.classList.add('active');
       Croqui.render();
     }
+  },
+
+  /** "Ir para": centraliza o mapa num município/UF/linha (localização pelos dados locais). */
+  async irParaArea() {
+    const mun = (document.getElementById('croquiIrMun').value || '').trim();
+    const uf = (document.getElementById('croquiIrUf').value || '').trim();
+    const linha = (document.getElementById('croquiIrLinha').value || '').trim();
+    if (!mun && !linha) { App.alerta('Informe ao menos o município.', 'warning'); return; }
+    if (!navigator.onLine) { App.alerta('Sem conexão: use "Ir para" com internet (a busca é feita no servidor).', 'warning'); return; }
+    try {
+      const r = await App.json(`index.php?r=clientes/localizar-area&municipio=${encodeURIComponent(mun)}&uf=${encodeURIComponent(uf)}&linha=${encodeURIComponent(linha)}`);
+      Croqui._irPara(r.lat, r.lng, r.bbox);
+      // recarrega o overlay do CAR na nova região e mostra
+      Croqui.carLayer = [];
+      await Croqui._carregarCarLayer(true);
+      Croqui.carLayerOn = Croqui.carLayer.length > 0;
+      const b = document.getElementById('croquiCarMapaBtn'); if (b) b.classList.toggle('active', Croqui.carLayerOn);
+      Croqui.render();
+      App.alerta(Croqui.carLayer.length
+        ? 'Mapa na região. Toque na área que é do produtor para adotar a divisa.'
+        : 'Cheguei na região, mas não há base do CAR importada aqui (importe o município na Integração).',
+        Croqui.carLayer.length ? 'success' : 'info');
+    } catch (e) { App.alerta(e.message, 'warning'); }
+  },
+
+  /** Centra a vista em [lat,lng] (ou enquadra o bbox [minLat,minLng,maxLat,maxLng] se informado). */
+  _irPara(lat, lng, bbox) {
+    const palco = document.getElementById('croquiPalco');
+    const larg = Math.max(300, palco.clientWidth), alt = Math.max(260, palco.clientHeight);
+    if (bbox && bbox.length === 4 && (bbox[0] !== bbox[2] || bbox[1] !== bbox[3])) {
+      const x0 = Croqui._wx([0, bbox[1]]), x1 = Croqui._wx([0, bbox[3]]);
+      const y0 = Croqui._wy([bbox[0], 0]), y1 = Croqui._wy([bbox[2], 0]);
+      const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+      const spanX = Math.max(1e-9, Math.abs(x1 - x0)), spanY = Math.max(1e-9, Math.abs(y1 - y0));
+      const z = Math.floor(Math.min(Math.log2(larg * 0.8 / (256 * spanX)), Math.log2(alt * 0.8 / (256 * spanY))));
+      Croqui.vista = { z: Math.max(3, Math.min(17, z)), cx, cy };
+    } else {
+      Croqui.vista = { z: 14, cx: Croqui._wx([lat, lng]), cy: Croqui._wy([lat, lng]) };
+    }
+    Croqui.render();
   },
 
   trocarModo() {

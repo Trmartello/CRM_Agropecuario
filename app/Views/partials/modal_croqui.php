@@ -29,6 +29,16 @@
             <button class="btn btn-sm btn-success" onclick="Croqui.salvar()"><i class="bi bi-check-lg me-1"></i>Salvar croqui</button>
           </div>
         </div>
+        <div class="d-flex flex-wrap align-items-center gap-1">
+          <span class="small text-muted me-1"><i class="bi bi-geo-alt-fill text-danger"></i> Ir para:</span>
+          <input id="croquiIrMun" class="form-control form-control-sm" style="max-width:180px" placeholder="Município"
+                 onkeydown="if(event.key==='Enter'){event.preventDefault();Croqui.irParaArea();}">
+          <input id="croquiIrUf" class="form-control form-control-sm text-uppercase" style="max-width:64px" maxlength="2" placeholder="UF"
+                 onkeydown="if(event.key==='Enter'){event.preventDefault();Croqui.irParaArea();}">
+          <input id="croquiIrLinha" class="form-control form-control-sm" style="max-width:200px" placeholder="Linha (localidade rural)"
+                 onkeydown="if(event.key==='Enter'){event.preventDefault();Croqui.irParaArea();}">
+          <button class="btn btn-sm btn-outline-secondary" onclick="Croqui.irParaArea()" title="Centralizar o mapa nessa região"><i class="bi bi-search me-1"></i>Ir</button>
+        </div>
         <div id="croquiPalco" class="croqui-palco flex-grow-1"></div>
         <div class="d-flex flex-wrap align-items-center gap-3">
           <div class="form-check form-check-sm mb-0">

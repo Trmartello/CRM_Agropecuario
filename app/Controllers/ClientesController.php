@@ -268,6 +268,8 @@ class ClientesController
               WHERE t.propriedade_id = ? ORDER BY t.nome',
             [$propId]
         );
+        // Município/estado/linha do produtor — pré-preenchem o "Ir para" (localizar no mapa)
+        $cli = Database::um('SELECT municipio, estado, linha FROM clientes WHERE id = ?', [(int) $prop['cliente_id']]) ?: [];
         json_ok([
             'propriedade' => [
                 'id' => (int) $prop['id'],
@@ -278,6 +280,9 @@ class ClientesController
                 'area_gps' => isset($prop['area_gps']) && $prop['area_gps'] !== null ? (float) $prop['area_gps'] : null,
                 'contorno' => $prop['contorno'] ?? null,
                 'car_numero' => $prop['car_numero'] ?? null,
+                'municipio' => $prop['municipio'] ?? ($cli['municipio'] ?? null),
+                'estado' => $cli['estado'] ?? null,
+                'linha' => $cli['linha'] ?? null,
             ],
             'talhoes' => $talhoes,
             // Imagem de satélite de fundo (provedor configurável; vazio = sem mapa)
@@ -471,6 +476,69 @@ class ClientesController
             $contexto = 'aproximado';
         }
         json_ok(['imovel' => $imovel, 'contexto' => $contexto, 'diagnostico' => $diagnostico]);
+    }
+
+    /**
+     * "Ir para": localiza uma região pelo endereço (município/UF/linha) SEM
+     * serviço externo — usa os dados que já temos: o centro dos imóveis do CAR
+     * do município (car_imoveis) e as coordenadas dos clientes na linha. Devolve
+     * {lat,lng,bbox:[minLat,minLng,maxLat,maxLng],fonte}.
+     */
+    public function localizarArea(): void
+    {
+        Permissoes::exigirInterno();
+        $mun = trim($_GET['municipio'] ?? '');
+        $uf = strtoupper(substr(trim($_GET['uf'] ?? ''), 0, 2));
+        $linha = trim($_GET['linha'] ?? '');
+        if ($mun === '' && $linha === '') {
+            json_erro('Informe ao menos o município.');
+        }
+        $bbox = fn ($r) => [(float) $r['mila'], (float) $r['milo'], (float) $r['mala'], (float) $r['malo']];
+
+        // 1) Linha (mais específico): média das coordenadas dos clientes na linha
+        if ($linha !== '') {
+            $cond = 'latitude IS NOT NULL AND UPPER(linha) = UPPER(?)';
+            $par = [$linha];
+            if ($mun !== '') { $cond .= ' AND UPPER(municipio) = UPPER(?)'; $par[] = $mun; }
+            if ($uf !== '') { $cond .= ' AND UPPER(estado) = ?'; $par[] = $uf; }
+            $r = Database::um(
+                "SELECT AVG(latitude) la, AVG(longitude) lo, MIN(latitude) mila, MAX(latitude) mala,
+                        MIN(longitude) milo, MAX(longitude) malo FROM clientes WHERE {$cond}",
+                $par
+            );
+            if ($r && $r['la'] !== null) {
+                json_ok(['lat' => (float) $r['la'], 'lng' => (float) $r['lo'], 'bbox' => $bbox($r), 'fonte' => 'linha']);
+            }
+        }
+
+        if ($mun !== '') {
+            // 2) Município via base do CAR (centro dos imóveis importados)
+            $cond = 'UPPER(municipio) = UPPER(?)';
+            $par = [$mun];
+            if ($uf !== '') { $cond .= ' AND uf = ?'; $par[] = $uf; }
+            $r = Database::um(
+                "SELECT AVG((min_lat + max_lat) / 2) la, AVG((min_lng + max_lng) / 2) lo,
+                        MIN(min_lat) mila, MAX(max_lat) mala, MIN(min_lng) milo, MAX(max_lng) malo
+                   FROM car_imoveis WHERE {$cond}",
+                $par
+            );
+            if ($r && $r['la'] !== null) {
+                json_ok(['lat' => (float) $r['la'], 'lng' => (float) $r['lo'], 'bbox' => $bbox($r), 'fonte' => 'car']);
+            }
+            // 3) Município via clientes (fallback quando não há base do CAR)
+            $cond = 'latitude IS NOT NULL AND UPPER(municipio) = UPPER(?)';
+            $par = [$mun];
+            if ($uf !== '') { $cond .= ' AND UPPER(estado) = ?'; $par[] = $uf; }
+            $r = Database::um(
+                "SELECT AVG(latitude) la, AVG(longitude) lo, MIN(latitude) mila, MAX(latitude) mala,
+                        MIN(longitude) milo, MAX(longitude) malo FROM clientes WHERE {$cond}",
+                $par
+            );
+            if ($r && $r['la'] !== null) {
+                json_ok(['lat' => (float) $r['la'], 'lng' => (float) $r['lo'], 'bbox' => $bbox($r), 'fonte' => 'clientes']);
+            }
+        }
+        json_erro('Não localizei esse município/linha pelos dados atuais. Confira o nome, ou importe a base do CAR do município na Integração.');
     }
 
     /**
