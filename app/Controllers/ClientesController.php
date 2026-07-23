@@ -277,6 +277,7 @@ class ClientesController
                 'area_ha' => (float) $prop['area_ha'],
                 'area_gps' => isset($prop['area_gps']) && $prop['area_gps'] !== null ? (float) $prop['area_gps'] : null,
                 'contorno' => $prop['contorno'] ?? null,
+                'car_numero' => $prop['car_numero'] ?? null,
             ],
             'talhoes' => $talhoes,
             // Imagem de satélite de fundo (provedor configurável; vazio = sem mapa)
@@ -470,6 +471,28 @@ class ClientesController
             $contexto = 'aproximado';
         }
         json_ok(['imovel' => $imovel, 'contexto' => $contexto, 'diagnostico' => $diagnostico]);
+    }
+
+    /**
+     * Grava o número do CAR no cadastro da propriedade assim que o imóvel é
+     * identificado (pelo croqui — "CAR aqui"/"CAR pela sede"/auto), sem depender
+     * de salvar o desenho. Idempotente (só atualiza o campo).
+     */
+    public function salvarCarNumero(): void
+    {
+        Permissoes::exigirInterno();
+        sync_iniciar($_POST['uuid_offline'] ?? null);
+        $propId = (int) ($_POST['propriedade_id'] ?? 0);
+        $this->propriedadeDaCarteira($propId); // valida a carteira (json_erro se não for)
+        $car = trim($_POST['car_numero'] ?? '');
+        if ($car === '') {
+            json_erro('Número do CAR não informado.');
+        }
+        $car = mb_substr($car, 0, 60);
+        Database::executar('UPDATE propriedades SET car_numero = ? WHERE id = ?', [$car, $propId]);
+        auditar('salvar', 'propriedade', $propId, 'nº do CAR ' . $car . ' (identificado pela base do CAR)');
+        sync_confirmar($_POST['uuid_offline'] ?? null);
+        json_ok(['car_numero' => $car]);
     }
 
     /** Garante que a propriedade pertence a um cliente da carteira do usuário. */

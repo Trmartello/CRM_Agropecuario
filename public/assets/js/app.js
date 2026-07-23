@@ -906,11 +906,31 @@ const Croqui = {
     Croqui._enquadrar();
     Croqui.render();
     const cod = imovel.cod ? ' (' + App.escapeHtml(imovel.cod) + ')' : '';
+    // Grava o nº do CAR no cadastro assim que identifica (match EXATO, alta confiança),
+    // sem depender de "Salvar croqui". Aproximado NÃO grava sozinho (pode ser vizinho).
+    let gravouCar = false;
+    if (!imovel.aproximado && imovel.cod && imovel.cod !== (Croqui.prop.car_numero || '')) {
+      gravouCar = true;
+      Croqui._persistirCarNumero(imovel.cod);
+    }
     if (imovel.aproximado) {
       App.alerta(`Imóvel do CAR mais próximo${cod} carregado (~${imovel.dist_m} m ${origem === 'sede' ? 'da sede' : 'do ponto'}). Confira se é o correto e ajuste antes de salvar.`, 'warning');
     } else {
-      App.alerta((origem === 'auto' ? 'Divisa oficial do CAR carregada da sede' : 'Divisa do CAR carregada') + cod + '. Confira e toque em "Salvar croqui".', 'success');
+      App.alerta((origem === 'auto' ? 'Divisa oficial do CAR carregada da sede' : 'Divisa do CAR carregada') + cod
+        + (gravouCar ? '. Nº do CAR gravado no cadastro' : '') + '. Confira e toque em "Salvar croqui".', 'success');
     }
+  },
+
+  /** Grava o nº do CAR no cadastro da propriedade assim que identificado (online, ou fila offline). */
+  async _persistirCarNumero(cod) {
+    const fd = new FormData();
+    fd.append('propriedade_id', Croqui.prop.id);
+    fd.append('car_numero', cod);
+    try {
+      await App.enviarFormOffline(fd, 'index.php?r=clientes/salvar-car-numero',
+        { modulo: 'Croqui', rotulo: 'Nº do CAR — ' + (Croqui.prop.nome || '') });
+      Croqui.prop.car_numero = cod; // reflete local p/ não regravar no mesmo croqui
+    } catch (e) { /* silencioso: o nº ainda vai junto ao "Salvar croqui" */ }
   },
 
   trocarModo() {

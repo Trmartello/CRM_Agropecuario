@@ -167,6 +167,7 @@ $router->registrar('clientes/croqui-dados', ClientesController::class, 'croquiDa
 $router->registrar('clientes/salvar-croqui', ClientesController::class, 'salvarCroqui');
 $router->registrar('clientes/importar-car', ClientesController::class, 'importarCar');
 $router->registrar('clientes/car-por-ponto', ClientesController::class, 'carPorPonto');
+$router->registrar('clientes/salvar-car-numero', ClientesController::class, 'salvarCarNumero');
 $router->registrar('integracao/importar-car-municipio', \App\Controllers\IntegracaoController::class, 'importarCarMunicipio');
 $router->registrar('clientes/salvar-plano-safra', ClientesController::class, 'salvarPlanoSafra');
 $router->registrar('clientes/salvar-documento', ClientesController::class, 'salvarDocumento');
