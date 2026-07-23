@@ -479,10 +479,11 @@ class ClientesController
     }
 
     /**
-     * "Ir para": localiza uma região pelo endereço (município/UF/linha) SEM
-     * serviço externo — usa os dados que já temos: o centro dos imóveis do CAR
-     * do município (car_imoveis) e as coordenadas dos clientes na linha. Devolve
-     * {lat,lng,bbox:[minLat,minLng,maxLat,maxLng],fonte}.
+     * "Ir para": localiza uma região pelo endereço (município/UF/linha). Tenta
+     * primeiro os dados LOCAIS (coordenadas de clientes na linha, centro dos
+     * imóveis do CAR do município) e, se não achar, cai na GEOCODIFICAÇÃO externa
+     * (como o Google Maps) — `geocoder_url` configurável, padrão Nominatim/OSM,
+     * vazio desliga. Devolve {lat,lng,bbox:[minLat,minLng,maxLat,maxLng],fonte}.
      */
     public function localizarArea(): void
     {
@@ -497,6 +498,7 @@ class ClientesController
         $tem = fn ($r) => $r && $r['la'] !== null;
         $munN = self::semAcento($mun);   // normalizado (maiúsculo, sem acento) p/ comparar
         $linhaN = self::semAcento($linha);
+        $estadoNome = self::ufParaEstado($uf); // "SC" -> "Santa Catarina" (melhora o geocoder)
         $LIN = self::semAcentoSql('linha');
         $MUN = self::semAcentoSql('municipio');
         $sqlCli = 'SELECT AVG(latitude) la, AVG(longitude) lo, MIN(latitude) mila, MAX(latitude) mala, MIN(longitude) milo, MAX(longitude) malo FROM clientes WHERE ';
@@ -511,6 +513,11 @@ class ClientesController
             $r = Database::um($sqlCli . $cond, $par);
             if ($tem($r)) {
                 json_ok(['lat' => (float) $r['la'], 'lng' => (float) $r['lo'], 'bbox' => $bbox($r), 'fonte' => 'linha']);
+            }
+            // A2) Sem coordenada local da linha: geocodifica o endereço completo (como o Google)
+            $g = self::geocodar(implode(', ', array_filter([$linha, $mun, $estadoNome, 'Brasil'], fn ($v) => $v !== '')));
+            if ($g !== null) {
+                json_ok(['lat' => $g['lat'], 'lng' => $g['lng'], 'bbox' => $g['bbox'], 'fonte' => 'geocode']);
             }
         }
 
@@ -539,6 +546,11 @@ class ClientesController
                     json_ok(['lat' => (float) $r['la'], 'lng' => (float) $r['lo'], 'bbox' => $bbox($r), 'fonte' => 'clientes']);
                 }
             }
+            // D) Nada local: geocodifica o município (como o Google) — cobre município não importado
+            $g = self::geocodar(implode(', ', array_filter([$mun, $estadoNome, 'Brasil'], fn ($v) => $v !== '')));
+            if ($g !== null) {
+                json_ok(['lat' => $g['lat'], 'lng' => $g['lng'], 'bbox' => $g['bbox'], 'fonte' => 'geocode']);
+            }
         }
         // Diagnóstico: a base do CAR da UF existe mas não desse município? ou nada importado?
         $temCarUf = $uf !== '' && (int) Database::valor('SELECT COUNT(*) FROM car_imoveis WHERE uf = ?', [$uf]) > 0;
@@ -560,6 +572,80 @@ class ClientesController
     private static function semAcento(string $s): string
     {
         return strtr(mb_strtoupper(trim($s), 'UTF-8'), self::ACENTOS);
+    }
+
+    /** UF (2 letras) → nome do estado, para o geocoder ("SC" → "Santa Catarina"). */
+    private const ESTADOS_NOME = [
+        'AC' => 'Acre', 'AL' => 'Alagoas', 'AP' => 'Amapá', 'AM' => 'Amazonas', 'BA' => 'Bahia', 'CE' => 'Ceará',
+        'DF' => 'Distrito Federal', 'ES' => 'Espírito Santo', 'GO' => 'Goiás', 'MA' => 'Maranhão', 'MT' => 'Mato Grosso',
+        'MS' => 'Mato Grosso do Sul', 'MG' => 'Minas Gerais', 'PA' => 'Pará', 'PB' => 'Paraíba', 'PR' => 'Paraná',
+        'PE' => 'Pernambuco', 'PI' => 'Piauí', 'RJ' => 'Rio de Janeiro', 'RN' => 'Rio Grande do Norte',
+        'RS' => 'Rio Grande do Sul', 'RO' => 'Rondônia', 'RR' => 'Roraima', 'SC' => 'Santa Catarina',
+        'SP' => 'São Paulo', 'SE' => 'Sergipe', 'TO' => 'Tocantins',
+    ];
+
+    private static function ufParaEstado(string $uf): string
+    {
+        return self::ESTADOS_NOME[strtoupper(trim($uf))] ?? trim($uf);
+    }
+
+    /**
+     * Geocodifica um endereço textual (município/linha) num ponto — fallback do
+     * "Ir para" quando não há coordenada local. Serviço externo configurável
+     * (`geocoder_url`, padrão Nominatim/OSM; vazio desliga). Só endereço/localidade
+     * é enviado — nunca nome/CPF do produtor. Devolve ['lat','lng','bbox'] ou null.
+     */
+    private static function geocodar(string $query): ?array
+    {
+        $base = trim(\App\Services\ConfigService::obter('geocoder_url', 'https://nominatim.openstreetmap.org/search'));
+        if ($base === '' || trim($query) === '' || !function_exists('curl_init')) {
+            return null;
+        }
+        $url = $base . (str_contains($base, '?') ? '&' : '?')
+            . http_build_query(['format' => 'jsonv2', 'limit' => 1, 'countrycodes' => 'br', 'addressdetails' => 0, 'q' => $query]);
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 7,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_USERAGENT => 'CRM-AGRO-Coperdia/1.0 (assistencia tecnica agricola)',
+            CURLOPT_HTTPHEADER => ['Accept: application/json'],
+        ]);
+        $proxy = getenv('HTTPS_PROXY') ?: getenv('https_proxy');
+        if ($proxy) { // ambiente com proxy (dev); em produção Railway a saída é direta
+            curl_setopt($ch, CURLOPT_PROXY, $proxy);
+            if (is_file('/root/.ccr/ca-bundle.crt')) {
+                curl_setopt($ch, CURLOPT_CAINFO, '/root/.ccr/ca-bundle.crt');
+            }
+        }
+        $body = curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if (!is_string($body) || $code < 200 || $code >= 300) {
+            return null;
+        }
+        return self::parseGeocode($body);
+    }
+
+    /** Interpreta a resposta do Nominatim (jsonv2). Separado p/ teste. */
+    private static function parseGeocode(string $json): ?array
+    {
+        $d = json_decode($json, true);
+        if (!is_array($d) || !isset($d[0]['lat'], $d[0]['lon'])) {
+            return null;
+        }
+        $h = $d[0];
+        $lat = (float) $h['lat'];
+        $lng = (float) $h['lon'];
+        if ($lat < -34.0 || $lat > 6.0 || $lng < -74.0 || $lng > -32.0) {
+            return null; // fora do Brasil: descarta resultado improvável
+        }
+        $bbox = [$lat, $lng, $lat, $lng];
+        if (isset($h['boundingbox']) && is_array($h['boundingbox']) && count($h['boundingbox']) === 4) {
+            $b = $h['boundingbox']; // Nominatim: [sul, norte, oeste, leste]
+            $bbox = [(float) $b[0], (float) $b[2], (float) $b[1], (float) $b[3]]; // [minLat,minLng,maxLat,maxLng]
+        }
+        return ['lat' => $lat, 'lng' => $lng, 'bbox' => $bbox];
     }
 
     /** Expressão SQL que devolve a coluna em maiúsculo e sem acento (mesma normalização). */
