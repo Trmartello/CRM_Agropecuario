@@ -77,6 +77,15 @@
             <?php endforeach; ?>
           </div>
         <?php endif; ?>
+        <hr class="my-3">
+        <div class="small text-muted mb-2">
+          <i class="bi bi-diagram-3 me-1 text-success"></i>Preencha a <strong>divisa e o nº do CAR</strong> de cada propriedade
+          que tem a <strong>sede cadastrada</strong>, automaticamente, a partir da base importada.
+        </div>
+        <button class="btn btn-outline-success btn-sm w-100" onclick="Integracao.vincularCar(event)">
+          <i class="bi bi-magic me-1"></i>Vincular CAR às propriedades
+        </button>
+        <div id="vincularCarResumo" class="small mt-2"></div>
       </div>
     </div>
   </div>
@@ -170,6 +179,20 @@ const Integracao = {
       App.alerta('Sincronização concluída.');
       setTimeout(() => location.reload(), 700);
     } catch (e) { App.alerta(e.message, 'danger'); }
+  },
+  async vincularCar(ev) {
+    const btn = ev.currentTarget, alvo = document.getElementById('vincularCarResumo');
+    if (!confirm('Preencher a divisa e o nº do CAR das propriedades que têm sede cadastrada e ainda sem divisa? (não altera as que já têm divisa)')) return;
+    btn.disabled = true;
+    alvo.innerHTML = '<span class="text-muted"><span class="spinner-border spinner-border-sm me-1"></span>Cruzando as sedes com a base do CAR…</span>';
+    try {
+      const r = await App.json('index.php?r=integracao/vincular-car-propriedades', { method: 'POST', body: new FormData() });
+      alvo.innerHTML = `<div class="alert alert-success py-2 mb-1"><strong>${r.vinculadas}</strong> propriedade(s) receberam a divisa do CAR.`
+        + (r.sem_car ? ` <span class="text-muted d-block">${r.sem_car} com sede, mas fora de qualquer imóvel do CAR (ajuste a sede ou desenhe no croqui).</span>` : '')
+        + (r.sem_sede ? ` <span class="text-muted d-block">${r.sem_sede} sem coordenada de sede (cadastre a localização para vincular).</span>` : '')
+        + '</div>';
+    } catch (e) { alvo.innerHTML = ''; App.alerta(e.message, 'danger'); }
+    btn.disabled = false;
   },
 };
 </script>

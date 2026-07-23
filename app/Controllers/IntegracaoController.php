@@ -77,6 +77,45 @@ class IntegracaoController
         json_ok(['imoveis' => $r['imoveis'], 'municipios' => $r['municipios']]);
     }
 
+    /**
+     * Vincula a base do CAR às PROPRIEDADES: para cada propriedade com sede
+     * cadastrada e ainda SEM divisa, acha o imóvel do CAR que contém a sede
+     * (match exato, alta confiança) e preenche contorno + área + nº do CAR.
+     * Assim o CAR importado "reflete" no cadastro de cada produtor.
+     */
+    public function vincularCarPropriedades(): void
+    {
+        Permissoes::exigir(['Administrador']);
+        liberar_sessao(); // lote demorado: não segura o lock da sessão
+        @set_time_limit(600);
+        if (\App\Services\CarService::total() === 0) {
+            json_erro('Nenhuma base do CAR importada ainda. Importe o município/estado acima primeiro.');
+        }
+        $props = \App\Core\Database::todos(
+            "SELECT id, latitude, longitude FROM propriedades
+              WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND (contorno IS NULL OR contorno = '')"
+        );
+        $vinc = 0;
+        $semCar = 0;
+        foreach ($props as $p) {
+            $im = \App\Services\CarService::imovelNoPonto((float) $p['latitude'], (float) $p['longitude']); // exato
+            if ($im === null || empty($im['contorno'])) {
+                $semCar++;
+                continue;
+            }
+            $area = \App\Services\CroquiService::areaHa($im['contorno']);
+            \App\Core\Database::executar(
+                'UPDATE propriedades SET contorno = ?, area_gps = ?, car_numero = ? WHERE id = ?',
+                [json_encode($im['contorno']), round((float) $area, 2),
+                    mb_substr((string) ($im['cod'] ?? ''), 0, 60) ?: null, (int) $p['id']]
+            );
+            $vinc++;
+        }
+        $semSede = (int) \App\Core\Database::valor('SELECT COUNT(*) FROM propriedades WHERE latitude IS NULL OR longitude IS NULL');
+        auditar('vincular', 'car_propriedades', 0, "vinculadas={$vinc}; sem CAR na sede={$semCar}; sem sede={$semSede}");
+        json_ok(['vinculadas' => $vinc, 'sem_car' => $semCar, 'sem_sede' => $semSede, 'candidatas' => count($props)]);
+    }
+
     public function salvarConfig(): void
     {
         Permissoes::exigir(['Administrador']);

@@ -160,6 +160,11 @@ class CarService
     public const TOLERANCIA_PONTO_M = 250.0;
     /** Raio (m) para dizer que HÁ base do CAR na região (município importado). */
     private const RAIO_BASE_PERTO_M = 6000.0;
+    /** Maior altura de bbox de um imóvel (graus). Usado para LIMITAR o range de
+     *  min_lat na consulta por caixa — sem isso o índice varre metade da tabela
+     *  (bbox overlap não é indexável em B-tree); com o limite inferior o índice
+     *  (min_lat,...) fica seletivo. 0.5° (~55 km) cobre qualquer imóvel rural. */
+    private const MAX_SPAN_GRAU = 0.5;
 
     /**
      * Imóvel do CAR no ponto [lat,lng]: primeiro o polígono que CONTÉM o ponto
@@ -172,8 +177,8 @@ class CarService
     {
         $candidatos = Database::todos(
             'SELECT cod_imovel, contorno, area_ha FROM car_imoveis
-              WHERE ? BETWEEN min_lat AND max_lat AND ? BETWEEN min_lng AND max_lng',
-            [$lat, $lng]
+              WHERE min_lat >= ? AND min_lat <= ? AND max_lat >= ? AND min_lng <= ? AND max_lng >= ?',
+            [$lat - self::MAX_SPAN_GRAU, $lat, $lat, $lng, $lng]
         );
         foreach ($candidatos as $c) {
             $pontos = json_decode((string) $c['contorno'], true);
@@ -194,8 +199,8 @@ class CarService
         $grau = $tolMetros / 111000.0;
         $perto = Database::todos(
             'SELECT cod_imovel, contorno, area_ha FROM car_imoveis
-              WHERE max_lat >= ? AND min_lat <= ? AND max_lng >= ? AND min_lng <= ?',
-            [$lat - $grau, $lat + $grau, $lng - $grau, $lng + $grau]
+              WHERE min_lat >= ? AND min_lat <= ? AND max_lat >= ? AND max_lng >= ? AND min_lng <= ?',
+            [$lat - $grau - self::MAX_SPAN_GRAU, $lat + $grau, $lat - $grau, $lng - $grau, $lng + $grau]
         );
         $melhor = null;
         $melhorDist = INF;
@@ -228,9 +233,9 @@ class CarService
         $grau = $raioMetros / 111000.0;
         $rows = Database::todos(
             'SELECT cod_imovel, contorno, area_ha FROM car_imoveis
-              WHERE max_lat >= ? AND min_lat <= ? AND max_lng >= ? AND min_lng <= ?
+              WHERE min_lat >= ? AND min_lat <= ? AND max_lat >= ? AND max_lng >= ? AND min_lng <= ?
               LIMIT ' . max(1, (int) $limite),
-            [$lat - $grau, $lat + $grau, $lng - $grau, $lng + $grau]
+            [$lat - $grau - self::MAX_SPAN_GRAU, $lat + $grau, $lat - $grau, $lng - $grau, $lng + $grau]
         );
         $out = [];
         foreach ($rows as $r) {
@@ -248,8 +253,8 @@ class CarService
         $grau = self::RAIO_BASE_PERTO_M / 111000.0;
         return (int) Database::valor(
             'SELECT COUNT(*) FROM car_imoveis
-              WHERE max_lat >= ? AND min_lat <= ? AND max_lng >= ? AND min_lng <= ?',
-            [$lat - $grau, $lat + $grau, $lng - $grau, $lng + $grau]
+              WHERE min_lat >= ? AND min_lat <= ? AND max_lat >= ? AND max_lng >= ? AND min_lng <= ?',
+            [$lat - $grau - self::MAX_SPAN_GRAU, $lat + $grau, $lat - $grau, $lng - $grau, $lng + $grau]
         ) > 0;
     }
 
@@ -264,8 +269,8 @@ class CarService
         $grau = $raioMetros / 111000.0;
         $cand = Database::todos(
             'SELECT municipio, uf, contorno FROM car_imoveis
-              WHERE max_lat >= ? AND min_lat <= ? AND max_lng >= ? AND min_lng <= ?',
-            [$lat - $grau, $lat + $grau, $lng - $grau, $lng + $grau]
+              WHERE min_lat >= ? AND min_lat <= ? AND max_lat >= ? AND max_lng >= ? AND min_lng <= ?',
+            [$lat - $grau - self::MAX_SPAN_GRAU, $lat + $grau, $lat - $grau, $lng - $grau, $lng + $grau]
         );
         $melhor = null;
         $melhorDist = INF;

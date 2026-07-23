@@ -171,6 +171,7 @@ $router->registrar('clientes/salvar-car-numero', ClientesController::class, 'sal
 $router->registrar('clientes/car-proximos', ClientesController::class, 'carProximos');
 $router->registrar('clientes/localizar-area', ClientesController::class, 'localizarArea');
 $router->registrar('integracao/importar-car-municipio', \App\Controllers\IntegracaoController::class, 'importarCarMunicipio');
+$router->registrar('integracao/vincular-car-propriedades', \App\Controllers\IntegracaoController::class, 'vincularCarPropriedades');
 $router->registrar('clientes/salvar-plano-safra', ClientesController::class, 'salvarPlanoSafra');
 $router->registrar('clientes/salvar-documento', ClientesController::class, 'salvarDocumento');
 $router->registrar('clientes/baixar-documento', ClientesController::class, 'baixarDocumento');
