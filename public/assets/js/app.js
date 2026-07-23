@@ -1020,27 +1020,63 @@ const Croqui = {
     }
   },
 
-  /** "Ir para": centraliza o mapa num município/UF/linha (localização pelos dados locais). */
+  /** "Ir para": centraliza o mapa num município/UF/linha (dados locais e, se faltar, geocoder). */
   async irParaArea() {
     const mun = (document.getElementById('croquiIrMun').value || '').trim();
     const uf = (document.getElementById('croquiIrUf').value || '').trim();
     const linha = (document.getElementById('croquiIrLinha').value || '').trim();
     if (!mun && !linha) { App.alerta('Informe ao menos o município.', 'warning'); return; }
-    if (!navigator.onLine) { App.alerta('Sem conexão: use "Ir para" com internet (a busca é feita no servidor).', 'warning'); return; }
+    if (!navigator.onLine) { App.alerta('Sem conexão: o "Ir para" precisa de internet.', 'warning'); return; }
+    let alvo = null, diagnostico = '';
     try {
       const r = await App.json(`index.php?r=clientes/localizar-area&municipio=${encodeURIComponent(mun)}&uf=${encodeURIComponent(uf)}&linha=${encodeURIComponent(linha)}`);
-      Croqui._irPara(r.lat, r.lng, r.bbox);
-      // recarrega o overlay do CAR na nova região e mostra
-      Croqui.carLayer = [];
-      await Croqui._carregarCarLayer(true);
-      Croqui.carLayerOn = Croqui.carLayer.length > 0;
-      const b = document.getElementById('croquiCarMapaBtn'); if (b) b.classList.toggle('active', Croqui.carLayerOn);
-      Croqui.render();
-      App.alerta(Croqui.carLayer.length
-        ? 'Mapa na região. Toque na área que é do produtor para adotar a divisa.'
-        : 'Cheguei na região, mas não há base do CAR importada aqui (importe o município na Integração).',
-        Croqui.carLayer.length ? 'success' : 'info');
-    } catch (e) { App.alerta(e.message, 'warning'); }
+      if (r.lat != null) {
+        alvo = { lat: r.lat, lng: r.lng, bbox: r.bbox }; // achou nos dados locais
+      } else if (Array.isArray(r.geocode) && r.geocode.length) {
+        App.alerta('Procurando o endereço…', 'info'); // geocodifica no navegador (como o Google)
+        alvo = await Croqui._geocodeNavegador(r.geocode, r.geocoder_base);
+        diagnostico = r.diagnostico || '';
+      } else {
+        diagnostico = r.diagnostico || '';
+      }
+    } catch (e) { App.alerta(e.message, 'warning'); return; }
+    if (!alvo) { App.alerta(diagnostico || 'Não achei essa região. Confira o endereço.', 'warning'); return; }
+    // só move e mexe no overlay DEPOIS de achar (não marca "CAR no mapa" à toa)
+    Croqui._irPara(alvo.lat, alvo.lng, alvo.bbox);
+    Croqui.carLayer = [];
+    await Croqui._carregarCarLayer(true);
+    Croqui.carLayerOn = Croqui.carLayer.length > 0;
+    const b = document.getElementById('croquiCarMapaBtn'); if (b) b.classList.toggle('active', Croqui.carLayerOn);
+    Croqui.render();
+    App.alerta(Croqui.carLayer.length
+      ? 'Mapa na região. Toque na área que é do produtor para adotar a divisa.'
+      : 'Cheguei na região. Não há base do CAR importada aqui — dá para desenhar manual ou importar o município.',
+      Croqui.carLayer.length ? 'success' : 'info');
+  },
+
+  /** Geocodifica no NAVEGADOR (que tem internet, como os tiles). Tenta as consultas em ordem. */
+  async _geocodeNavegador(queries, base) {
+    base = base || 'https://nominatim.openstreetmap.org/search';
+    for (const q of queries) {
+      try {
+        const sep = base.includes('?') ? '&' : '?';
+        const url = `${base}${sep}format=jsonv2&limit=1&countrycodes=br&q=${encodeURIComponent(q)}`;
+        const resp = await fetch(url, { headers: { Accept: 'application/json' } });
+        if (!resp.ok) continue;
+        const d = await resp.json();
+        const h = Array.isArray(d) ? d[0] : null;
+        if (h && h.lat && h.lon) {
+          const lat = +h.lat, lng = +h.lon;
+          if (lat < -34 || lat > 6 || lng < -74 || lng > -32) continue; // fora do Brasil
+          let bbox = [lat, lng, lat, lng];
+          if (Array.isArray(h.boundingbox) && h.boundingbox.length === 4) {
+            const bb = h.boundingbox; bbox = [+bb[0], +bb[2], +bb[1], +bb[3]]; // [sul,norte,oeste,leste]->[minLat,minLng,maxLat,maxLng]
+          }
+          return { lat, lng, bbox };
+        }
+      } catch (e) { /* tenta a próxima consulta */ }
+    }
+    return null;
   },
 
   /** Centra a vista em [lat,lng] (ou enquadra o bbox [minLat,minLng,maxLat,maxLng] se informado). */
