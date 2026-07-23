@@ -1034,7 +1034,7 @@ const Croqui = {
         alvo = { lat: r.lat, lng: r.lng, bbox: r.bbox }; // achou nos dados locais
       } else if (Array.isArray(r.geocode) && r.geocode.length) {
         App.alerta('Procurando o endereço…', 'info'); // geocodifica no navegador (como o Google)
-        const g = await Croqui._geocodeNavegador(r.geocode, r.geocoder_base);
+        const g = await Croqui._geocodeNavegador(r.geocode, r.geocoder_base, r.estado_alvo);
         if (g && g.lat != null) {
           alvo = g;
         } else if (g && g.semRede) {
@@ -1061,7 +1061,7 @@ const Croqui = {
       Croqui.carLayer.length ? 'success' : 'info');
   },
 
-  /** Parser da resposta do Nominatim (jsonv2). Devolve {lat,lng,bbox?} ou null. */
+  /** Parser da resposta do Nominatim (jsonv2, com addressdetails). Devolve {lat,lng,bbox?,estado} ou null. */
   _parseNominatim(d) {
     const h = Array.isArray(d) ? d[0] : null;
     if (!h || !h.lat || !h.lon) return null;
@@ -1069,35 +1069,38 @@ const Croqui = {
     if (Array.isArray(h.boundingbox) && h.boundingbox.length === 4) {
       const b = h.boundingbox; bbox = [+b[0], +b[2], +b[1], +b[3]]; // [sul,norte,oeste,leste]->[minLat,minLng,maxLat,maxLng]
     }
-    return { lat: +h.lat, lng: +h.lon, bbox };
+    return { lat: +h.lat, lng: +h.lon, bbox, estado: (h.address && h.address.state) || '' };
   },
 
-  /** Parser da resposta do Photon (GeoJSON). Devolve {lat,lng,bbox?} ou null. */
+  /** Parser da resposta do Photon (GeoJSON). Devolve {lat,lng,bbox?,estado} ou null. */
   _parsePhoton(d) {
     const f = d && d.features && d.features[0];
     if (!f || !f.geometry || !Array.isArray(f.geometry.coordinates)) return null;
     const c = f.geometry.coordinates; // [lng, lat]
-    const e = f.properties && f.properties.extent; // [oeste, norte, leste, sul]
+    const pr = f.properties || {};
+    const e = pr.extent; // [oeste, norte, leste, sul]
     const bbox = (Array.isArray(e) && e.length === 4) ? [+e[3], +e[0], +e[1], +e[2]] : null;
-    return { lat: +c[1], lng: +c[0], bbox };
+    return { lat: +c[1], lng: +c[0], bbox, estado: pr.state || '' };
   },
 
   /**
    * Geocodifica no NAVEGADOR (que tem internet, como os tiles). Tenta cada consulta
-   * em VÁRIOS buscadores (Nominatim e Photon — sem chave) até um responder, porque
-   * um provedor pode bloquear o app/rede (403) e o outro não. Se um geocoder foi
-   * configurado no servidor (geocoder_url), usa só ele (formato Nominatim). Devolve
-   * {lat,lng,bbox}; senão {semRede:true} se NENHUM respondeu (rede/CORS/bloqueio) ou
-   * {semRede:false} se respondeu mas não achou — o chamador diferencia a mensagem.
+   * em VÁRIOS buscadores até um responder — PHOTON primeiro (CORS confiável, não exige
+   * User-Agent) e NOMINATIM de reserva (dá 403 sem header de CORS quando bloqueia).
+   * Se `estadoAlvo` vier, descarta resultado cujo estado não bata (evita casar município
+   * de mesmo nome em outra UF). Se `base` (geocoder_url) foi configurado, usa só ele.
+   * Devolve {lat,lng,bbox}; senão {semRede:true} se NENHUM respondeu ou {semRede:false}
+   * se respondeu mas não achou — o chamador diferencia a mensagem.
    */
-  async _geocodeNavegador(queries, base) {
-    const nominatim = base || 'https://nominatim.openstreetmap.org/search';
+  async _geocodeNavegador(queries, base, estadoAlvo) {
+    const norm = s => (s || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    const alvo = norm(estadoAlvo);
     const usaConfig = base && !/nominatim\.openstreetmap\.org/.test(base);
     const provedores = usaConfig
-      ? [{ url: q => `${nominatim}${nominatim.includes('?') ? '&' : '?'}format=jsonv2&limit=1&countrycodes=br&q=${encodeURIComponent(q)}`, parse: Croqui._parseNominatim }]
+      ? [{ url: q => `${base}${base.includes('?') ? '&' : '?'}format=jsonv2&addressdetails=1&limit=1&countrycodes=br&q=${encodeURIComponent(q)}`, parse: Croqui._parseNominatim }]
       : [
-          { url: q => `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=br&q=${encodeURIComponent(q)}`, parse: Croqui._parseNominatim },
-          { url: q => `https://photon.komoot.io/api/?limit=1&q=${encodeURIComponent(q)}`, parse: Croqui._parsePhoton },
+          { url: q => `https://photon.komoot.io/api/?limit=1&lang=pt&q=${encodeURIComponent(q)}`, parse: Croqui._parsePhoton },
+          { url: q => `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&countrycodes=br&q=${encodeURIComponent(q)}`, parse: Croqui._parseNominatim },
         ];
     let respondeu = false;
     for (const q of queries) {
@@ -1110,9 +1113,10 @@ const Croqui = {
         let d;
         try { d = await resp.json(); } catch (e) { continue; }
         const r = p.parse(d);
-        if (r && isFinite(r.lat) && isFinite(r.lng) && r.lat >= -34 && r.lat <= 6 && r.lng >= -74 && r.lng <= -32) {
-          return { lat: r.lat, lng: r.lng, bbox: r.bbox || [r.lat, r.lng, r.lat, r.lng] };
-        }
+        if (!r || !isFinite(r.lat) || !isFinite(r.lng)) continue;
+        if (r.lat < -34 || r.lat > 6 || r.lng < -74 || r.lng > -32) continue; // fora do Brasil
+        if (alvo && r.estado && norm(r.estado) !== alvo) continue; // estado não bate: descarta
+        return { lat: r.lat, lng: r.lng, bbox: r.bbox || [r.lat, r.lng, r.lat, r.lng] };
       }
     }
     return { semRede: !respondeu };

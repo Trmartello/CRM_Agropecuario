@@ -203,6 +203,12 @@ function url(string $rota, array $params = []): string
 /** Renderiza uma view dentro do layout. */
 function render(string $view, array $dados = []): void
 {
+    // HTML sempre revalida: garante que o app.js/app.css novos (versionados por ?v=)
+    // sejam carregados após um deploy — sem isso o iPhone (PWA/Safari) pode reter a
+    // página antiga e, com ela, o app.js antigo. Não afeta os assets (?v= = cache longo).
+    if (!headers_sent()) {
+        header('Cache-Control: no-cache, must-revalidate');
+    }
     extract($dados);
     $conteudoView = __DIR__ . '/Views/' . $view . '.php';
     require __DIR__ . '/Views/layout.php';

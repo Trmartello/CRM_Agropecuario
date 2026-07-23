@@ -546,12 +546,13 @@ class ClientesController
         // Não achou nos dados locais: devolve as consultas para o CLIENTE geocodificar
         // pelo navegador (que tem internet — como os tiles de satélite; a saída do
         // servidor no Railway pode estar bloqueada). geocoder_url vazio desliga.
+        // Geocode externo consulta SÓ o município (a "linha" quase nunca existe no OSM e,
+        // sozinha, casa lugar errado — ex.: "barro preto" -> Barro Preto/BA). A linha é
+        // resolvida pelos dados locais (passo A); externamente o alvo confiável é o município.
         $geocoderBase = trim(\App\Services\ConfigService::obter('geocoder_url', 'https://nominatim.openstreetmap.org/search'));
         $queries = [];
-        if ($geocoderBase !== '') {
-            if ($linha !== '') { $queries[] = implode(', ', array_filter([$linha, $mun, $estadoNome, 'Brasil'], fn ($v) => $v !== '')); }
-            if ($mun !== '') { $queries[] = implode(', ', array_filter([$mun, $estadoNome, 'Brasil'], fn ($v) => $v !== '')); }
-            $queries = array_values(array_unique($queries));
+        if ($geocoderBase !== '' && $mun !== '') {
+            $queries[] = implode(', ', array_filter([$mun, $estadoNome, 'Brasil'], fn ($v) => $v !== ''));
         }
         $temCarUf = $uf !== '' && (int) Database::valor('SELECT COUNT(*) FROM car_imoveis WHERE uf = ?', [$uf]) > 0;
         $diag = $mun !== ''
@@ -559,7 +560,8 @@ class ClientesController
                 . ($temCarUf ? 'Confira o nome do município ou ' : '')
                 . 'importe a base do CAR desse município na Integração.')
             : 'Não achei essa linha. Informe também o município.';
-        json_ok(['lat' => null, 'geocode' => $queries, 'geocoder_base' => $geocoderBase, 'diagnostico' => $diag]);
+        json_ok(['lat' => null, 'geocode' => $queries, 'geocoder_base' => $geocoderBase,
+            'estado_alvo' => $estadoNome, 'diagnostico' => $diag]);
     }
 
     /** Acentos PT-BR (maiúsculas) → letra base. Usado p/ comparar município/linha sem acento. */
