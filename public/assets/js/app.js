@@ -1034,8 +1034,15 @@ const Croqui = {
         alvo = { lat: r.lat, lng: r.lng, bbox: r.bbox }; // achou nos dados locais
       } else if (Array.isArray(r.geocode) && r.geocode.length) {
         App.alerta('Procurando o endereço…', 'info'); // geocodifica no navegador (como o Google)
-        alvo = await Croqui._geocodeNavegador(r.geocode, r.geocoder_base);
-        diagnostico = r.diagnostico || '';
+        const g = await Croqui._geocodeNavegador(r.geocode, r.geocoder_base);
+        if (g && g.lat != null) {
+          alvo = g;
+        } else if (g && g.semRede) {
+          App.alerta('Não consegui contatar o buscador de endereços (verifique a internet/rede e tente de novo). Se persistir, avise o suporte.', 'warning');
+          return;
+        } else {
+          diagnostico = r.diagnostico || 'Endereço não encontrado pelo buscador. Tente só o município.';
+        }
       } else {
         diagnostico = r.diagnostico || '';
       }
@@ -1054,29 +1061,37 @@ const Croqui = {
       Croqui.carLayer.length ? 'success' : 'info');
   },
 
-  /** Geocodifica no NAVEGADOR (que tem internet, como os tiles). Tenta as consultas em ordem. */
+  /**
+   * Geocodifica no NAVEGADOR (que tem internet, como os tiles). Tenta as consultas
+   * em ordem. Devolve {lat,lng,bbox} se achar; senão {semRede:true} quando nenhuma
+   * consulta chegou a responder (rede/CORS) ou {semRede:false} quando respondeu mas
+   * não encontrou — a mensagem no chamador diferencia os dois casos.
+   */
   async _geocodeNavegador(queries, base) {
     base = base || 'https://nominatim.openstreetmap.org/search';
+    let respondeu = false;
     for (const q of queries) {
+      let resp;
       try {
         const sep = base.includes('?') ? '&' : '?';
-        const url = `${base}${sep}format=jsonv2&limit=1&countrycodes=br&q=${encodeURIComponent(q)}`;
-        const resp = await fetch(url, { headers: { Accept: 'application/json' } });
-        if (!resp.ok) continue;
-        const d = await resp.json();
-        const h = Array.isArray(d) ? d[0] : null;
-        if (h && h.lat && h.lon) {
-          const lat = +h.lat, lng = +h.lon;
-          if (lat < -34 || lat > 6 || lng < -74 || lng > -32) continue; // fora do Brasil
-          let bbox = [lat, lng, lat, lng];
-          if (Array.isArray(h.boundingbox) && h.boundingbox.length === 4) {
-            const bb = h.boundingbox; bbox = [+bb[0], +bb[2], +bb[1], +bb[3]]; // [sul,norte,oeste,leste]->[minLat,minLng,maxLat,maxLng]
-          }
-          return { lat, lng, bbox };
+        resp = await fetch(`${base}${sep}format=jsonv2&limit=1&countrycodes=br&q=${encodeURIComponent(q)}`, { headers: { Accept: 'application/json' } });
+      } catch (e) { continue; } // erro de rede/CORS nesta consulta: tenta a próxima
+      respondeu = true;
+      if (!resp.ok) continue;
+      let d;
+      try { d = await resp.json(); } catch (e) { continue; }
+      const h = Array.isArray(d) ? d[0] : null;
+      if (h && h.lat && h.lon) {
+        const lat = +h.lat, lng = +h.lon;
+        if (lat < -34 || lat > 6 || lng < -74 || lng > -32) continue; // fora do Brasil
+        let bbox = [lat, lng, lat, lng];
+        if (Array.isArray(h.boundingbox) && h.boundingbox.length === 4) {
+          const bb = h.boundingbox; bbox = [+bb[0], +bb[2], +bb[1], +bb[3]]; // [sul,norte,oeste,leste]->[minLat,minLng,maxLat,maxLng]
         }
-      } catch (e) { /* tenta a próxima consulta */ }
+        return { lat, lng, bbox };
+      }
     }
-    return null;
+    return { semRede: !respondeu };
   },
 
   /** Centra a vista em [lat,lng] (ou enquadra o bbox [minLat,minLng,maxLat,maxLng] se informado). */
