@@ -869,11 +869,11 @@ const Croqui = {
    * = 'gps' | 'sede' | 'auto' (auto = ao abrir, falha em silêncio).
    */
   async _aplicarCarDoPonto(lat, lng, origem = 'gps') {
-    let imovel = null, contexto = null;
+    let imovel = null, contexto = null, diag = null;
     try {
       if (navigator.onLine) {
         const r = await App.json(`index.php?r=clientes/car-por-ponto&lat=${lat.toFixed(7)}&lng=${lng.toFixed(7)}`);
-        imovel = r.imovel; contexto = r.contexto;
+        imovel = r.imovel; contexto = r.contexto; diag = r.diagnostico || null;
       } else {
         imovel = await OfflineView.carNoPonto(lat, lng, Croqui._TOL_CAR_M); // base do município no snapshot
       }
@@ -883,13 +883,20 @@ const Croqui = {
     }
     if (!imovel) {
       if (origem === 'auto') return; // auto-abertura: não incomoda se não achar
-      App.alerta(
-        contexto === 'sem_base_perto'
-          ? 'Não há base do CAR carregada nesta região. Peça ao Administrador para importar o município na Integração ("Base do CAR por município").'
-          : (origem === 'sede'
-              ? 'A posição da sede não caiu em nenhum imóvel do CAR (nem há um próximo o bastante). Ajuste a localização da propriedade no cadastro, use "CAR aqui" quando estiver na propriedade, ou desenhe manualmente.'
-              : 'Nenhum imóvel do CAR encontrado nesta posição. Confira se o município foi importado (Integração) ou desenhe manualmente.'),
-        'warning');
+      let msg;
+      if (diag) { // há base na região, mas o ponto ficou fora: mostra distância + município do mais próximo
+        const dist = diag.dist_m >= 1000 ? (diag.dist_m / 1000).toFixed(1) + ' km' : diag.dist_m + ' m';
+        msg = `O imóvel do CAR mais próximo está a ${dist} (${App.escapeHtml(diag.municipio)}/${App.escapeHtml(diag.uf)}). `
+            + 'Se esta propriedade fica em outro município, importe-o na Integração ("Base do CAR por município"); '
+            + 'se for esse mesmo, ajuste a localização da sede no cadastro, use "CAR aqui" no local, ou desenhe manualmente.';
+      } else if (contexto === 'sem_base_perto') {
+        msg = 'Não há base do CAR carregada nesta região. Peça ao Administrador para importar o município na Integração ("Base do CAR por município").';
+      } else {
+        msg = origem === 'sede'
+          ? 'A posição da sede não caiu em nenhum imóvel do CAR. Ajuste a localização da propriedade no cadastro, use "CAR aqui" na propriedade, ou desenhe manualmente.'
+          : 'Nenhum imóvel do CAR encontrado nesta posição. Confira se o município foi importado (Integração) ou desenhe manualmente.';
+      }
+      App.alerta(msg, 'warning');
       return;
     }
     if (Croqui.pontos.length >= 3 && !confirm('Substituir a divisa atual pela divisa oficial do CAR?')) return;

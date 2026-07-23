@@ -229,6 +229,39 @@ class CarService
         ) > 0;
     }
 
+    /**
+     * Imóvel do CAR MAIS PRÓXIMO do ponto dentro do raio (para diagnóstico
+     * quando não bate: mostra distância + município — se for longe/de outro
+     * município, o município do imóvel provavelmente não foi importado).
+     * Retorna ['dist_m','municipio','uf'] ou null se não há base no raio.
+     */
+    public static function maisProximo(float $lat, float $lng, float $raioMetros = 10000.0): ?array
+    {
+        $grau = $raioMetros / 111000.0;
+        $cand = Database::todos(
+            'SELECT municipio, uf, contorno FROM car_imoveis
+              WHERE max_lat >= ? AND min_lat <= ? AND max_lng >= ? AND min_lng <= ?',
+            [$lat - $grau, $lat + $grau, $lng - $grau, $lng + $grau]
+        );
+        $melhor = null;
+        $melhorDist = INF;
+        foreach ($cand as $c) {
+            $pontos = json_decode((string) $c['contorno'], true);
+            if (!is_array($pontos)) {
+                continue;
+            }
+            $d = self::distanciaAoPoligono($lat, $lng, $pontos);
+            if ($d < $melhorDist) {
+                $melhorDist = $d;
+                $melhor = $c;
+            }
+        }
+        if ($melhor === null) {
+            return null;
+        }
+        return ['dist_m' => (int) round($melhorDist), 'municipio' => $melhor['municipio'], 'uf' => $melhor['uf']];
+    }
+
     /** Menor distância (m) do ponto ao polígono: 0 se dentro, senão à aresta mais próxima. */
     private static function distanciaAoPoligono(float $lat, float $lng, array $pol): float
     {
