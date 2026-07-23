@@ -51,7 +51,7 @@
         <div class="small text-muted">
           <i class="bi bi-info-circle me-1"></i>Escolha <strong>Propriedade</strong> para marcar a divisa (área total) ou um talhão para a
           área de plantio. <strong>Manual</strong>: toque sobre a imagem de satélite para marcar cada canto (arraste o mapa para navegar,
-          use +/− ou a roda do mouse para o zoom, arraste um ponto para ajustar). <strong>Caminhar a divisa</strong>: ande pelo perímetro —
+          use +/− ou a roda do mouse para o zoom, arraste um ponto para ajustar, <strong>toque sobre a linha para inserir um ponto</strong> e refinar). A divisa que você desenha/ajusta fica em <strong>ciano</strong>; as linhas do CAR ficam em amarelo. <strong>Caminhar a divisa</strong>: ande pelo perímetro —
           o app marca um ponto a cada ~10 m pelo GPS, mesmo sem sinal (a imagem some, o desenho continua; o salvar entra na fila).
         </div>
       </div>

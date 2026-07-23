@@ -670,6 +670,7 @@ const Plantios = {
 const Croqui = {
   CORES: ['#2e7d32', '#c05e11', '#00695c', '#9a7d0a', '#5d4037', '#455a64'],
   COR_PROP: '#e6b400',
+  COR_EDICAO: '#00e5ff', // ciano: a divisa que VOCÊ desenha/ajusta (contrasta com o amarelo do CAR)
   prop: null,
   talhoes: [],
   tiles: null,
@@ -1180,6 +1181,25 @@ const Croqui = {
     return Math.hypot((a[0] - b[0]) * mLat, (a[1] - b[1]) * mLng);
   },
 
+  /** Índice da aresta (i, i+1) cuja linha na tela passa a ≤ ~18 px de (x,y); -1 se nenhuma. */
+  _arestaProxima(x, y, w, h) {
+    const tela = Croqui.pontos.map(p => Croqui._paraTela(p, w, h));
+    const n = tela.length;
+    let melhorI = -1, melhorD = 18; // limiar de proximidade em pixels
+    for (let i = 0; i < n; i++) {
+      const d = Croqui._distSegTela([x, y], tela[i], tela[(i + 1) % n]); // % n fecha o polígono
+      if (d < melhorD) { melhorD = d; melhorI = i; }
+    }
+    return melhorI;
+  },
+
+  /** Distância (px) de um ponto p ao segmento a-b na tela. */
+  _distSegTela(p, a, b) {
+    const dx = b[0] - a[0], dy = b[1] - a[1], len2 = dx * dx + dy * dy;
+    const t = len2 > 0 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2)) : 0;
+    return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
+  },
+
   areaHa(pontos) {
     if (pontos.length < 3) return 0;
     const lat0 = pontos.reduce((s, p) => s + Number(p[0]), 0) / pontos.length;
@@ -1355,23 +1375,23 @@ const Croqui = {
         svg += `<text x="${cx.toFixed(1)}" y="${cy.toFixed(1)}" text-anchor="middle" class="croqui-rotulo">${App.escapeHtml(tal.nome)}</text>`;
       }
     });
-    // Contorno em edição (tracejado + vértices arrastáveis)
-    const corAtual = Croqui.atualId === 0
-      ? Croqui.COR_PROP
-      : Croqui.CORES[Croqui.talhoes.findIndex(x => Number(x.id) === Croqui.atualId) % Croqui.CORES.length];
+    // Contorno em EDIÇÃO — cor própria (ciano) para separar do amarelo do CAR:
+    // é a linha que VOCÊ desenha/ajusta (sólida + vértices arrastáveis).
+    const corAtual = Croqui.COR_EDICAO;
     if (Croqui.pontos.length) {
       const foraSet = new Set(Croqui._validarRegra().fora);
       const tela = Croqui.pontos.map(p => Croqui._paraTela(p, larg, alt));
       const pts = tela.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
       svg += Croqui.pontos.length >= 3
-        ? `<polygon points="${pts}" fill="${corAtual}" fill-opacity=".28" stroke="${corAtual}" stroke-width="3" stroke-dasharray="8 5"/>`
-        : `<polyline points="${pts}" fill="none" stroke="${corAtual}" stroke-width="3" stroke-dasharray="8 5"/>`;
+        ? `<polygon points="${pts}" fill="${corAtual}" fill-opacity=".18" stroke="${corAtual}" stroke-width="3"/>`
+        : `<polyline points="${pts}" fill="none" stroke="${corAtual}" stroke-width="3"/>`;
       tela.forEach((p, i) => {
         const invalido = foraSet.has(i); // ponto fora da divisa da propriedade
         svg += `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="9" class="croqui-vertice" data-idx="${i}"
                   fill="${invalido ? '#dc3545' : (i === 0 ? '#fff' : corAtual)}"
-                  stroke="${invalido ? '#7a121f' : corAtual}" stroke-width="3"/>`;
+                  stroke="${invalido ? '#7a121f' : '#0a5b6b'}" stroke-width="3"/>`;
       });
+      legenda.push(`<span><span class="croqui-cor" style="background:${corAtual}"></span>Divisa (seu ajuste)</span>`);
     }
     // Sede como referência
     if (Croqui.prop.latitude !== null) {
@@ -1532,7 +1552,11 @@ const Croqui = {
             const im = Croqui._carDoMapaNoPonto(geo[0], geo[1]);
             if (im) Croqui._selecionarCarDoMapa(im);
           } else if (document.getElementById('croquiModoManual').checked) {
-            Croqui.pontos.push(Croqui._prender(geo));
+            // Toque SOBRE uma linha já desenhada = INSERE um ponto ali (refina a divisa,
+            // inclusive a adotada do CAR); toque longe das linhas = adiciona no fim (desenha).
+            const aresta = Croqui.pontos.length >= 3 ? Croqui._arestaProxima(x, y, w, h) : -1;
+            if (aresta >= 0) Croqui.pontos.splice(aresta + 1, 0, Croqui._prender(geo));
+            else Croqui.pontos.push(Croqui._prender(geo));
             Croqui._dirty = true;
             Croqui.render();
           }
