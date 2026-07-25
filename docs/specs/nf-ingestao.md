@@ -207,16 +207,21 @@ Extensão em `custo-lavoura.md`: `lavoura_custo.fonte` passa a aceitar `'dfe'` e
   - **Território/comercial** (potencial, realizado, share, gap por propriedade —
     dado da Copérdia/Qlik): comparação **livre** entre propriedades. É o mapa
     territorial (`docs/specs/mapa-territorial.md`), sem firewall.
-  - **Custo do produtor** (dado sob firewall): a comparação entre propriedades é por
-    **agregado anonimizado** — `agg_custo_regional`, k-anonimato ≥ 5 produtores por
-    bucket (custo-lavoura.md §7). O painel **não** expõe custo individual
-    identificável ao perfil comercial.
-  - **Ponto de decisão (governança) — pendente da Diretoria:** se for desejado que o
-    admin compare **custo individual identificável** entre propriedades, isso é uma
-    **alteração explícita do invariante 5**, com um **perfil admin distinto do
-    comercial**, consentimento adequado do produtor e auditoria de acesso. Enquanto
-    não houver essa decisão registrada, **o firewall prevalece** e a comparação de
-    custo é só agregada.
+  - **Custo do produtor** — visibilidade por perfil, **decisão de governança da
+    Diretoria (registrada)**:
+    - **Veem o custo individual identificável e comparam propriedades:**
+      **Diretoria** (Administrador), **Controladoria** (Analista) e **Gestor
+      Comercial** — sempre com **auditoria de todo acesso** e com a ciência do
+      produtor obtida no opt-in (seção 6: o termo de autorização informa que a
+      gestão da Copérdia pode consultar o custo para fins de controladoria e
+      estratégia).
+    - **Nunca veem o custo individual:** **Vendedor/RTV**, **Consultor Técnico** e
+      **Gestor Técnico** (perfis de campo). Para esses, a comparação de custo é só
+      por **agregado anonimizado** — `agg_custo_regional`, k-anonimato ≥ 5
+      produtores por bucket (custo-lavoura.md §7).
+  - Esta decisão **relaxa o invariante 5 original** ("qualquer perfil comercial")
+    para uma **lista explícita de perfis de gestão**, preservando o núcleo: o
+    **campo/RTV nunca vê**. Ver `docs/INVARIANTES.md`, invariante 5 (atualizado).
 
 ## 9. Contrato de API
 
@@ -234,11 +239,16 @@ POST   /portal/lavouras/:id/aplicar-nfe      → aplica itens confirmados em lav
 POST   /portal/fiscal/upload                 → upload de XML (canal 2); mesmo pipeline de captura
 ```
 
-Rotas do **painel admin** (perfil não-comercial):
+Rotas do **painel admin**:
 
 ```
 GET /admin/custo/agregado?safra=&cultura=&municipio=&faixa_area=
-    → agg_custo_regional (k ≥ 5); comparação de custo entre propriedades, anonimizada
+    → agg_custo_regional (k ≥ 5); comparação anonimizada. Disponível a qualquer
+      perfil de gestão. É a ÚNICA visão de custo para os perfis de campo.
+GET /admin/custo/individual?safra=&produtor=|&municipio=   [perfis: Diretoria, Controladoria, Gestor Comercial]
+    → custo individual identificável por propriedade/produtor; comparação direta.
+      Acesso restrito aos três perfis; TODA consulta gravada em log de auditoria.
+      Vendedor/RTV, Consultor Técnico e Gestor Técnico → 403.
 ```
 (Território/comercial usa a API do mapa territorial, sem firewall.)
 
@@ -249,20 +259,27 @@ provedor; grava em `nfe_documento`/`nfe_item` (dedup por chave) e loga em
 
 ## 10. Firewall e LGPD — requisito de segurança
 
-1. Usuário de banco da API comercial **sem `SELECT`** em `produtor_autorizacao_fiscal`,
-   `nfe_documento`, `nfe_item`, `nfe_captura_log`. Negado no MySQL, não só na app.
-2. Nenhuma view/join/endpoint do CRM interno referencia essas tabelas.
-3. Portal e job de captura rodam com usuário de banco próprio.
-4. Comparação de custo no admin só via `agg_custo_regional` (k ≥ 5); nunca as tabelas
-   de NF diretamente.
-5. **Autorização revogável**; log de auditoria em toda leitura das tabelas sob
-   firewall (usuário, timestamp, motivo).
+Firewall **por perfil** (decisão de governança, seção 8):
+
+1. **Perfis de campo** — Vendedor/RTV, Consultor Técnico, Gestor Técnico: usuário de
+   banco **sem `SELECT`** em `produtor_autorizacao_fiscal`, `nfe_documento`,
+   `nfe_item`, `nfe_captura_log`, `lavoura_custo`, `lavoura_cenario`. Negado no MySQL,
+   não só na app. Para eles, custo só via `agg_custo_regional` (k ≥ 5).
+2. **Perfis de gestão autorizados** — Diretoria (Administrador), Controladoria
+   (Analista), Gestor Comercial: acesso ao custo individual por um **usuário de banco
+   próprio** e por rota dedicada (`/admin/custo/individual`), com **log de auditoria
+   obrigatório em toda leitura** (usuário, timestamp, produtor consultado, motivo).
+3. Nenhuma view/join/endpoint do CRM interno de campo referencia essas tabelas.
+4. Portal e job de captura rodam com usuário de banco próprio.
+5. **Autorização revogável**; a ciência do produtor sobre o acesso da gestão é obtida
+   no opt-in (seção 6).
 6. **Retenção**: XML e itens guardados enquanto a lavoura/cenário fizer referência;
    política de expurgo definida com a Diretoria (padrão: expurgar a pedido do
    produtor na revogação, preservando o agregado anonimizado já publicado).
 
-Critério verificável: autenticar com credencial de perfil comercial e executar
-`SELECT * FROM nfe_documento` → **erro de permissão do banco**.
+Critério verificável: autenticar com credencial de **Vendedor/RTV** e executar
+`SELECT * FROM nfe_documento` → **erro de permissão do banco**; com **Gestor
+Comercial**, a leitura é permitida **e** deixa registro de auditoria.
 
 ## 11. Critérios de aceite
 
@@ -271,22 +288,23 @@ Critério verificável: autenticar com credencial de perfil comercial e executar
 2. Produtor sem autorização ativa → nada é capturado; log `sem_autorizacao`.
 3. Produtor vê **só** as próprias NFs; tentativa de acessar NF de outro produtor →
    negado.
-4. `SELECT` nas tabelas de NF com credencial comercial → erro de permissão do banco.
+4. `SELECT` nas tabelas de NF com credencial de **perfil de campo** (Vendedor/RTV,
+   Consultor Técnico, Gestor Técnico) → erro de permissão do banco.
 5. Item de NF só entra em `lavoura_custo` após confirmação do produtor; ao aplicar,
    o custo aparece com `fonte='dfe'` (ou `'upload'`).
 6. Upload de um XML de NF-e válido produz os mesmos itens que o pull produziria.
 7. Revogar a autorização interrompe os pulls seguintes.
-8. Comparação de custo no painel admin usa `agg_custo_regional` e não retorna nenhum
-   bucket com `qtd_produtores < 5`; nenhum custo individual identificável é exposto
-   ao perfil comercial.
+8. `/admin/custo/individual` só responde a **Diretoria, Controladoria e Gestor
+   Comercial** (demais → 403), e **toda** consulta gera registro de auditoria. Para os
+   perfis de campo, a comparação de custo usa `agg_custo_regional` e não retorna
+   nenhum bucket com `qtd_produtores < 5`.
 9. Funciona em viewport de 360 px (produtor no celular).
 
 ## 12. Fora de escopo no v1
 
 Emissão de NF-e · captura via contador (canal 5) · OCR do DANFE (canal 6) ·
 conciliação NF × estoque do produtor · rateio de item entre talhões · importação de
-NFC-e/cupom · integração SEFAZ construída internamente (usamos SaaS) · comparação de
-custo individual identificável no admin (depende de decisão de governança — seção 8).
+NFC-e/cupom · integração SEFAZ construída internamente (usamos SaaS).
 
 ## 13. Ordem de implementação
 

@@ -45,15 +45,23 @@ contrapartida que justifica a confiança e o dado.
    faturamento individual nunca aparecem em log, URL, query string ou mensagem
    de erro.
 
-5. **Firewall do dado do cooperado.** As tabelas `lavoura_custo`,
-   `lavoura_cenario` e o campo `resultado_json` são inacessíveis a qualquer
-   perfil comercial. Restrição aplicada no usuário de banco, não só na aplicação.
-   Nenhuma view, join ou endpoint do CRM interno pode referenciá-las. Para a
-   Controladoria, apenas `agg_custo_regional`, com mínimo de 5 produtores por
+5. **Firewall do dado do cooperado — por perfil.** As tabelas `lavoura_custo`,
+   `lavoura_cenario`, o campo `resultado_json` e as tabelas de NF do produtor
+   (`nfe_documento`, `nfe_item`, `produtor_autorizacao_fiscal`) são **inacessíveis
+   aos perfis de campo** — Vendedor/RTV, Consultor Técnico e Gestor Técnico —
+   sempre. Restrição no usuário de banco, não só na aplicação; para esses perfis a
+   comparação de custo é só via `agg_custo_regional`, com mínimo de 5 produtores por
    bucket.
 
-   Motivo: se o RTV souber o ponto de equilíbrio do cooperado, negocia com
-   vantagem informacional sobre ele. Numa cooperativa isso é indefensável.
+   Por **decisão de governança da Diretoria**, o **custo individual identificável**
+   pode ser consultado por **Diretoria (Administrador), Controladoria (Analista) e
+   Gestor Comercial**, por usuário de banco/rota próprios, com **auditoria
+   obrigatória de todo acesso** e ciência do produtor obtida no opt-in. Detalhes em
+   `docs/specs/nf-ingestao.md`, seção 8.
+
+   Motivo: se o **RTV** souber o ponto de equilíbrio do cooperado, negocia com
+   vantagem informacional sobre ele — por isso o campo nunca vê. A gestão vê para
+   controladoria e estratégia, sob trilha de auditoria.
 
 6. **A ferramenta é descritiva, nunca prescritiva.** Nada no Portal recomenda
    comprar, vender, travar ou aguardar. Nada afirma direção de preço. Nenhuma
