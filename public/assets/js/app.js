@@ -1039,12 +1039,16 @@ const Croqui = {
         const g = await Croqui._geocodeNavegador(r.geocode, r.geocoder_base, r.estado_alvo);
         if (g && g.lat != null) {
           alvo = g;
+        } else if (r.fallback && r.fallback.lat != null) {
+          alvo = r.fallback; // buscador não achou a linha → cai no centro do município (dados locais)
         } else if (g && g.semRede) {
           App.alerta('Não consegui contatar o buscador de endereços (verifique a internet/rede e tente de novo). Se persistir, avise o suporte.', 'warning');
           return;
         } else {
           diagnostico = r.diagnostico || 'Endereço não encontrado pelo buscador. Tente só o município.';
         }
+      } else if (r.fallback && r.fallback.lat != null) {
+        alvo = r.fallback; // sem geocoder configurado → centro do município (dados locais)
       } else {
         diagnostico = r.diagnostico || '';
       }

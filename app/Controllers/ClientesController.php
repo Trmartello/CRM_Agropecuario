@@ -517,6 +517,10 @@ class ClientesController
             }
         }
 
+        // Centro do município nos dados locais (CAR ou clientes). Quando NÃO há
+        // linha, é a própria resposta; quando HÁ linha, vira RESERVA — primeiro
+        // tentamos geocodificar a linha (mais específica) e só caímos aqui se falhar.
+        $fallback = null;
         if ($mun !== '') {
             // B) Município via base do CAR (não depende de coordenada de cliente). Acha o NOME
             // exato na base (sem acento, exato→contém) e consulta por igualdade (usa índice).
@@ -532,36 +536,49 @@ class ClientesController
                 if ($uf !== '') { $cond .= ' AND uf = ?'; $par[] = $uf; }
                 $r = Database::um($sqlCar . $cond, $par);
                 if ($tem($r)) {
-                    json_ok(['lat' => (float) $r['la'], 'lng' => (float) $r['lo'], 'bbox' => $bbox($r), 'fonte' => 'car']);
+                    if ($linha === '') {
+                        json_ok(['lat' => (float) $r['la'], 'lng' => (float) $r['lo'], 'bbox' => $bbox($r), 'fonte' => 'car']);
+                    }
+                    $fallback = ['lat' => (float) $r['la'], 'lng' => (float) $r['lo'], 'bbox' => $bbox($r), 'fonte' => 'car'];
                 }
             }
             // C) Município via clientes com coordenadas — sem acento (exato, depois "contém")
-            foreach (["{$MUN} = ?", "{$MUN} LIKE CONCAT('%', ?, '%')"] as $cmp) {
-                $r = Database::um($sqlCli . "latitude IS NOT NULL AND {$cmp}", [$munN]);
-                if ($tem($r)) {
-                    json_ok(['lat' => (float) $r['la'], 'lng' => (float) $r['lo'], 'bbox' => $bbox($r), 'fonte' => 'clientes']);
+            if ($fallback === null) {
+                foreach (["{$MUN} = ?", "{$MUN} LIKE CONCAT('%', ?, '%')"] as $cmp) {
+                    $r = Database::um($sqlCli . "latitude IS NOT NULL AND {$cmp}", [$munN]);
+                    if ($tem($r)) {
+                        if ($linha === '') {
+                            json_ok(['lat' => (float) $r['la'], 'lng' => (float) $r['lo'], 'bbox' => $bbox($r), 'fonte' => 'clientes']);
+                        }
+                        $fallback = ['lat' => (float) $r['la'], 'lng' => (float) $r['lo'], 'bbox' => $bbox($r), 'fonte' => 'clientes'];
+                        break;
+                    }
                 }
             }
         }
-        // Não achou nos dados locais: devolve as consultas para o CLIENTE geocodificar
-        // pelo navegador (que tem internet — como os tiles de satélite; a saída do
+        // Não achou a linha nos dados locais: devolve as consultas para o CLIENTE
+        // geocodificar pelo navegador (que tem internet — como os tiles; a saída do
         // servidor no Railway pode estar bloqueada). geocoder_url vazio desliga.
-        // Geocode externo consulta SÓ o município (a "linha" quase nunca existe no OSM e,
-        // sozinha, casa lugar errado — ex.: "barro preto" -> Barro Preto/BA). A linha é
-        // resolvida pelos dados locais (passo A); externamente o alvo confiável é o município.
+        // Quando HÁ linha, tentamos "linha, município, estado" PRIMEIRO (mais específico)
+        // e "município, estado" como reserva — ambos validados pelo estado no navegador
+        // (evita casar município de mesmo nome em outra UF). Se o buscador não achar, o
+        // cliente usa o $fallback (centro do município nos dados locais).
         $geocoderBase = trim(\App\Services\ConfigService::obter('geocoder_url', 'https://nominatim.openstreetmap.org/search'));
         $queries = [];
         if ($geocoderBase !== '' && $mun !== '') {
+            if ($linha !== '') {
+                $queries[] = implode(', ', array_filter([$linha, $mun, $estadoNome, 'Brasil'], fn ($v) => $v !== ''));
+            }
             $queries[] = implode(', ', array_filter([$mun, $estadoNome, 'Brasil'], fn ($v) => $v !== ''));
         }
         $temCarUf = $uf !== '' && (int) Database::valor('SELECT COUNT(*) FROM car_imoveis WHERE uf = ?', [$uf]) > 0;
         $diag = $mun !== ''
-            ? ('Não achei “' . $mun . ($uf ? '/' . $uf : '') . '”. '
+            ? ('Não achei “' . ($linha !== '' ? $linha . ', ' : '') . $mun . ($uf ? '/' . $uf : '') . '”. '
                 . ($temCarUf ? 'Confira o nome do município ou ' : '')
                 . 'importe a base do CAR desse município na Integração.')
             : 'Não achei essa linha. Informe também o município.';
         json_ok(['lat' => null, 'geocode' => $queries, 'geocoder_base' => $geocoderBase,
-            'estado_alvo' => $estadoNome, 'diagnostico' => $diag]);
+            'estado_alvo' => $estadoNome, 'fallback' => $fallback, 'diagnostico' => $diag]);
     }
 
     /** Acentos PT-BR (maiúsculas) → letra base. Usado p/ comparar município/linha sem acento. */
