@@ -118,6 +118,32 @@ class IntegracaoController
         json_ok(['vinculadas' => $vinc, 'sem_car' => $semCar, 'sem_sede' => $semSede, 'candidatas' => count($props)]);
     }
 
+    /**
+     * Mapa Territorial (PR 2): popula dim_imovel a partir da base do CAR já
+     * importada (car_imoveis), por município. Reaproveita a geometria do CAR.
+     */
+    public function gerarTerritorio(): void
+    {
+        Permissoes::exigir(['Administrador']);
+        liberar_sessao(); // lote demorado: não segura o lock da sessão
+        @set_time_limit(600);
+        @ini_set('memory_limit', '768M');
+        @ini_set('display_errors', '0');
+        $municipio = trim($_POST['municipio'] ?? '');
+        $uf = trim($_POST['uf'] ?? '');
+        if ($municipio === '') {
+            json_erro('Informe o município.');
+        }
+        try {
+            $r = \App\Services\MapaTerritorialService::importarMunicipioDoCar($municipio, $uf !== '' ? $uf : null);
+        } catch (\Throwable $e) {
+            json_erro($e->getMessage());
+        }
+        auditar('gerar', 'mapa_territorial', 0,
+            "{$r['municipio']}/{$r['uf']} — lido {$r['lido']}, novos {$r['inseridos']}, atualizados {$r['atualizados']}");
+        json_ok($r);
+    }
+
     public function salvarConfig(): void
     {
         Permissoes::exigir(['Administrador']);

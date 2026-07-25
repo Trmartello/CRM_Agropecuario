@@ -87,6 +87,20 @@
           <i class="bi bi-magic me-1"></i>Vincular CAR às propriedades
         </button>
         <div id="vincularCarResumo" class="small mt-2"></div>
+        <hr class="my-3">
+        <div class="small text-muted mb-2">
+          <i class="bi bi-map me-1 text-success"></i>Gere o <strong>Mapa Territorial</strong> de um município a partir da base do CAR
+          importada — cada imóvel do CAR vira um imóvel do mapa (potencial, realizado, share e gap virão do Qlik).
+        </div>
+        <div class="row g-2 align-items-end">
+          <div class="col-7"><label class="form-label small mb-1">Município</label>
+            <input id="territMun" class="form-control form-control-sm" placeholder="ex.: Concórdia"></div>
+          <div class="col-5"><label class="form-label small mb-1">UF <span class="text-muted">(opc.)</span></label>
+            <input id="territUf" class="form-control form-control-sm" placeholder="auto" maxlength="2"></div>
+          <div class="col-12"><button class="btn btn-outline-success btn-sm w-100" onclick="Integracao.gerarTerritorio(event)">
+            <i class="bi bi-map me-1"></i>Gerar Mapa Territorial do município</button></div>
+        </div>
+        <div id="territorioResumo" class="small mt-2"></div>
       </div>
     </div>
   </div>
@@ -192,6 +206,24 @@ const Integracao = {
         + (r.sem_car ? ` <span class="text-muted d-block">${r.sem_car} com sede, mas fora de qualquer imóvel do CAR (ajuste a sede ou desenhe no croqui).</span>` : '')
         + (r.sem_sede ? ` <span class="text-muted d-block">${r.sem_sede} sem coordenada de sede (cadastre a localização para vincular).</span>` : '')
         + '</div>';
+    } catch (e) { alvo.innerHTML = ''; App.alerta(e.message, 'danger'); }
+    btn.disabled = false;
+  },
+  async gerarTerritorio(ev) {
+    const btn = ev.currentTarget, alvo = document.getElementById('territorioResumo');
+    const municipio = (document.getElementById('territMun').value || '').trim();
+    const uf = (document.getElementById('territUf').value || '').trim();
+    if (!municipio) { App.alerta('Informe o município.', 'warning'); return; }
+    btn.disabled = true;
+    alvo.innerHTML = '<span class="text-muted"><span class="spinner-border spinner-border-sm me-1"></span>Gerando o mapa a partir da base do CAR…</span>';
+    try {
+      const fd = new FormData();
+      fd.append('municipio', municipio);
+      if (uf) fd.append('uf', uf);
+      const r = await App.json('index.php?r=integracao/gerar-territorio', { method: 'POST', body: fd });
+      alvo.innerHTML = `<div class="alert alert-success py-2 mb-1"><strong>${r.lido}</strong> imóvel(is) de `
+        + `${App.escapeHtml(r.municipio)}/${App.escapeHtml(r.uf)} no mapa `
+        + `(${r.inseridos} novos, ${r.atualizados} atualizados).</div>`;
     } catch (e) { alvo.innerHTML = ''; App.alerta(e.message, 'danger'); }
     btn.disabled = false;
   },
