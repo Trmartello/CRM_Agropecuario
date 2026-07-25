@@ -291,6 +291,10 @@ class ClientesController
                     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'),
                 'atribuicao' => \App\Services\ConfigService::obter('mapa_tiles_atribuicao',
                     'Imagens: Esri, Maxar, Earthstar Geographics'),
+                // Camada de rótulos (nomes de cidades/localidades/municípios) sobre o satélite,
+                // aparecendo conforme o zoom (como no Google). Vazio desliga.
+                'labels' => \App\Services\ConfigService::obter('mapa_labels_url',
+                    'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'),
             ],
         ]);
     }

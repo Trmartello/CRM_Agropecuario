@@ -1358,6 +1358,27 @@ const Croqui = {
     return { fora: [], talhoesFora };
   },
 
+  /** HTML de uma camada de tiles (satélite OU rótulos) para a vista atual. */
+  _tilesHtml(url, larg, alt) {
+    const e = Croqui._escala();
+    const zTile = Math.max(3, Math.min(19, Math.round(Croqui.vista.z))); // pinça usa o nível inteiro mais próximo
+    const ts = 256 * Math.pow(2, Croqui.vista.z - zTile);
+    const n = Math.pow(2, zTile);
+    const px0 = Croqui.vista.cx * e - larg / 2, py0 = Croqui.vista.cy * e - alt / 2;
+    const tx0 = Math.floor(px0 / ts), tx1 = Math.floor((px0 + larg) / ts);
+    const ty0 = Math.max(0, Math.floor(py0 / ts)), ty1 = Math.min(n - 1, Math.floor((py0 + alt) / ts));
+    let html = '';
+    for (let tx = tx0; tx <= tx1; tx++) {
+      for (let ty = ty0; ty <= ty1; ty++) {
+        const txn = ((tx % n) + n) % n; // dá a volta no antimeridiano
+        const u = url.replace('{z}', zTile).replace('{x}', txn).replace('{y}', ty);
+        html += `<img src="${App.escapeHtml(u)}" class="croqui-tile" loading="lazy" alt=""
+          style="left:${(tx * ts - px0).toFixed(1)}px;top:${(ty * ts - py0).toFixed(1)}px;width:${ts.toFixed(2)}px;height:${ts.toFixed(2)}px" onerror="this.remove()">`;
+      }
+    }
+    return html;
+  },
+
   render() {
     const palco = document.getElementById('croquiPalco');
     if (!palco) return;
@@ -1370,25 +1391,13 @@ const Croqui = {
       return;
     }
 
-    // Camada de satélite (Web Mercator) — some offline; o desenho continua
-    let tilesHtml = '';
-    if (Croqui.tiles && navigator.onLine) {
-      const e = Croqui._escala();
-      // Zoom fracionário (pinça): tiles do nível inteiro mais próximo, escalados
-      const zTile = Math.max(3, Math.min(19, Math.round(Croqui.vista.z)));
-      const ts = 256 * Math.pow(2, Croqui.vista.z - zTile); // tamanho do tile na tela
-      const n = Math.pow(2, zTile);
-      const px0 = Croqui.vista.cx * e - larg / 2, py0 = Croqui.vista.cy * e - alt / 2;
-      const tx0 = Math.floor(px0 / ts), tx1 = Math.floor((px0 + larg) / ts);
-      const ty0 = Math.max(0, Math.floor(py0 / ts)), ty1 = Math.min(n - 1, Math.floor((py0 + alt) / ts));
-      for (let tx = tx0; tx <= tx1; tx++) {
-        for (let ty = ty0; ty <= ty1; ty++) {
-          const txn = ((tx % n) + n) % n; // dá a volta no antimeridiano
-          const url = Croqui.tiles.url.replace('{z}', zTile).replace('{x}', txn).replace('{y}', ty);
-          tilesHtml += `<img src="${App.escapeHtml(url)}" class="croqui-tile" loading="lazy" alt=""
-            style="left:${(tx * ts - px0).toFixed(1)}px;top:${(ty * ts - py0).toFixed(1)}px;width:${ts.toFixed(2)}px;height:${ts.toFixed(2)}px" onerror="this.remove()">`;
-        }
-      }
+    // Camada de satélite (Web Mercator) — some offline; o desenho continua.
+    // A camada de RÓTULOS (nomes de cidades/localidades/ruas, como no Google) é
+    // outra camada de tiles transparente por cima do satélite (provedor configurável).
+    let tilesHtml = '', labelsHtml = '';
+    if (Croqui.tiles && Croqui.tiles.url && navigator.onLine) {
+      tilesHtml = Croqui._tilesHtml(Croqui.tiles.url, larg, alt);
+      if (Croqui.tiles.labels) labelsHtml = Croqui._tilesHtml(Croqui.tiles.labels, larg, alt);
     }
 
     let svg = '';
@@ -1484,6 +1493,7 @@ const Croqui = {
 
     palco.innerHTML = `
       <div class="croqui-tiles">${tilesHtml}</div>
+      ${labelsHtml ? `<div class="croqui-tiles croqui-labels">${labelsHtml}</div>` : ''}
       <svg id="croquiSvg" viewBox="0 0 ${larg} ${alt}" width="${larg}" height="${alt}"></svg>
       <div class="croqui-zoom">
         <button type="button" class="btn btn-light btn-sm" onclick="Croqui.zoom(1)" title="Aproximar"><i class="bi bi-plus-lg"></i></button>

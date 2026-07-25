@@ -262,6 +262,8 @@ textarea.auto-crescer { resize: vertical; overflow: hidden; min-height: 38px; li
 .croqui-palco svg { display: block; position: relative; z-index: 2; }
 .croqui-tiles { position: absolute; inset: 0; z-index: 1; }
 .croqui-tiles img.croqui-tile { position: absolute; width: 256px; height: 256px; user-select: none; pointer-events: none; }
+/* Camada de rótulos (nomes de cidades/localidades/ruas) sobre o satélite, sob o desenho */
+.croqui-labels { pointer-events: none; }
 .croqui-zoom { position: absolute; top: 10px; left: 10px; z-index: 3; display: flex; flex-direction: column; gap: 4px; }
 .croqui-zoom .btn { width: 36px; height: 36px; padding: 0; box-shadow: 0 1px 4px rgba(0,0,0,.35); }
 .croqui-atribuicao {
