@@ -430,6 +430,19 @@ const Clientes = {
     inp.click();
   },
 
+  /** Abre a consulta pública do SICAR e copia o número do CAR para colar na busca.
+   *  (O SICAR é um app que exige colar o código na busca — não há URL pública que
+   *  aplique o filtro sozinha; então copiamos o número e o técnico só cola e busca.) */
+  copiarCar(cod) {
+    if (cod && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(cod).then(
+        () => App.alerta('Número do CAR copiado. No SICAR, cole (Ctrl+V) na busca e clique na lupa para ver a área do imóvel.', 'info'),
+        () => App.alerta('No SICAR, busque pelo número do CAR: ' + App.escapeHtml(cod), 'info')
+      );
+    }
+    // não previne o default: o link segue abrindo o SICAR em nova aba
+  },
+
   async salvarPropriedade(ev) {
     ev.preventDefault();
     try {

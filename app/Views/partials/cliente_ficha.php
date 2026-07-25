@@ -289,7 +289,9 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
           <strong><?= e($p['nome']) ?></strong> <span class="text-muted small"><?= numero($p['area_ha'], 0) ?> ha · <?= e($p['municipio'] ?? '—') ?></span>
           <?php if (!empty($p['car_numero'])): ?>
             <div class="small text-muted"><i class="bi bi-geo me-1"></i>CAR: <?= e($p['car_numero']) ?>
-              <a href="https://consultapublica.car.gov.br/publico/imoveis/index" target="_blank" rel="noopener" class="ms-1" title="Abrir a consulta pública do CAR">abrir no CAR <i class="bi bi-box-arrow-up-right"></i></a>
+              <a href="https://consultapublica.car.gov.br/publico/imoveis/index" target="_blank" rel="noopener" class="ms-1"
+                 title="Abrir a consulta pública do CAR — o número é copiado para você colar na busca"
+                 onclick='Clientes.copiarCar(<?= json_attr($p['car_numero']) ?>)'>abrir no CAR <i class="bi bi-box-arrow-up-right"></i></a>
             </div>
           <?php endif; ?>
         </div>
