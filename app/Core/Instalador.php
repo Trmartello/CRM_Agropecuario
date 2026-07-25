@@ -444,6 +444,103 @@ class Instalador
                 // o backfill nunca derruba o boot
             }
         }
+
+        if ($versao < 32) {
+            // Mapa Territorial (PR 1): imóvel rural (dim_imovel), vínculo N:M
+            // imóvel↔produtor (bridge) e talhão por safra (fato). Geometria como
+            // JSON + bbox (mesmo padrão de car_imoveis; consulta espacial em PHP).
+            if (!self::temTabela('dim_imovel')) {
+                Database::executar(
+                    'CREATE TABLE dim_imovel (
+                        cod_car VARCHAR(60) NOT NULL PRIMARY KEY,
+                        nome_imovel VARCHAR(160) NULL,
+                        municipio VARCHAR(120) NOT NULL,
+                        cod_ibge VARCHAR(7) NULL,
+                        uf CHAR(2) NOT NULL DEFAULT "SC",
+                        area_ha DECIMAL(12,4) NOT NULL DEFAULT 0,
+                        modulos_fiscais DECIMAL(8,2) NULL,
+                        tipo_imovel VARCHAR(30) NULL,
+                        situacao_car VARCHAR(30) NULL,
+                        contorno MEDIUMTEXT NOT NULL,
+                        contorno_simpl MEDIUMTEXT NULL,
+                        centro_lat DECIMAL(10,7) NOT NULL,
+                        centro_lng DECIMAL(10,7) NOT NULL,
+                        min_lat DECIMAL(10,7) NOT NULL,
+                        min_lng DECIMAL(10,7) NOT NULL,
+                        max_lat DECIMAL(10,7) NOT NULL,
+                        max_lng DECIMAL(10,7) NOT NULL,
+                        fonte VARCHAR(20) NOT NULL DEFAULT "SICAR",
+                        dt_carga DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        INDEX idx_dim_imovel_mun (municipio, uf),
+                        INDEX idx_dim_imovel_ibge (cod_ibge),
+                        INDEX idx_dim_imovel_bbox (min_lat, max_lat, min_lng, max_lng)
+                     ) ENGINE=InnoDB'
+                );
+            }
+            if (!self::temTabela('bridge_imovel_produtor')) {
+                Database::executar(
+                    'CREATE TABLE bridge_imovel_produtor (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        cod_car VARCHAR(60) NOT NULL,
+                        produtor_id INT NOT NULL,
+                        papel ENUM("proprietario","posseiro","arrendatario","parceiro") NOT NULL,
+                        principal TINYINT(1) NOT NULL DEFAULT 0,
+                        origem ENUM("documento","gps_visita","informado","manual") NOT NULL,
+                        confianca ENUM("alta","media","baixa") NOT NULL,
+                        dt_vinculo DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        usuario_id INT NULL,
+                        UNIQUE KEY uk_car_prod (cod_car, produtor_id),
+                        INDEX idx_bip_prod (produtor_id),
+                        FOREIGN KEY (cod_car) REFERENCES dim_imovel(cod_car) ON DELETE CASCADE,
+                        FOREIGN KEY (produtor_id) REFERENCES clientes(id) ON DELETE CASCADE,
+                        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+                     ) ENGINE=InnoDB'
+                );
+            }
+            if (!self::temTabela('fato_talhao_safra')) {
+                Database::executar(
+                    'CREATE TABLE fato_talhao_safra (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        cod_car VARCHAR(60) NOT NULL,
+                        safra VARCHAR(9) NOT NULL,
+                        nome_talhao VARCHAR(120) NOT NULL,
+                        cultura VARCHAR(40) NOT NULL,
+                        area_plantada DECIMAL(10,3) NOT NULL,
+                        produtividade DECIMAL(10,3) NULL,
+                        contorno MEDIUMTEXT NULL,
+                        fonte VARCHAR(20) NOT NULL DEFAULT "manual",
+                        UNIQUE KEY uk_talhao_safra (cod_car, safra, nome_talhao),
+                        INDEX idx_fts_cod_car (cod_car),
+                        FOREIGN KEY (cod_car) REFERENCES dim_imovel(cod_car) ON DELETE CASCADE
+                     ) ENGINE=InnoDB'
+                );
+            }
+            // Seed de demonstração (só se vazio): 5 imóveis fictícios em Concórdia/SC.
+            // A bridge NÃO é semeada aqui (depende de clientes que podem não existir
+            // no banco já em uso) — o vínculo demo fica só no database.sql (dev).
+            if (self::temTabela('dim_imovel') && (int) Database::valor('SELECT COUNT(*) FROM dim_imovel') === 0) {
+                Database::executar(
+                    'INSERT INTO dim_imovel (cod_car, nome_imovel, municipio, cod_ibge, uf, area_ha, tipo_imovel, situacao_car, contorno, centro_lat, centro_lng, min_lat, min_lng, max_lat, max_lng, fonte) VALUES
+                     ("SC-4204202-DEMO0000000000000000000000000001","Sítio Boa Vista","Concórdia","4204202","SC",48.00,"IRU","AT","[[-27.2000,-52.0100],[-27.2000,-52.0030],[-27.2070,-52.0030],[-27.2070,-52.0100]]",-27.2035,-52.0065,-27.2070,-52.0100,-27.2000,-52.0030,"SEED"),
+                     ("SC-4204202-DEMO0000000000000000000000000002","Estância Três Pinheiros","Concórdia","4204202","SC",112.00,"IRU","AT","[[-27.2000,-52.0030],[-27.2000,-51.9940],[-27.2100,-51.9940],[-27.2100,-52.0030]]",-27.2050,-51.9985,-27.2100,-52.0030,-27.2000,-51.9940,"SEED"),
+                     ("SC-4204202-DEMO0000000000000000000000000003","Sítio Santa Rita","Concórdia","4204202","SC",34.00,"IRU","PE","[[-27.2070,-52.0100],[-27.2070,-52.0030],[-27.2130,-52.0030],[-27.2130,-52.0100]]",-27.2100,-52.0065,-27.2130,-52.0100,-27.2070,-52.0030,"SEED"),
+                     ("SC-4204202-DEMO0000000000000000000000000004","Fazenda Rio do Peixe","Concórdia","4204202","SC",186.00,"IRU","AT","[[-27.2100,-52.0030],[-27.2100,-51.9900],[-27.2240,-51.9900],[-27.2240,-52.0030]]",-27.2170,-51.9965,-27.2240,-52.0030,-27.2100,-51.9900,"SEED"),
+                     ("SC-4204202-DEMO0000000000000000000000000005","Sítio São Roque","Concórdia","4204202","SC",27.00,"IRU","AT","[[-27.2130,-52.0100],[-27.2130,-52.0040],[-27.2190,-52.0040],[-27.2190,-52.0100]]",-27.2160,-52.0070,-27.2190,-52.0100,-27.2130,-52.0040,"SEED")'
+                );
+            }
+            if (self::temTabela('fato_talhao_safra') && (int) Database::valor('SELECT COUNT(*) FROM fato_talhao_safra') === 0) {
+                Database::executar(
+                    'INSERT INTO fato_talhao_safra (cod_car, safra, nome_talhao, cultura, area_plantada, fonte) VALUES
+                     ("SC-4204202-DEMO0000000000000000000000000001","2025/26","T1 Sede","Milho",22.000,"seed"),
+                     ("SC-4204202-DEMO0000000000000000000000000001","2025/26","T2 Baixada","Soja",17.000,"seed"),
+                     ("SC-4204202-DEMO0000000000000000000000000004","2025/26","Q1","Soja",72.000,"seed")'
+                );
+            }
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '32')
+                 ON DUPLICATE KEY UPDATE valor = '32'"
+            );
+        }
     }
 
     /** Fase 6E (refinamento): características fisiológicas por estágio (cartão ilustrado). */
