@@ -687,6 +687,7 @@ const Croqui = {
   carLayer: [],        // imóveis do CAR próximos (overlay p/ selecionar no mapa)
   carLayerOn: false,   // overlay do CAR visível/ativo (toque na área seleciona)
   _carLayerCentro: null, // [lat,lng] do último carregamento (evita recarregar à toa)
+  CAR_ZOOM_MIN: 13,    // só plota os imóveis do CAR com zoom aproximado (afastado vira ruído/peso)
 
   /* --- Web Mercator (mesma projeção dos tiles de satélite) --- */
   _wx(p) { return (Number(p[1]) + 180) / 360; },
@@ -951,10 +952,14 @@ const Croqui = {
     const btn = document.getElementById('croquiCarMapaBtn');
     if (btn) btn.classList.toggle('active', Croqui.carLayerOn);
     if (Croqui.carLayerOn) {
-      if (!Croqui.carLayer.length) await Croqui._carregarCarLayer();
-      App.alerta(Croqui.carLayer.length
-        ? 'Imóveis do CAR no mapa. Toque na área que é do produtor para adotar a divisa.'
-        : 'Nenhum imóvel do CAR carregado nesta região (importe o município na Integração).', Croqui.carLayer.length ? 'info' : 'warning');
+      if (Croqui.vista && Croqui.vista.z < Croqui.CAR_ZOOM_MIN) {
+        App.alerta('Aproxime o mapa para ver os imóveis do CAR (afastado, viram muitos e pesam).', 'info');
+      } else {
+        if (!Croqui.carLayer.length) await Croqui._carregarCarLayer();
+        App.alerta(Croqui.carLayer.length
+          ? 'Imóveis do CAR no mapa. Toque na área que é do produtor para adotar a divisa.'
+          : 'Nenhum imóvel do CAR carregado nesta região (importe o município na Integração).', Croqui.carLayer.length ? 'info' : 'warning');
+      }
     }
     Croqui.render();
   },
@@ -976,6 +981,8 @@ const Croqui = {
   /** Carrega os imóveis do CAR na ÁREA VISÍVEL (menos dados) + filtro de município. */
   async _carregarCarLayer(silencioso = false) {
     if (!Croqui.vista) return;
+    // Afastado demais: não carrega nem plota (a essa escala vira ruído e pesa).
+    if (Croqui.vista.z < Croqui.CAR_ZOOM_MIN) { Croqui.carLayer = []; return; }
     const b = Croqui._viewportBBox();
     const mun = Croqui._carFiltroMun();
     try {
@@ -998,10 +1005,11 @@ const Croqui = {
   _agendarRecargaCar() {
     if (!Croqui.carLayerOn) return;
     clearTimeout(Croqui._carTimer);
+    // Em SEGUNDO PLANO (não trava o zoom/pan): busca a nova área e só então redesenha.
     Croqui._carTimer = setTimeout(async () => {
       await Croqui._carregarCarLayer(true);
       Croqui.render();
-    }, 400);
+    }, 350);
   },
 
   /** Imóvel do overlay que contém o ponto [lat,lng] (o de menor área, se houver sobreposição). */
@@ -1387,7 +1395,11 @@ const Croqui = {
     const legenda = [];
     // Overlay dos imóveis do CAR (tracejado amarelo, como no SICAR) — sob tudo,
     // recortado ao viewport p/ não pesar; a área adotada (=_carCod) fica destacada.
-    if (Croqui.carLayerOn && Croqui.carLayer.length) {
+    // Só plota com zoom aproximado: afastado, muitos contornos viram ruído e pesam.
+    if (Croqui.carLayerOn && Croqui.vista.z < Croqui.CAR_ZOOM_MIN) {
+      legenda.push('<span class="text-warning"><i class="bi bi-zoom-in"></i> Aproxime para ver os imóveis do CAR</span>');
+    }
+    if (Croqui.carLayerOn && Croqui.carLayer.length && Croqui.vista.z >= Croqui.CAR_ZOOM_MIN) {
       const tl = Croqui._paraGeo(0, 0, larg, alt), br = Croqui._paraGeo(larg, alt, larg, alt);
       const vMinLat = Math.min(tl[0], br[0]), vMaxLat = Math.max(tl[0], br[0]);
       const vMinLng = Math.min(tl[1], br[1]), vMaxLng = Math.max(tl[1], br[1]);
