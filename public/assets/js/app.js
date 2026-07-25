@@ -680,6 +680,9 @@ const Croqui = {
   watchId: null,
   _dirty: false,
   _arrasto: null,
+  _arrastoIni: null,   // posição de tela ao pegar o vértice (distingue TOQUE de ARRASTO)
+  _arrastoMoveu: false,
+  _selecionado: null,  // índice do ponto tocado (mostra o botão de remover)
   _pan: null,
   _pinch: null,        // zoom de pinça (dois dedos)
   _ponteiros: new Map(),
@@ -729,6 +732,7 @@ const Croqui = {
     Croqui.atualId = 0; // começa pela divisa da propriedade (área total)
     Croqui.pontos = Croqui._contornoDe(0);
     Croqui._carCod = '';
+    Croqui._selecionado = null;
     Croqui.carLayer = []; Croqui.carLayerOn = false; Croqui._carLayerCentro = null;
     { const b = document.getElementById('croquiCarMapaBtn'); if (b) b.classList.remove('active'); }
     document.getElementById('croquiUsarArea').checked = false;
@@ -827,6 +831,7 @@ const Croqui = {
     Croqui.pontos = Croqui._contornoDe(Croqui.atualId);
     Croqui._dirty = false;
     Croqui._carCod = '';
+    Croqui._selecionado = null;
     const rotulo = document.querySelector('label[for="croquiUsarArea"]');
     if (rotulo) rotulo.textContent = Croqui.atualId === 0
       ? 'Usar a área medida como área oficial da propriedade'
@@ -914,6 +919,7 @@ const Croqui = {
     }
     if (Croqui.pontos.length >= 3 && !confirm('Substituir a divisa atual pela divisa oficial do CAR?')) return;
     Croqui.pontos = Croqui._maiorAnel(imovel.contorno); // divisa da propriedade = 1 anel (a maior parte)
+    Croqui._selecionado = null;
     Croqui._carCod = imovel.cod || '';
     Croqui._dirty = true;
     Croqui._enquadrar();
@@ -1037,6 +1043,7 @@ const Croqui = {
     if (Croqui.atualId !== 0) { App.alerta('Selecione "🏠 Propriedade" no seletor para adotar a divisa do CAR.', 'warning'); return; }
     if (Croqui.pontos.length >= 3 && !confirm('Substituir a divisa atual pela área do CAR escolhida?')) return;
     Croqui.pontos = Croqui._maiorAnel(im.contorno); // divisa da propriedade = 1 anel (a maior parte)
+    Croqui._selecionado = null;
     Croqui._carCod = im.cod || '';
     Croqui._dirty = true;
     Croqui.render();
@@ -1226,7 +1233,7 @@ const Croqui = {
   _arestaProxima(x, y, w, h) {
     const tela = Croqui.pontos.map(p => Croqui._paraTela(p, w, h));
     const n = tela.length;
-    let melhorI = -1, melhorD = 18; // limiar de proximidade em pixels
+    let melhorI = -1, melhorD = 22; // limiar de proximidade em pixels (folga p/ toque no campo)
     for (let i = 0; i < n; i++) {
       const d = Croqui._distSegTela([x, y], tela[i], tela[(i + 1) % n]); // % n fecha o polígono
       if (d < melhorD) { melhorD = d; melhorI = i; }
@@ -1469,12 +1476,28 @@ const Croqui = {
       svg += Croqui.pontos.length >= 3
         ? `<polygon points="${pts}" fill="${corAtual}" fill-opacity=".18" stroke="${corAtual}" stroke-width="3"/>`
         : `<polyline points="${pts}" fill="none" stroke="${corAtual}" stroke-width="3"/>`;
+      const sel = Croqui._selecionado !== null && Croqui._selecionado < tela.length ? Croqui._selecionado : null;
       tela.forEach((p, i) => {
         const invalido = foraSet.has(i); // ponto fora da divisa da propriedade
+        if (i === sel) {
+          // anel de destaque no ponto selecionado (alvo do botão de remover)
+          svg += `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="15" fill="none" stroke="#fff" stroke-width="2" stroke-opacity=".9"/>`;
+        }
         svg += `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="9" class="croqui-vertice" data-idx="${i}"
                   fill="${invalido ? '#dc3545' : (i === 0 ? '#fff' : corAtual)}"
                   stroke="${invalido ? '#7a121f' : '#0a5b6b'}" stroke-width="3"/>`;
       });
+      // Botão ✕ para remover o ponto tocado — desenhado acima do ponto (ou abaixo, se colado no topo)
+      if (sel !== null) {
+        const p = tela[sel];
+        const dy = p[1] < 44 ? 28 : -28;
+        const bx = p[0], by = p[1] + dy;
+        svg += `<g class="croqui-remover" data-idx="${sel}" style="cursor:pointer">
+          <line x1="${p[0].toFixed(1)}" y1="${p[1].toFixed(1)}" x2="${bx.toFixed(1)}" y2="${by.toFixed(1)}" stroke="#fff" stroke-width="1.5" stroke-opacity=".7"/>
+          <circle cx="${bx.toFixed(1)}" cy="${by.toFixed(1)}" r="14" fill="#dc3545" stroke="#fff" stroke-width="2.5"/>
+          <path d="M${(bx - 5).toFixed(1)},${(by - 5).toFixed(1)} L${(bx + 5).toFixed(1)},${(by + 5).toFixed(1)} M${(bx + 5).toFixed(1)},${(by - 5).toFixed(1)} L${(bx - 5).toFixed(1)},${(by + 5).toFixed(1)}" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+        </g>`;
+      }
       legenda.push(`<span><span class="croqui-cor" style="background:${corAtual}"></span>Divisa (seu ajuste)</span>`);
     }
     // Sede como referência
@@ -1579,8 +1602,18 @@ const Croqui = {
         return;
       }
       if (!ev.isPrimary) return;
+      // Botão ✕ do ponto selecionado: remove aquele ponto
+      const rem = ev.target.closest('.croqui-remover');
+      if (rem) { Croqui._removerPonto(Number(rem.dataset.idx)); ev.preventDefault(); return; }
       const v = ev.target.closest('.croqui-vertice');
-      if (v) { Croqui._arrasto = Number(v.dataset.idx); ev.preventDefault(); return; }
+      if (v) {
+        // Pega o vértice: pode ser ARRASTO (ajustar) ou TOQUE (selecionar p/ remover) — decidido no move/up
+        Croqui._arrasto = Number(v.dataset.idx);
+        Croqui._arrastoIni = { x: ev.clientX, y: ev.clientY };
+        Croqui._arrastoMoveu = false;
+        ev.preventDefault();
+        return;
+      }
       if (!Croqui.vista) return;
       Croqui._pan = { x: ev.clientX, y: ev.clientY, cx0: Croqui.vista.cx, cy0: Croqui.vista.cy, moved: false };
       ev.preventDefault();
@@ -1603,6 +1636,13 @@ const Croqui = {
       }
       if (!ev.isPrimary) return;
       if (Croqui._arrasto !== null && Croqui.vista) {
+        if (!Croqui._arrastoMoveu) {
+          // Ainda pode ser um toque (seleção): só vira arrasto ao passar do limiar
+          const d = Croqui._arrastoIni ? Math.hypot(ev.clientX - Croqui._arrastoIni.x, ev.clientY - Croqui._arrastoIni.y) : 99;
+          if (d <= 6) { ev.preventDefault(); return; }
+          Croqui._arrastoMoveu = true;
+          Croqui._selecionado = null; // arrastar cancela a seleção
+        }
         const [x, y, w, h] = pos(ev);
         Croqui.pontos[Croqui._arrasto] = Croqui._prender(Croqui._paraGeo(x, y, w, h));
         Croqui._dirty = true;
@@ -1629,7 +1669,16 @@ const Croqui = {
         if (Croqui._ponteiros.size < 2) { Croqui._pinch = null; Croqui._agendarRecargaCar(); }
         return;
       }
-      if (Croqui._arrasto !== null) { Croqui._arrasto = null; return; }
+      if (Croqui._arrasto !== null) {
+        const idx = Croqui._arrasto, moveu = Croqui._arrastoMoveu;
+        Croqui._arrasto = null; Croqui._arrastoMoveu = false; Croqui._arrastoIni = null;
+        if (!moveu && ev.type === 'pointerup') {
+          // Toque no ponto (sem arrastar) = seleciona/desseleciona para remover
+          Croqui._selecionado = Croqui._selecionado === idx ? null : idx;
+          Croqui.render();
+        }
+        return;
+      }
       if (Croqui._pan) {
         // Gesto CANCELADO pelo navegador (ligação, palm rejection) nunca vira ponto
         const foiClique = ev.type === 'pointerup' && ev.isPrimary && !Croqui._pan.moved;
@@ -1643,6 +1692,10 @@ const Croqui = {
             // Modo "CAR no mapa": toque na área do produtor adota a divisa (não desenha ponto)
             const im = Croqui._carDoMapaNoPonto(geo[0], geo[1]);
             if (im) Croqui._selecionarCarDoMapa(im);
+          } else if (Croqui._selecionado !== null) {
+            // Havia um ponto selecionado: o toque no vazio só fecha a seleção (não desenha)
+            Croqui._selecionado = null;
+            Croqui.render();
           } else if (document.getElementById('croquiModoManual').checked) {
             // Toque SOBRE uma linha já desenhada = INSERE um ponto ali (refina a divisa,
             // inclusive a adotada do CAR); toque longe das linhas = adiciona no fim (desenha).
@@ -1662,11 +1715,21 @@ const Croqui = {
     window.addEventListener('resize', () => { if (document.querySelector('#modalCroqui.show')) Croqui.render(); });
   },
 
-  desfazer() { Croqui.pontos.pop(); Croqui._dirty = true; Croqui.render(); },
+  desfazer() { Croqui.pontos.pop(); Croqui._selecionado = null; Croqui._dirty = true; Croqui.render(); },
+
+  /** Remove um ponto específico (pelo botão ✕ do ponto selecionado). */
+  _removerPonto(i) {
+    if (i < 0 || i >= Croqui.pontos.length) return;
+    Croqui.pontos.splice(i, 1);
+    Croqui._selecionado = null;
+    Croqui._dirty = true;
+    Croqui.render();
+  },
 
   limpar() {
     if (!confirm('Apagar todos os pontos deste contorno?')) return;
     Croqui.pontos = [];
+    Croqui._selecionado = null;
     Croqui._dirty = true;
     Croqui.render();
   },
