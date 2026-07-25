@@ -411,23 +411,32 @@ class Instalador
             // município pela tabela oficial (MunicipiosSul, Sul do país). Assim os
             // dados existentes ganham o nome certo e passam a deduplicar por IBGE
             // sem precisar reimportar.
-            if (self::temColuna('car_imoveis', 'cod_ibge')) {
-                $rows = Database::todos('SELECT id, cod_imovel FROM car_imoveis WHERE cod_ibge IS NULL');
-                foreach ($rows as $r) {
-                    $ibge = \App\Services\ShapefileService::ibgeDeCodImovel((string) $r['cod_imovel']);
-                    if (!$ibge) {
-                        continue;
+            if (self::temTabela('car_imoveis') && self::temColuna('car_imoveis', 'cod_ibge')) {
+                // Em LOTES por id (não carrega a tabela inteira; base estadual seria enorme).
+                // "id > ultimo" avança mesmo em linhas sem código IBGE (não vira loop infinito).
+                $ultimoId = 0;
+                do {
+                    $rows = Database::todos(
+                        'SELECT id, cod_imovel FROM car_imoveis WHERE cod_ibge IS NULL AND id > ? ORDER BY id LIMIT 2000',
+                        [$ultimoId]
+                    );
+                    foreach ($rows as $r) {
+                        $ultimoId = (int) $r['id'];
+                        $ibge = \App\Services\ShapefileService::ibgeDeCodImovel((string) $r['cod_imovel']);
+                        if (!$ibge) {
+                            continue;
+                        }
+                        $nome = \App\Services\MunicipiosSul::nome($ibge);
+                        if ($nome !== null) {
+                            Database::executar(
+                                'UPDATE car_imoveis SET cod_ibge = ?, municipio = ? WHERE id = ?',
+                                [$ibge, mb_strtoupper($nome), $ultimoId]
+                            );
+                        } else {
+                            Database::executar('UPDATE car_imoveis SET cod_ibge = ? WHERE id = ?', [$ibge, $ultimoId]);
+                        }
                     }
-                    $nome = \App\Services\MunicipiosSul::nome($ibge);
-                    if ($nome !== null) {
-                        Database::executar(
-                            'UPDATE car_imoveis SET cod_ibge = ?, municipio = ? WHERE id = ?',
-                            [$ibge, mb_strtoupper($nome), (int) $r['id']]
-                        );
-                    } else {
-                        Database::executar('UPDATE car_imoveis SET cod_ibge = ? WHERE id = ?', [$ibge, (int) $r['id']]);
-                    }
-                }
+                } while (count($rows) === 2000);
             }
             Database::executar(
                 "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '31')

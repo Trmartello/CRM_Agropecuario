@@ -441,13 +441,34 @@ class CarService
     }
 
     /**
-     * Base do município para o snapshot offline (identificação por GPS sem
-     * internet). Só o essencial: código, caixa e contorno.
+     * Base do município para o snapshot offline, em FLUXO (streaming) — chama
+     * $cb(linha) para cada imóvel sem carregar a tabela inteira na memória.
+     * Município grande (Concórdia: milhares de imóveis com contorno em MEDIUMTEXT)
+     * estourava o memory_limit (512 MB) no fetchAll; a query NÃO-bufferizada puxa
+     * do servidor linha a linha (pico de memória ~1 linha). Só o essencial:
+     * código, caixa e contorno.
      */
-    public static function paraSnapshot(): array
+    public static function streamSnapshot(callable $cb): void
     {
-        return Database::todos(
-            'SELECT cod_imovel AS cod, contorno, min_lat, min_lng, max_lat, max_lng FROM car_imoveis'
-        );
+        $pdo = Database::conexao();
+        $bufferAntes = null;
+        // Query não-bufferizada: só o driver mysql tem essa flag; ignora se ausente.
+        if (defined('PDO::MYSQL_ATTR_USE_BUFFERED_QUERY')) {
+            $bufferAntes = $pdo->getAttribute(\PDO::MYSQL_ATTR_USE_BUFFERED_QUERY);
+            $pdo->setAttribute(\PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, false);
+        }
+        try {
+            $stmt = $pdo->query(
+                'SELECT cod_imovel AS cod, contorno, min_lat, min_lng, max_lat, max_lng FROM car_imoveis'
+            );
+            foreach ($stmt as $row) {
+                $cb($row);
+            }
+            $stmt->closeCursor();
+        } finally {
+            if ($bufferAntes !== null) {
+                $pdo->setAttribute(\PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, $bufferAntes);
+            }
+        }
     }
 }

@@ -132,16 +132,34 @@ class SyncController
     public function carMunicipio(): void
     {
         Permissoes::exigirInterno();
-        $imoveis = array_map(function ($im) {
-            return [
+        // Emite o JSON em FLUXO (linha a linha): a base de um município inteiro
+        // (milhares de imóveis com contorno) não cabe na memória de uma vez —
+        // montar o array + json_encode estourava o memory_limit (512 MB).
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        header('Content-Type: application/json; charset=utf-8');
+        echo '{"ok":true,"atualizado_em":' . json_encode(date('c')) . ',"imoveis":[';
+        $primeiro = true;
+        $n = 0;
+        \App\Services\CarService::streamSnapshot(function ($im) use (&$primeiro, &$n) {
+            $pts = json_decode((string) $im['contorno'], true);
+            if (!is_array($pts)) {
+                return;
+            }
+            echo ($primeiro ? '' : ',') . json_encode([
                 'cod' => $im['cod'],
-                'contorno' => json_decode((string) $im['contorno'], true),
+                'contorno' => $pts,
                 'bbox' => [
                     (float) $im['min_lat'], (float) $im['min_lng'],
                     (float) $im['max_lat'], (float) $im['max_lng'],
                 ],
-            ];
-        }, \App\Services\CarService::paraSnapshot());
-        json_ok(['atualizado_em' => date('c'), 'imoveis' => $imoveis]);
+            ]);
+            $primeiro = false;
+            if ((++$n % 500) === 0) {
+                flush(); // esvazia o buffer periodicamente (não acumula na memória)
+            }
+        });
+        echo ']}';
     }
 }
