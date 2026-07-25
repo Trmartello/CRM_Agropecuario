@@ -684,8 +684,8 @@ const Croqui = {
   _arrastoMoveu: false,
   _selecionado: null,  // índice do ponto tocado (mostra o botão de remover)
   _ultimoTap: null,    // último toque {tipo:'vertice'|'linha', idx/x/y, t} p/ detectar DUPLO toque
-  _DUPLO_MS: 350,      // intervalo máximo entre os dois toques
-  _DUPLO_PX: 24,       // distância máxima (px na tela) entre os dois toques
+  _DUPLO_MS: 500,      // intervalo máximo entre os dois toques (folga p/ toque no celular)
+  _DUPLO_PX: 30,       // distância máxima (px na tela) entre os dois toques
   _pan: null,
   _pinch: null,        // zoom de pinça (dois dedos)
   _ponteiros: new Map(),
@@ -1479,28 +1479,17 @@ const Croqui = {
       svg += Croqui.pontos.length >= 3
         ? `<polygon points="${pts}" fill="${corAtual}" fill-opacity=".18" stroke="${corAtual}" stroke-width="3"/>`
         : `<polyline points="${pts}" fill="none" stroke="${corAtual}" stroke-width="3"/>`;
+      // Realce (anel branco) do ponto tocado uma vez — feedback do "toque de novo para remover".
       const sel = Croqui._selecionado !== null && Croqui._selecionado < tela.length ? Croqui._selecionado : null;
       tela.forEach((p, i) => {
         const invalido = foraSet.has(i); // ponto fora da divisa da propriedade
         if (i === sel) {
-          // anel de destaque no ponto selecionado (alvo do botão de remover)
-          svg += `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="15" fill="none" stroke="#fff" stroke-width="2" stroke-opacity=".9"/>`;
+          svg += `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="15" fill="none" stroke="#fff" stroke-width="2.5" stroke-opacity=".95"/>`;
         }
         svg += `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="9" class="croqui-vertice" data-idx="${i}"
                   fill="${invalido ? '#dc3545' : (i === 0 ? '#fff' : corAtual)}"
                   stroke="${invalido ? '#7a121f' : '#0a5b6b'}" stroke-width="3"/>`;
       });
-      // Botão ✕ para remover o ponto tocado — desenhado acima do ponto (ou abaixo, se colado no topo)
-      if (sel !== null) {
-        const p = tela[sel];
-        const dy = p[1] < 44 ? 28 : -28;
-        const bx = p[0], by = p[1] + dy;
-        svg += `<g class="croqui-remover" data-idx="${sel}" style="cursor:pointer">
-          <line x1="${p[0].toFixed(1)}" y1="${p[1].toFixed(1)}" x2="${bx.toFixed(1)}" y2="${by.toFixed(1)}" stroke="#fff" stroke-width="1.5" stroke-opacity=".7"/>
-          <circle cx="${bx.toFixed(1)}" cy="${by.toFixed(1)}" r="14" fill="#dc3545" stroke="#fff" stroke-width="2.5"/>
-          <path d="M${(bx - 5).toFixed(1)},${(by - 5).toFixed(1)} L${(bx + 5).toFixed(1)},${(by + 5).toFixed(1)} M${(bx + 5).toFixed(1)},${(by - 5).toFixed(1)} L${(bx - 5).toFixed(1)},${(by + 5).toFixed(1)}" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
-        </g>`;
-      }
       legenda.push(`<span><span class="croqui-cor" style="background:${corAtual}"></span>Divisa (seu ajuste)</span>`);
     }
     // Sede como referência
@@ -1605,12 +1594,9 @@ const Croqui = {
         return;
       }
       if (!ev.isPrimary) return;
-      // Botão ✕ do ponto selecionado: remove aquele ponto
-      const rem = ev.target.closest('.croqui-remover');
-      if (rem) { Croqui._removerPonto(Number(rem.dataset.idx)); ev.preventDefault(); return; }
       const v = ev.target.closest('.croqui-vertice');
       if (v) {
-        // Pega o vértice: pode ser ARRASTO (ajustar) ou TOQUE (selecionar p/ remover) — decidido no move/up
+        // Pega o vértice: ARRASTO (ajustar) ou TOQUE (2 toques = remover) — decidido no move/up
         Croqui._arrasto = Number(v.dataset.idx);
         Croqui._arrastoIni = { x: ev.clientX, y: ev.clientY };
         Croqui._arrastoMoveu = false;
@@ -1676,8 +1662,8 @@ const Croqui = {
         const idx = Croqui._arrasto, moveu = Croqui._arrastoMoveu;
         Croqui._arrasto = null; Croqui._arrastoMoveu = false; Croqui._arrastoIni = null;
         if (moveu || ev.type !== 'pointerup') return;
-        // Toque no ponto (sem arrastar): DUPLO toque no mesmo ponto = remove;
-        // toque simples = seleciona (mostra o ✕, caminho alternativo de remoção).
+        // Toque no ponto (sem arrastar): DUPLO toque no mesmo ponto = REMOVE direto.
+        // O 1º toque só realça o ponto (feedback "toque de novo para remover").
         const lt = Croqui._ultimoTap;
         const duplo = lt && lt.tipo === 'vertice' && lt.idx === idx && (ev.timeStamp - lt.t) < Croqui._DUPLO_MS;
         if (duplo) {
@@ -1699,39 +1685,40 @@ const Croqui = {
         if (foiClique && Croqui.vista && !ev.target.closest('.croqui-zoom')) {
           const [x, y, w, h] = pos(ev);
           const geo = Croqui._paraGeo(x, y, w, h);
-          if (Croqui.carLayerOn) {
-            // Modo "CAR no mapa": toque na área do produtor adota a divisa (não desenha ponto)
-            const im = Croqui._carDoMapaNoPonto(geo[0], geo[1]);
-            if (im) Croqui._selecionarCarDoMapa(im);
-          } else if (document.getElementById('croquiModoManual').checked) {
-            const aresta = Croqui.pontos.length >= 3 ? Croqui._arestaProxima(x, y, w, h) : -1;
-            const lt = Croqui._ultimoTap;
-            if (aresta >= 0) {
-              // Toque SOBRE a linha: DUPLO toque ali INSERE um ponto (refina a divisa,
-              // inclusive a adotada do CAR). O 1º toque só aguarda o 2º (não solta ponto).
-              const duplo = lt && lt.tipo === 'linha' && (ev.timeStamp - lt.t) < Croqui._DUPLO_MS
-                && Math.hypot(x - lt.x, y - lt.y) < Croqui._DUPLO_PX;
-              if (duplo) {
-                Croqui._ultimoTap = null;
-                Croqui.pontos.splice(aresta + 1, 0, Croqui._prender(geo));
-                Croqui._selecionado = null;
-                Croqui._dirty = true;
-                Croqui.render();
-              } else {
-                Croqui._ultimoTap = { tipo: 'linha', x, y, t: ev.timeStamp };
-                if (Croqui._selecionado !== null) { Croqui._selecionado = null; Croqui.render(); }
-              }
-            } else if (Croqui._selecionado !== null) {
-              // Ponto selecionado + toque no vazio = só fecha a seleção (não desenha)
-              Croqui._selecionado = null; Croqui._ultimoTap = null;
-              Croqui.render();
-            } else {
-              // Toque no VAZIO (longe das linhas) = adiciona um ponto no fim (desenhar)
+          // PRIORIDADE: se o toque cai SOBRE a linha ciano que você edita, é edição da
+          // divisa — nunca "adotar CAR" (mesmo com o overlay do CAR ligado). Assim, dois
+          // toques na linha inserem um ponto sem disparar "substituir pela área do CAR".
+          const manual = document.getElementById('croquiModoManual').checked;
+          const aresta = (manual && Croqui.pontos.length >= 3) ? Croqui._arestaProxima(x, y, w, h) : -1;
+          const lt = Croqui._ultimoTap;
+          if (aresta >= 0) {
+            // DUPLO toque sobre a linha = INSERE um ponto ali. O 1º toque só aguarda o 2º.
+            const duplo = lt && lt.tipo === 'linha' && (ev.timeStamp - lt.t) < Croqui._DUPLO_MS
+              && Math.hypot(x - lt.x, y - lt.y) < Croqui._DUPLO_PX;
+            if (duplo) {
               Croqui._ultimoTap = null;
-              Croqui.pontos.push(Croqui._prender(geo));
+              Croqui.pontos.splice(aresta + 1, 0, Croqui._prender(geo));
+              Croqui._selecionado = aresta + 1; // realça o ponto recém-criado
               Croqui._dirty = true;
               Croqui.render();
+            } else {
+              Croqui._ultimoTap = { tipo: 'linha', x, y, t: ev.timeStamp };
+              if (Croqui._selecionado !== null) { Croqui._selecionado = null; Croqui.render(); }
             }
+          } else if (Croqui.carLayerOn) {
+            // Fora da linha, com overlay ligado: toque na área de um imóvel do CAR = adotar a divisa
+            const im = Croqui._carDoMapaNoPonto(geo[0], geo[1]);
+            if (im) Croqui._selecionarCarDoMapa(im);
+          } else if (manual && Croqui._selecionado !== null) {
+            // Ponto realçado + toque no vazio = só tira o realce (não desenha)
+            Croqui._selecionado = null; Croqui._ultimoTap = null;
+            Croqui.render();
+          } else if (manual) {
+            // Toque no VAZIO (longe das linhas) = adiciona um ponto no fim (desenhar)
+            Croqui._ultimoTap = null;
+            Croqui.pontos.push(Croqui._prender(geo));
+            Croqui._dirty = true;
+            Croqui.render();
           }
         }
       }
@@ -1745,7 +1732,7 @@ const Croqui = {
 
   desfazer() { Croqui.pontos.pop(); Croqui._selecionado = null; Croqui._ultimoTap = null; Croqui._dirty = true; Croqui.render(); },
 
-  /** Remove um ponto específico (duplo toque no ponto, ou o botão ✕ do ponto selecionado). */
+  /** Remove um ponto específico (duplo toque no ponto). */
   _removerPonto(i) {
     if (i < 0 || i >= Croqui.pontos.length) return;
     Croqui.pontos.splice(i, 1);
