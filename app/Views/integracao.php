@@ -55,10 +55,11 @@
         </p>
         <form id="formCarMunicipio" onsubmit="return Integracao.importarCarMunicipio(event)">
           <div class="row g-2 align-items-end">
-            <div class="col-7"><label class="form-label small mb-1">Município</label>
+            <div class="col-7"><label class="form-label small mb-1">Município <span class="text-muted">(opcional)</span></label>
               <input name="municipio" class="form-control form-control-sm" placeholder="ex.: Concórdia"></div>
             <div class="col-5"><label class="form-label small mb-1">UF <span class="text-muted">(auto)</span></label>
               <input name="uf" class="form-control form-control-sm" placeholder="detectada" maxlength="2"></div>
+            <div class="col-12"><div class="form-text small mt-0">Importe um município por vez — cada carga <strong>soma</strong> aos já carregados (dedup pelo código do imóvel, não apaga os outros).</div></div>
             <div class="col-12"><label class="form-label small mb-1">Arquivo .zip do CAR (Shapefile)</label>
               <input type="file" name="arquivo" class="form-control form-control-sm" accept=".zip,application/zip" required></div>
             <div class="col-12"><button class="btn btn-success btn-sm w-100"><i class="bi bi-upload me-1"></i>Importar município</button></div>

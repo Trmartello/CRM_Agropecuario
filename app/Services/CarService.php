@@ -25,32 +25,58 @@ class CarService
         $pdo = Database::conexao();
         $pdo->beginTransaction();
         try {
-            $deletados = [];      // "MUN|UF" já limpos nesta carga
+            $deletados = [];      // chaves de dedup já limpas nesta carga
             $porMunicipio = [];   // "MUN/UF" => contagem
             $noLote = 0;          // inseridos na transação atual
             $stmt = $pdo->prepare(
                 'INSERT INTO car_imoveis
-                    (cod_imovel, municipio, uf, contorno, area_ha, min_lat, min_lng, max_lat, max_lng)
-                 VALUES (?,?,?,?,?,?,?,?,?)'
+                    (cod_imovel, cod_ibge, municipio, uf, contorno, area_ha, min_lat, min_lng, max_lat, max_lng)
+                 VALUES (?,?,?,?,?,?,?,?,?,?)'
             );
 
             // Confirma em LOTES: município inteiro numa única transação geraria
             // um undo log gigante (risco de estouro/lentidão no MySQL do Railway).
             \App\Services\ShapefileService::streamImoveis($caminho, function (array $im) use ($pdo, $stmt, $municipioPadrao, $ufPadrao, &$deletados, &$porMunicipio, &$noLote) {
-                $mun = ($im['municipio'] ?? null) ? mb_strtoupper(trim($im['municipio'])) : $municipioPadrao;
+                $codIbge = ($im['cod_ibge'] ?? null) ?: null;
+                // Nome do município: .dbf → tabela IBGE do Sul → digitado no
+                // formulário → "IBGE {código}" (nunca descarta por falta de nome).
+                $mun = ($im['municipio'] ?? null) ? mb_strtoupper(trim($im['municipio'])) : null;
+                if (!$mun && $codIbge) {
+                    $nome = \App\Services\MunicipiosSul::nome($codIbge);
+                    if ($nome) {
+                        $mun = mb_strtoupper($nome);
+                    }
+                }
+                if (!$mun) {
+                    $mun = $municipioPadrao;
+                }
+                if (!$mun && $codIbge) {
+                    $mun = 'IBGE ' . $codIbge;
+                }
                 $uf = ($im['uf'] ?? null) ?: $ufPadrao;
-                if (!$mun || !$uf) {
-                    return; // sem como classificar
+                if (!$uf || !$mun) {
+                    return; // sem UF e sem como classificar
                 }
                 $uf = strtoupper(substr($uf, 0, 2));
-                $chaveDel = $mun . '|' . $uf;
+
+                // Dedup por CÓDIGO IBGE: importar município a município passa a
+                // ACUMULAR (nunca apaga os já carregados, mesmo com nome repetido).
+                // Sem código IBGE, cai no par município+UF (comportamento legado).
+                $chaveDel = $codIbge ? ('i:' . $codIbge) : ('m:' . $mun . '|' . $uf);
                 if (!isset($deletados[$chaveDel])) {
-                    $pdo->prepare('DELETE FROM car_imoveis WHERE municipio = ? AND uf = ?')->execute([$mun, $uf]);
+                    if ($codIbge) {
+                        $pdo->prepare('DELETE FROM car_imoveis WHERE cod_ibge = ?')->execute([$codIbge]);
+                        // purga linhas legadas do mesmo município (sem código IBGE)
+                        $pdo->prepare('DELETE FROM car_imoveis WHERE cod_ibge IS NULL AND municipio = ? AND uf = ?')->execute([$mun, $uf]);
+                    } else {
+                        $pdo->prepare('DELETE FROM car_imoveis WHERE municipio = ? AND uf = ?')->execute([$mun, $uf]);
+                    }
                     $deletados[$chaveDel] = true;
                 }
                 [$minLat, $minLng, $maxLat, $maxLng] = $im['bbox'];
                 $stmt->execute([
                     mb_substr((string) ($im['cod'] ?? ''), 0, 80) ?: '(sem código)',
+                    $codIbge,
                     $mun, $uf, json_encode($im['contorno']),
                     round((float) ($im['area_ha'] ?? 0), 2),
                     $minLat, $minLng, $maxLat, $maxLng,
@@ -240,7 +266,8 @@ class CarService
         $out = [];
         foreach ($rows as $r) {
             $pts = json_decode((string) $r['contorno'], true);
-            if (is_array($pts) && count($pts) >= 3) {
+            // aceita anel único [[lat,lng],...] ou multipolygon [[[lat,lng],...],...]
+            if (is_array($pts) && self::contornoValido($pts)) {
                 $out[] = ['cod' => $r['cod_imovel'], 'contorno' => $pts, 'area_ha' => (float) $r['area_ha']];
             }
         }
@@ -291,12 +318,76 @@ class CarService
         return ['dist_m' => (int) round($melhorDist), 'municipio' => $melhor['municipio'], 'uf' => $melhor['uf']];
     }
 
-    /** Menor distância (m) do ponto ao polígono: 0 se dentro, senão à aresta mais próxima. */
-    private static function distanciaAoPoligono(float $lat, float $lng, array $pol): float
+    /**
+     * Normaliza o contorno em lista de anéis: aceita anel único [[lat,lng],...]
+     * ou multipolygon [[[lat,lng],...],...] (imóvel com partes desconexas).
+     */
+    private static function aneis(array $contorno): array
     {
-        if (self::dentro($lat, $lng, $pol)) {
+        if (!$contorno) {
+            return [];
+        }
+        $p = $contorno[0] ?? null;
+        // multipolygon: o 1º elemento é um anel (lista de pares), não um par [lat,lng]
+        if (is_array($p) && isset($p[0]) && is_array($p[0])) {
+            return $contorno;
+        }
+        return [$contorno];
+    }
+
+    /**
+     * Maior anel (por área) de um contorno — a divisa de uma PROPRIEDADE é sempre
+     * um único anel, então ao adotar um imóvel do CAR multipartes pega-se a maior
+     * parte (o desenho/área/relatório do croqui esperam anel simples).
+     */
+    public static function maiorAnel(array $contorno): array
+    {
+        $aneis = self::aneis($contorno);
+        if (count($aneis) <= 1) {
+            return $aneis[0] ?? [];
+        }
+        $melhor = $aneis[0];
+        $melhorArea = -1.0;
+        foreach ($aneis as $a) {
+            $area = CroquiService::areaHa($a);
+            if ($area > $melhorArea) {
+                $melhorArea = $area;
+                $melhor = $a;
+            }
+        }
+        return $melhor;
+    }
+
+    /** Contorno tem ao menos um anel com 3+ pontos? */
+    private static function contornoValido(array $contorno): bool
+    {
+        foreach (self::aneis($contorno) as $anel) {
+            if (is_array($anel) && count($anel) >= 3) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Menor distância (m) do ponto ao imóvel: 0 se dentro de qualquer parte. */
+    private static function distanciaAoPoligono(float $lat, float $lng, array $contorno): float
+    {
+        if (self::dentro($lat, $lng, $contorno)) {
             return 0.0;
         }
+        $min = INF;
+        foreach (self::aneis($contorno) as $anel) {
+            $d = self::distanciaAoAnel($lat, $lng, $anel);
+            if ($d < $min) {
+                $min = $d;
+            }
+        }
+        return $min;
+    }
+
+    /** Menor distância (m) do ponto às arestas de UM anel [[lat,lng],...]. */
+    private static function distanciaAoAnel(float $lat, float $lng, array $pol): float
+    {
         $mLat = 110574.0;
         $mLng = 111320.0 * cos(deg2rad($lat));
         $px = $lng * $mLng;
@@ -320,8 +411,19 @@ class CarService
         return $min;
     }
 
-    /** Ray casting: o ponto [lat,lng] está dentro do polígono [[lat,lng],...]? */
-    private static function dentro(float $lat, float $lng, array $poligono): bool
+    /** O ponto [lat,lng] está dentro do imóvel (qualquer parte do multipolygon)? */
+    private static function dentro(float $lat, float $lng, array $contorno): bool
+    {
+        foreach (self::aneis($contorno) as $anel) {
+            if (self::pontoNoAnel($lat, $lng, $anel)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Ray casting: o ponto [lat,lng] está dentro do anel [[lat,lng],...]? */
+    private static function pontoNoAnel(float $lat, float $lng, array $poligono): bool
     {
         $dentro = false;
         $n = count($poligono);

@@ -911,7 +911,7 @@ const Croqui = {
       return;
     }
     if (Croqui.pontos.length >= 3 && !confirm('Substituir a divisa atual pela divisa oficial do CAR?')) return;
-    Croqui.pontos = imovel.contorno.map(p => [Number(p[0]), Number(p[1])]);
+    Croqui.pontos = Croqui._maiorAnel(imovel.contorno); // divisa da propriedade = 1 anel (a maior parte)
     Croqui._carCod = imovel.cod || '';
     Croqui._dirty = true;
     Croqui._enquadrar();
@@ -986,10 +986,11 @@ const Croqui = {
       }
       return d;
     };
+    const dentroImovel = (contorno) => Croqui._aneis(contorno).some(anel => anel.length >= 3 && dentro(anel));
     let achado = null, menorArea = Infinity;
     for (const im of Croqui.carLayer) {
-      if (!im.contorno || im.contorno.length < 3 || !dentro(im.contorno)) continue;
-      const a = Croqui.areaHa(im.contorno);
+      if (!dentroImovel(im.contorno)) continue;
+      const a = Croqui._areaContorno(im.contorno);
       if (a < menorArea) { menorArea = a; achado = im; }
     }
     return achado;
@@ -999,7 +1000,7 @@ const Croqui = {
   _selecionarCarDoMapa(im) {
     if (Croqui.atualId !== 0) { App.alerta('Selecione "🏠 Propriedade" no seletor para adotar a divisa do CAR.', 'warning'); return; }
     if (Croqui.pontos.length >= 3 && !confirm('Substituir a divisa atual pela área do CAR escolhida?')) return;
-    Croqui.pontos = im.contorno.map(p => [Number(p[0]), Number(p[1])]);
+    Croqui.pontos = Croqui._maiorAnel(im.contorno); // divisa da propriedade = 1 anel (a maior parte)
     Croqui._carCod = im.cod || '';
     Croqui._dirty = true;
     Croqui.render();
@@ -1212,6 +1213,27 @@ const Croqui = {
     return Math.abs(soma) / 2 / 10000;
   },
 
+  /** Normaliza o contorno em lista de anéis: aceita anel único [[lat,lng],...]
+   *  ou multipolygon [[[lat,lng],...],...] (imóvel do CAR com partes desconexas). */
+  _aneis(contorno) {
+    if (!Array.isArray(contorno) || !contorno.length) return [];
+    return Array.isArray(contorno[0]) && Array.isArray(contorno[0][0]) ? contorno : [contorno];
+  },
+
+  /** Maior anel (por área) de um contorno — a divisa da propriedade é sempre 1 anel. */
+  _maiorAnel(contorno) {
+    const aneis = Croqui._aneis(contorno);
+    if (aneis.length <= 1) return (aneis[0] || []).map(p => [Number(p[0]), Number(p[1])]);
+    let melhor = aneis[0], melhorA = -1;
+    for (const a of aneis) { const ar = Croqui.areaHa(a); if (ar > melhorA) { melhorA = ar; melhor = a; } }
+    return melhor.map(p => [Number(p[0]), Number(p[1])]);
+  },
+
+  /** Área total (ha) do contorno (soma das partes). */
+  _areaContorno(contorno) {
+    return Croqui._aneis(contorno).reduce((s, a) => s + Croqui.areaHa(a), 0);
+  },
+
   /* REGRA: talhão JAMAIS sai da divisa da propriedade (tolerância ~15 m p/ GPS) */
   TOLERANCIA_DIVISA_M: 15,
 
@@ -1340,16 +1362,20 @@ const Croqui = {
       let desenhados = 0;
       for (const im of Croqui.carLayer) {
         if (desenhados > 600) break;
-        const c = im.contorno;
-        if (!c || c.length < 3) continue;
+        const aneis = Croqui._aneis(im.contorno);
+        if (!aneis.length) continue;
+        // bbox do imóvel sobre TODAS as partes (multipolygon)
         let iMinLat = 91, iMaxLat = -91, iMinLng = 181, iMaxLng = -181;
-        for (const p of c) { if (p[0] < iMinLat) iMinLat = p[0]; if (p[0] > iMaxLat) iMaxLat = p[0]; if (p[1] < iMinLng) iMinLng = p[1]; if (p[1] > iMaxLng) iMaxLng = p[1]; }
+        for (const anel of aneis) for (const p of anel) { if (p[0] < iMinLat) iMinLat = p[0]; if (p[0] > iMaxLat) iMaxLat = p[0]; if (p[1] < iMinLng) iMinLng = p[1]; if (p[1] > iMaxLng) iMaxLng = p[1]; }
         if (iMaxLat < vMinLat || iMinLat > vMaxLat || iMaxLng < vMinLng || iMinLng > vMaxLng) continue; // fora da tela
-        const tela = c.map(p => Croqui._paraTela(p, larg, alt));
         const sel = im.cod && im.cod === Croqui._carCod;
-        svg += `<polygon points="${tela.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ')}"
-                  fill="#ffd400" fill-opacity="${sel ? '.20' : '0'}" stroke="#ffd400" stroke-width="${sel ? 3 : 1.5}"
-                  stroke-dasharray="${sel ? 'none' : '5 4'}" style="pointer-events:none"/>`;
+        for (const anel of aneis) {
+          if (anel.length < 3) continue;
+          const tela = anel.map(p => Croqui._paraTela(p, larg, alt));
+          svg += `<polygon points="${tela.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ')}"
+                    fill="#ffd400" fill-opacity="${sel ? '.20' : '0'}" stroke="#ffd400" stroke-width="${sel ? 3 : 1.5}"
+                    stroke-dasharray="${sel ? 'none' : '5 4'}" style="pointer-events:none"/>`;
+        }
         desenhados++;
       }
       legenda.push('<span><span class="croqui-cor" style="background:#ffd400"></span>Imóveis do CAR (toque p/ adotar)</span>');
@@ -2822,13 +2848,18 @@ const OfflineView = {
       return d;
     };
     const g = tolMetros > 0 ? tolMetros / 111000 : 0;
+    const aneisDe = (c) => (typeof Croqui !== 'undefined' ? Croqui._aneis(c) : [c]);
     let melhor = null, melhorDist = Infinity;
     for (const im of base.imoveis) {
       const [minLat, minLng, maxLat, maxLng] = im.bbox;
       if (lat < minLat - g || lat > maxLat + g || lng < minLng - g || lng > maxLng + g) continue;
-      if (dentro([lat, lng], im.contorno)) return { cod: im.cod, contorno: im.contorno, aproximado: false, dist_m: 0 };
+      const aneis = aneisDe(im.contorno);
+      if (aneis.some(a => Array.isArray(a) && a.length >= 3 && dentro([lat, lng], a))) {
+        return { cod: im.cod, contorno: im.contorno, aproximado: false, dist_m: 0 };
+      }
       if (tolMetros > 0) {
-        const d = OfflineView._distPoligono(lat, lng, im.contorno);
+        let d = Infinity;
+        for (const a of aneis) { const dd = OfflineView._distPoligono(lat, lng, a); if (dd < d) d = dd; }
         if (d < melhorDist) { melhorDist = d; melhor = im; }
       }
     }

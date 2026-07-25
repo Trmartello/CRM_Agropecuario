@@ -391,6 +391,20 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '29'"
             );
         }
+        if ($versao < 30) {
+            // Código IBGE do município no CAR: dedup por município na importação
+            // (importar município a município acumula, sem apagar os anteriores).
+            // O contorno passa a aceitar multipolygon (imóveis com partes desconexas).
+            self::adicionarColuna('car_imoveis', 'cod_ibge',
+                "cod_ibge VARCHAR(7) NULL COMMENT 'código IBGE do município (do cod_imovel do SICAR)' AFTER cod_imovel");
+            if (self::temTabela('car_imoveis') && !self::temIndice('car_imoveis', 'idx_car_ibge')) {
+                Database::executar('ALTER TABLE car_imoveis ADD INDEX idx_car_ibge (cod_ibge)');
+            }
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '30')
+                 ON DUPLICATE KEY UPDATE valor = '30'"
+            );
+        }
     }
 
     /** Fase 6E (refinamento): características fisiológicas por estágio (cartão ilustrado). */
@@ -883,6 +897,15 @@ class Instalador
         if (!self::temColuna($tabela, $coluna)) {
             Database::executar("ALTER TABLE {$tabela} ADD COLUMN {$ddl}");
         }
+    }
+
+    private static function temIndice(string $tabela, string $indice): bool
+    {
+        return (bool) Database::valor(
+            'SELECT 1 FROM information_schema.STATISTICS
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1',
+            [$tabela, $indice]
+        );
     }
 
     /** Fase 2: pedidos ampliados, estoque, promoções, entregas futuras e pacotes. */

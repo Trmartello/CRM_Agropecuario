@@ -144,9 +144,10 @@ DROP TABLE IF EXISTS car_imoveis;
 CREATE TABLE car_imoveis (
   id INT AUTO_INCREMENT PRIMARY KEY,
   cod_imovel VARCHAR(80) NOT NULL COMMENT 'código do CAR do imóvel',
+  cod_ibge VARCHAR(7) NULL COMMENT 'código IBGE do município (do cod_imovel do SICAR) — dedup por município',
   municipio VARCHAR(120) NOT NULL,
   uf CHAR(2) NOT NULL DEFAULT 'SC',
-  contorno MEDIUMTEXT NOT NULL COMMENT 'divisa do imóvel [[lat,lng],...] (simplificada)',
+  contorno MEDIUMTEXT NOT NULL COMMENT 'divisa do imóvel: anel [[lat,lng],...] ou multipolygon [[[lat,lng],...],...] (simplificada)',
   area_ha DECIMAL(10,2) NULL,
   min_lat DECIMAL(10,7) NOT NULL,
   min_lng DECIMAL(10,7) NOT NULL,
@@ -154,6 +155,7 @@ CREATE TABLE car_imoveis (
   max_lng DECIMAL(10,7) NOT NULL,
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_car_municipio (municipio, uf),
+  INDEX idx_car_ibge (cod_ibge),
   INDEX idx_car_bbox (min_lat, max_lat, min_lng, max_lng)
 ) ENGINE=InnoDB;
 

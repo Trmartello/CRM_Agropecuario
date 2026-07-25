@@ -103,10 +103,12 @@ class IntegracaoController
                 $semCar++;
                 continue;
             }
-            $area = \App\Services\CroquiService::areaHa($im['contorno']);
+            // divisa da propriedade = 1 anel (maior parte, se o imóvel do CAR for multipartes)
+            $divisa = \App\Services\CarService::maiorAnel($im['contorno']);
+            $area = \App\Services\CroquiService::areaHa($divisa);
             \App\Core\Database::executar(
                 'UPDATE propriedades SET contorno = ?, area_gps = ?, car_numero = ? WHERE id = ?',
-                [json_encode($im['contorno']), round((float) $area, 2),
+                [json_encode($divisa), round((float) $area, 2),
                     mb_substr((string) ($im['cod'] ?? ''), 0, 60) ?: null, (int) $p['id']]
             );
             $vinc++;

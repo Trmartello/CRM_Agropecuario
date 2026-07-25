@@ -288,7 +288,7 @@ class ShapefileService
      * memória) e chama $cb(imovel) para cada imóvel. Devolve a contagem.
      * O .dbf (menor) é lido inteiro para acesso aleatório por registro.
      */
-    public static function streamImoveis(string $caminho, callable $cb, int $maxPontos = 60): int
+    public static function streamImoveis(string $caminho, callable $cb, int $maxPontos = 120): int
     {
         if (!class_exists('ZipArchive')) {
             throw new \RuntimeException('O servidor está sem suporte a ZIP (extensão php-zip).');
@@ -387,30 +387,22 @@ class ShapefileService
             if (strlen($shape) < $cl) {
                 break;
             }
-            $anel = self::maiorAnelDoShape($shape);
+            // TODAS as partes do imóvel (multipolygon): imóvel com talhões
+            // desconexos aparecia só com o maior pedaço (parecia "fora do lugar").
+            $aneisBrutos = self::aneisDoShape($shape);
             // Avança o .dbf UM registro (mantém o alinhamento mesmo se pular o shape)
             $meta = [];
             if ($dbf) {
                 $recBin = self::freadN($dbfStream, $dbf['rsize']);
                 $meta = self::extrairCampos($dbf['alvos'], $recBin);
             }
-            if (count($anel) < 3) {
+            if (!$aneisBrutos) {
                 continue;
             }
-            $m = count($anel);
-            if ($anel[0] === $anel[$m - 1]) {
-                array_pop($anel);
-            }
-            if (count($anel) < 3) {
+            $contorno = self::prepararContorno($aneisBrutos, $maxPontos);
+            if ($contorno === null) {
                 continue;
             }
-            // Descarta imóvel em coordenadas projetadas (não trava o arquivo todo)
-            if ($anel[0][0] < -90 || $anel[0][0] > 90 || $anel[0][1] < -180 || $anel[0][1] > 180) {
-                continue;
-            }
-            $simpl = self::simplificar($anel, $maxPontos);
-            $lats = array_column($simpl, 0);
-            $lngs = array_column($simpl, 1);
             $cod = ($meta['cod'] ?? '') !== '' ? $meta['cod'] : null;
             // UF: primeiro do campo estado; senão do prefixo do cód. do CAR (SC-4204202-...)
             $uf = isset($meta['estado']) && $meta['estado'] !== '' ? self::ufDeEstado($meta['estado']) : null;
@@ -419,11 +411,12 @@ class ShapefileService
             }
             $cb([
                 'cod' => $cod,
+                'cod_ibge' => $cod !== null ? self::ibgeDeCodImovel($cod) : null,
                 'municipio' => ($meta['municipio'] ?? '') !== '' ? $meta['municipio'] : null,
                 'uf' => $uf,
-                'contorno' => $simpl,
-                'area_ha' => CroquiService::areaHa($simpl),
-                'bbox' => [min($lats), min($lngs), max($lats), max($lngs)],
+                'contorno' => $contorno['contorno'],
+                'area_ha' => $contorno['area_ha'],
+                'bbox' => $contorno['bbox'],
             ]);
             $n++;
         }
@@ -444,8 +437,8 @@ class ShapefileService
         return $buf;
     }
 
-    /** Maior anel (por área) de UM registro .shp (binário do shape). [lat,lng]. */
-    private static function maiorAnelDoShape(string $shape): array
+    /** TODOS os anéis (partes) de UM registro .shp, cada um cru [[lat,lng],...]. */
+    private static function aneisDoShape(string $shape): array
     {
         if (strlen($shape) < 44) {
             return [];
@@ -463,25 +456,97 @@ class ShapefileService
         $parts = array_values(unpack('V' . $numParts, substr($shape, 44, 4 * $numParts)));
         $pointsOff = 44 + 4 * $numParts;
         $coords = array_values(unpack('d' . ($numPoints * 2), substr($shape, $pointsOff, 16 * $numPoints)));
-        $melhor = [];
-        $melhorArea = -1.0;
+        $aneis = [];
         for ($p = 0; $p < $numParts; $p++) {
             $ini = $parts[$p];
             $fim = ($p + 1 < $numParts) ? $parts[$p + 1] : $numPoints;
             $anel = [];
             for ($k = $ini; $k < $fim; $k++) {
+                // shapefile guarda X=longitude, Y=latitude
                 $anel[] = [$coords[$k * 2 + 1], $coords[$k * 2]];
+            }
+            if (count($anel) >= 3) {
+                $aneis[] = $anel;
+            }
+        }
+        return $aneis;
+    }
+
+    /**
+     * Limpa/valida/simplifica os anéis de um imóvel e monta o contorno final.
+     * Descarta anéis minúsculos (buracos/estilhaços): mantém o maior e os que
+     * têm ≥0,5% da área dele (teto de 12 partes). Devolve:
+     *   ['contorno' => anel único OU lista de anéis, 'area_ha', 'bbox'] ou null.
+     */
+    private static function prepararContorno(array $aneisBrutos, int $maxPontos): ?array
+    {
+        $aneis = [];
+        $areas = [];
+        foreach ($aneisBrutos as $anel) {
+            $m = count($anel);
+            if ($m >= 3 && $anel[0] === $anel[$m - 1]) {
+                array_pop($anel); // fecha o anel (o 1º == último)
             }
             if (count($anel) < 3) {
                 continue;
             }
-            $a = abs(self::areaShoelace($anel));
-            if ($a > $melhorArea) {
-                $melhorArea = $a;
-                $melhor = $anel;
+            // Descarta anel em coordenadas projetadas (não trava o arquivo todo)
+            if ($anel[0][0] < -90 || $anel[0][0] > 90 || $anel[0][1] < -180 || $anel[0][1] > 180) {
+                continue;
+            }
+            $simpl = self::simplificar($anel, $maxPontos);
+            if (count($simpl) < 3) {
+                continue;
+            }
+            $aneis[] = $simpl;
+            $areas[] = abs(self::areaShoelace($simpl));
+        }
+        if (!$aneis) {
+            return null;
+        }
+        $maxArea = max($areas);
+        $filtrados = [];
+        foreach ($aneis as $i => $anel) {
+            if ($areas[$i] >= $maxArea * 0.005) {
+                $filtrados[] = ['a' => $areas[$i], 'pts' => $anel];
             }
         }
-        return $melhor;
+        usort($filtrados, fn ($x, $y) => $y['a'] <=> $x['a']);
+        $filtrados = array_slice($filtrados, 0, 12);
+        $finais = array_map(fn ($f) => $f['pts'], $filtrados);
+
+        $lats = [];
+        $lngs = [];
+        $areaHa = 0.0;
+        foreach ($finais as $anel) {
+            foreach ($anel as $pt) {
+                $lats[] = $pt[0];
+                $lngs[] = $pt[1];
+            }
+            $areaHa += CroquiService::areaHa($anel);
+        }
+        return [
+            // 1 parte → anel simples (compat.); várias → lista de anéis
+            'contorno' => count($finais) === 1 ? $finais[0] : $finais,
+            'area_ha' => $areaHa,
+            'bbox' => [min($lats), min($lngs), max($lats), max($lngs)],
+        ];
+    }
+
+    /**
+     * Código IBGE (7 dígitos) do município a partir do cod_imovel do SICAR
+     * ("UF-IBGE-hash", ex.: "SC-4204202-ABC..."). Identifica o município com
+     * precisão — usado para dedup e para o nome (via MunicipiosSul).
+     */
+    private static function ibgeDeCodImovel(string $cod): ?string
+    {
+        if (preg_match('/^\s*[A-Za-z]{2}[-\s.](\d{7})[-\s.]/', $cod, $m)) {
+            return $m[1];
+        }
+        if (preg_match('/(\d{7})/', $cod, $m)) { // fallback: 1º grupo de 7 dígitos
+            return $m[1];
+        }
+        return null;
     }
 
     /** Resolve os campos-alvo (cod/municipio/estado) a partir dos descritores do .dbf. */
