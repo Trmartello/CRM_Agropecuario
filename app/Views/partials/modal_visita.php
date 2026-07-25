@@ -89,6 +89,9 @@
                 <input type="hidden" name="inicio_lat"><input type="hidden" name="inicio_lng"><input type="hidden" name="inicio_precisao">
               </div>
             </div>
+            <!-- Proposta de vínculo imóvel do CAR ↔ produtor (Mapa Territorial, PR 8):
+                 preenchida pelo GPS do Iniciar Visita; o RTV confirma (nunca em silêncio). -->
+            <div class="col-12 d-none" id="visitaPropostaVinculo"></div>
           </div>
           <!-- Linha do tempo da cultura do talhão (plantio → fase atual) -->
           <div id="visitaFenologia" class="mt-3"></div>

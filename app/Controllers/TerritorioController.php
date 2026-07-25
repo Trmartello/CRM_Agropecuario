@@ -89,4 +89,39 @@ class TerritorioController
         }
         json_resposta($ficha);
     }
+
+    /** GET territorio/localizar?lat=&lng= → imóvel do CAR no ponto (PR 8). */
+    public function localizar(): void
+    {
+        Permissoes::exigir(self::PERFIS);
+        liberar_sessao();
+        $lat = isset($_GET['lat']) && $_GET['lat'] !== '' ? (float) $_GET['lat'] : null;
+        $lng = isset($_GET['lng']) && $_GET['lng'] !== '' ? (float) $_GET['lng'] : null;
+        $produtor = (int) ($_GET['produtor'] ?? 0);
+        if ($lat === null || $lng === null || ($lat === 0.0 && $lng === 0.0)) {
+            json_erro('Coordenada inválida.');
+        }
+        json_ok(MapaTerritorialService::localizar($lat, $lng, $produtor));
+    }
+
+    /** POST territorio/vincular → cria o vínculo imóvel↔produtor (RTV confirma; PR 8). */
+    public function vincular(): void
+    {
+        Permissoes::exigir(self::PERFIS);
+        $cod = trim($_POST['cod_car'] ?? $_POST['codCar'] ?? '');
+        $produtorId = (int) ($_POST['produtor_id'] ?? $_POST['produtorId'] ?? 0);
+        $papel = trim($_POST['papel'] ?? 'proprietario');
+        $origem = trim($_POST['origem'] ?? 'manual');
+        $principal = !empty($_POST['principal']) && $_POST['principal'] !== '0';
+        if ($cod === '' || $produtorId <= 0) {
+            json_erro('Informe o imóvel e o produtor.');
+        }
+        try {
+            $r = MapaTerritorialService::vincular($cod, $produtorId, $papel, $origem, $principal, \App\Core\Auth::id());
+        } catch (\Throwable $e) {
+            json_erro($e->getMessage());
+        }
+        auditar('vincular', 'imovel_produtor', $produtorId, "{$r['codCar']} <- produtor {$produtorId} ({$r['origem']})");
+        json_ok($r);
+    }
 }

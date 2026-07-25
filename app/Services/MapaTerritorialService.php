@@ -525,4 +525,142 @@ class MapaTerritorialService
             ? ['type' => 'Polygon', 'coordinates' => $partes[0]]
             : ['type' => 'MultiPolygon', 'coordinates' => $partes];
     }
+
+    /* ===================== PR 8: localizar imóvel + vínculo ===================== */
+
+    /**
+     * Localiza o imóvel do CAR numa coordenada (ponto-em-polígono no dim_imovel).
+     * Se o ponto cair em um ou mais imóveis → exato=true com todos (condomínio).
+     * Se cair em nenhum → exato=false com os 3 centroides mais próximos.
+     *
+     * @return array{exato:bool,match:array<int,array{codCar:string,nomeImovel:?string,areaHa:float,distanciaM:int}>}
+     */
+    public static function localizar(float $lat, float $lng, int $produtorId = 0): array
+    {
+        // marca se o imóvel já está vinculado ao produtor (evita propor de novo)
+        $ja = static fn (string $cod): bool => $produtorId > 0 && self::temVinculo($cod, $produtorId);
+
+        // Candidatos pela bbox (piso em min_lat mantém o índice seletivo).
+        $cands = Database::todos(
+            'SELECT cod_car, nome_imovel, area_ha, contorno
+               FROM dim_imovel
+              WHERE min_lat <= ? AND max_lat >= ? AND min_lng <= ? AND max_lng >= ? AND min_lat >= ?',
+            [$lat, $lat, $lng, $lng, $lat - 0.5]
+        );
+        $match = [];
+        foreach ($cands as $c) {
+            if (self::pontoNoContorno($lat, $lng, json_decode((string) $c['contorno'], true))) {
+                $match[] = [
+                    'codCar' => $c['cod_car'],
+                    'nomeImovel' => $c['nome_imovel'],
+                    'areaHa' => round((float) $c['area_ha'], 2),
+                    'distanciaM' => 0,
+                    'jaVinculado' => $ja((string) $c['cod_car']),
+                ];
+            }
+        }
+        if ($match) {
+            return ['exato' => true, 'match' => $match];
+        }
+
+        // Nenhum contém o ponto → 3 centroides mais próximos (numa faixa p/ limitar a varredura).
+        $band = 0.5;
+        $prox = Database::todos(
+            'SELECT cod_car, nome_imovel, area_ha, centro_lat, centro_lng
+               FROM dim_imovel
+              WHERE centro_lat BETWEEN ? AND ? AND centro_lng BETWEEN ? AND ?
+              ORDER BY (POW(centro_lat - ?, 2) + POW(centro_lng - ?, 2)) ASC
+              LIMIT 3',
+            [$lat - $band, $lat + $band, $lng - $band, $lng + $band, $lat, $lng]
+        );
+        $match = array_map(static fn ($c) => [
+            'codCar' => $c['cod_car'],
+            'nomeImovel' => $c['nome_imovel'],
+            'areaHa' => round((float) $c['area_ha'], 2),
+            'distanciaM' => (int) round(self::distanciaM($lat, $lng, (float) $c['centro_lat'], (float) $c['centro_lng'])),
+            'jaVinculado' => $ja((string) $c['cod_car']),
+        ], $prox);
+        return ['exato' => false, 'match' => $match];
+    }
+
+    /**
+     * Cria/atualiza o vínculo imóvel↔produtor (bridge). A confiança é derivada da origem.
+     * Idempotente (unique cod_car+produtor). Se principal, tira o principal dos demais.
+     */
+    public static function vincular(string $codCar, int $produtorId, string $papel, string $origem, bool $principal, ?int $usuarioId): array
+    {
+        $codCar = trim($codCar);
+        if (!Database::valor('SELECT COUNT(*) FROM dim_imovel WHERE cod_car = ?', [$codCar])) {
+            throw new \RuntimeException('Imóvel não encontrado no mapa territorial.');
+        }
+        if (!Database::valor('SELECT COUNT(*) FROM clientes WHERE id = ?', [$produtorId])) {
+            throw new \RuntimeException('Produtor não encontrado.');
+        }
+        if (!in_array($papel, ['proprietario', 'posseiro', 'arrendatario', 'parceiro'], true)) {
+            $papel = 'proprietario';
+        }
+        if (!in_array($origem, ['documento', 'gps_visita', 'informado', 'manual'], true)) {
+            $origem = 'manual';
+        }
+        $confianca = in_array($origem, ['documento', 'gps_visita'], true) ? 'alta' : ($origem === 'informado' ? 'media' : 'baixa');
+
+        if ($principal) {
+            Database::executar('UPDATE bridge_imovel_produtor SET principal = 0 WHERE cod_car = ?', [$codCar]);
+        }
+        Database::executar(
+            'INSERT INTO bridge_imovel_produtor (cod_car, produtor_id, papel, principal, origem, confianca, dt_vinculo, usuario_id)
+             VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)
+             ON DUPLICATE KEY UPDATE papel = VALUES(papel), principal = VALUES(principal),
+                origem = VALUES(origem), confianca = VALUES(confianca), usuario_id = VALUES(usuario_id)',
+            [$codCar, $produtorId, $papel, $principal ? 1 : 0, $origem, $confianca, $usuarioId]
+        );
+        return ['codCar' => $codCar, 'produtorId' => $produtorId, 'papel' => $papel, 'origem' => $origem, 'confianca' => $confianca, 'principal' => $principal];
+    }
+
+    /** True se um produtor já está vinculado ao imóvel (evita propor vínculo repetido). */
+    public static function temVinculo(string $codCar, int $produtorId): bool
+    {
+        return (bool) Database::valor(
+            'SELECT COUNT(*) FROM bridge_imovel_produtor WHERE cod_car = ? AND produtor_id = ?',
+            [trim($codCar), $produtorId]
+        );
+    }
+
+    private static function pontoNoContorno(float $lat, float $lng, $contorno): bool
+    {
+        foreach (self::aneis($contorno) as $anel) {
+            if (is_array($anel) && count($anel) >= 3 && self::pontoNoAnel($lat, $lng, $anel)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Ray casting — ponto dentro de um anel [[lat,lng],...]. */
+    private static function pontoNoAnel(float $lat, float $lng, array $poly): bool
+    {
+        $dentro = false;
+        $n = count($poly);
+        for ($i = 0, $j = $n - 1; $i < $n; $j = $i++) {
+            $yi = (float) $poly[$i][0];
+            $xi = (float) $poly[$i][1];
+            $yj = (float) $poly[$j][0];
+            $xj = (float) $poly[$j][1];
+            if (($yi > $lat) !== ($yj > $lat)
+                && $lng < ($xj - $xi) * ($lat - $yi) / (($yj - $yi) ?: 1e-12) + $xi) {
+                $dentro = !$dentro;
+            }
+        }
+        return $dentro;
+    }
+
+    /** Distância (m) entre dois pontos (haversine). */
+    private static function distanciaM(float $la1, float $lo1, float $la2, float $lo2): float
+    {
+        $r = 6371000.0;
+        $dLa = deg2rad($la2 - $la1);
+        $dLo = deg2rad($lo2 - $lo1);
+        $a = sin($dLa / 2) ** 2 + cos(deg2rad($la1)) * cos(deg2rad($la2)) * sin($dLo / 2) ** 2;
+        return $r * 2 * atan2(sqrt($a), sqrt(1 - $a));
+    }
 }

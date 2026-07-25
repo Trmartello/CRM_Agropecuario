@@ -1956,8 +1956,70 @@ const Visitas = {
         form.querySelector('[name=inicio_lng]').value = pos.coords.longitude.toFixed(7);
         form.querySelector('[name=inicio_precisao]').value = Math.round(pos.coords.accuracy);
         Visitas._mostrarInicio(hora, Math.round(pos.coords.accuracy));
+        Visitas.proporVinculo(pos.coords.latitude, pos.coords.longitude); // Mapa Territorial: propõe vínculo CAR↔produtor
       }, () => { /* sem GPS: segue só com a hora */ }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 15000 });
     }
+  },
+
+  /** Após o Iniciar Visita pegar o GPS, propõe vincular o imóvel do CAR ao produtor.
+   *  Nunca vincula em silêncio: o RTV confirma na tela (spec Mapa Territorial §6). */
+  async proporVinculo(lat, lng) {
+    const box = document.getElementById('visitaPropostaVinculo');
+    const sel = document.getElementById('visitaCliente');
+    const clienteId = sel ? Number(sel.value) : 0;
+    if (!box || !clienteId) return;
+    try {
+      const qs = new URLSearchParams({ lat: lat.toFixed(7), lng: lng.toFixed(7), produtor: clienteId });
+      const r = await App.json('index.php?r=territorio/localizar&' + qs.toString());
+      const nome = sel.selectedOptions[0] ? sel.selectedOptions[0].text : 'este produtor';
+      Visitas._vinculoCtx = { clienteId, nome };
+      const ms = (r.match || []).filter(Boolean);
+      if (!ms.length) { Visitas.fecharProposta(); return; }
+      // exato e único já vinculado a este produtor → nada a propor
+      if (r.exato && ms.length === 1 && ms[0].jaVinculado) { Visitas.fecharProposta(); return; }
+      const btn = m => `<button type="button" class="btn btn-sm ${m.jaVinculado ? 'btn-outline-secondary' : 'btn-success'} me-1 mb-1"`
+        + (m.jaVinculado ? ' disabled' : ` onclick="Visitas.confirmarVinculo('${App.escapeHtml(m.codCar)}')"`) + '>'
+        + `<i class="bi bi-link-45deg me-1"></i>${App.escapeHtml(m.nomeImovel || m.codCar)}`
+        + (m.distanciaM ? ` <span class="text-muted">· ${m.distanciaM} m</span>` : '')
+        + (m.jaVinculado ? ' <span class="text-muted">(já vinculado)</span>' : '') + '</button>';
+      let html;
+      if (r.exato && ms.length === 1) {
+        const m = ms[0];
+        html = `<div class="alert alert-info py-2 mb-0"><i class="bi bi-geo-alt-fill me-1"></i>`
+          + `Você está no imóvel do CAR <strong>${App.escapeHtml(m.nomeImovel || m.codCar)}</strong> `
+          + `(${Number(m.areaHa).toLocaleString('pt-BR')} ha). Vincular ao produtor <strong>${App.escapeHtml(nome)}</strong>?`
+          + `<div class="mt-2 d-flex gap-2 flex-wrap"><button type="button" class="btn btn-sm btn-success" onclick="Visitas.confirmarVinculo('${App.escapeHtml(m.codCar)}')"><i class="bi bi-link-45deg me-1"></i>Vincular</button>`
+          + `<button type="button" class="btn btn-sm btn-outline-secondary" onclick="Visitas.fecharProposta()">Agora não</button></div></div>`;
+      } else {
+        html = `<div class="alert alert-warning py-2 mb-0"><i class="bi bi-geo-alt me-1"></i>`
+          + (r.exato ? 'O ponto caiu em mais de um imóvel do CAR — escolha o correto' : 'Não caiu exatamente sobre um imóvel do CAR — imóveis próximos')
+          + ` para vincular ao produtor <strong>${App.escapeHtml(nome)}</strong>:<div class="mt-2">${ms.map(btn).join('')}</div>`
+          + `<button type="button" class="btn btn-sm btn-outline-secondary mt-1" onclick="Visitas.fecharProposta()">Agora não</button></div>`;
+      }
+      box.innerHTML = html;
+      box.classList.remove('d-none');
+    } catch (e) { Visitas.fecharProposta(); /* sem base do CAR/erro: não atrapalha a visita */ }
+  },
+
+  async confirmarVinculo(codCar) {
+    const ctx = Visitas._vinculoCtx || {};
+    if (!ctx.clienteId) return;
+    try {
+      const fd = new FormData();
+      fd.append('cod_car', codCar);
+      fd.append('produtor_id', ctx.clienteId);
+      fd.append('papel', 'proprietario');
+      fd.append('origem', 'gps_visita');
+      fd.append('principal', '0');
+      await App.json('index.php?r=territorio/vincular', { method: 'POST', body: fd });
+      App.alerta('Imóvel vinculado ao produtor (origem: visita por GPS).', 'success');
+      Visitas.fecharProposta();
+    } catch (e) { App.alerta(e.message, 'danger'); }
+  },
+
+  fecharProposta() {
+    const box = document.getElementById('visitaPropostaVinculo');
+    if (box) { box.classList.add('d-none'); box.innerHTML = ''; }
   },
 
   _mostrarInicio(hora, precisao) {
