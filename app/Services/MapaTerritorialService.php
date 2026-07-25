@@ -168,4 +168,246 @@ class MapaTerritorialService
             'ç' => 'c', 'ñ' => 'n',
         ]);
     }
+
+    /* ===================== PR 3: GeoJSON dos imóveis ===================== */
+
+    /** Preço de referência R$/ha por cultura para o POTENCIAL mockado (PR 3). */
+    private const RHA_MOCK = [
+        'Milho' => 5200, 'Soja' => 4600, 'Pastagem / Leite' => 1450,
+        'Integração aves' => 2800, 'Integração suínos' => 2800, 'Trigo' => 3800,
+    ];
+    private const RHA_MOCK_PADRAO = 3500;
+    private const MAX_FEATURES = 5000;
+
+    /**
+     * GeoJSON FeatureCollection dos imóveis do território (spec §8).
+     *
+     * PR 3: o score (potencial/realizado/share/gap) é MOCKADO de propósito — o
+     * adaptador do Qlik entra no PR 9. Isso desacopla o front do Qlik. A
+     * geometria sai em [lng,lat] (padrão GeoJSON); o contorno é guardado em
+     * [lat,lng], então é convertido aqui.
+     *
+     * @param array $f {municipio?,uf?,safra?,rtv?,bbox?:[minLat,minLng,maxLat,maxLng]}
+     */
+    public static function geojson(array $f): array
+    {
+        $safra = trim((string) ($f['safra'] ?? ''));
+        $rtv = trim((string) ($f['rtv'] ?? ''));
+
+        $where = [];
+        $params = [];
+
+        $municipio = trim((string) ($f['municipio'] ?? ''));
+        if ($municipio !== '') {
+            [$w, $p] = self::filtroMunicipio($municipio, $f['uf'] ?? null);
+            $where[] = $w;
+            $params = array_merge($params, $p);
+        }
+
+        $bbox = $f['bbox'] ?? null;
+        if (is_array($bbox) && count($bbox) === 4) {
+            [$minLat, $minLng, $maxLat, $maxLng] = array_map('floatval', array_values($bbox));
+            // overlap de bbox com piso em min_lat p/ manter o índice seletivo
+            $where[] = 'min_lat >= ? AND min_lat <= ? AND max_lat >= ? AND min_lng <= ? AND max_lng >= ?';
+            array_push($params, $minLat - 0.5, $maxLat, $minLat, $maxLng, $minLng);
+        }
+
+        if (!$where) {
+            throw new \RuntimeException('Informe o município ou a área (bbox) do mapa.');
+        }
+
+        $sql = 'SELECT cod_car, nome_imovel, municipio, uf, area_ha,
+                       COALESCE(NULLIF(contorno_simpl, ""), contorno) AS geo
+                  FROM dim_imovel
+                 WHERE ' . implode(' AND ', $where) . '
+                 ORDER BY cod_car LIMIT ' . (self::MAX_FEATURES + 1);
+        $imoveis = Database::todos($sql, $params);
+        $truncado = count($imoveis) > self::MAX_FEATURES;
+        if ($truncado) {
+            array_pop($imoveis);
+        }
+        if (!$imoveis) {
+            return ['type' => 'FeatureCollection', 'features' => [], 'fonte_score' => 'mock', 'total' => 0, 'truncado' => false];
+        }
+
+        $cods = array_column($imoveis, 'cod_car');
+        $prod = self::produtorPrincipalDe($cods);        // cod_car → {nome,id,rtv}
+        $cult = self::culturaPrincipalDe($cods, $safra); // cod_car → cultura
+
+        $features = [];
+        foreach ($imoveis as $im) {
+            $cod = (string) $im['cod_car'];
+            $pinfo = $prod[$cod] ?? null;
+
+            if ($rtv !== '' && (!$pinfo || self::semAcento((string) ($pinfo['rtv'] ?? '')) !== self::semAcento($rtv))) {
+                continue; // filtro por RTV pedido e não bate
+            }
+
+            $areaHa = (float) $im['area_ha'];
+            $cultura = $cult[$cod] ?? null;
+            $rate = $cultura !== null ? (self::RHA_MOCK[$cultura] ?? self::RHA_MOCK_PADRAO) : self::RHA_MOCK_PADRAO;
+
+            // Score MOCKADO determinístico (estável por imóvel; Qlik substitui no PR 9).
+            // Sem produtor vinculado = prospect: a Copérdia ainda não vendeu (realizado 0).
+            $temProd = $pinfo !== null;
+            $frac = (crc32($cod) % 1000) / 1000.0;
+            $potencial = (int) round($areaHa * $rate);
+            $realizado = $temProd ? (int) round($potencial * $frac) : 0;
+            $gap = $potencial - $realizado;
+            $share = $potencial > 0 ? round($realizado / $potencial, 4) : 0.0;
+            $status = !$temProd ? 'prospect' : ($share >= 0.05 ? 'ativo' : 'inativo');
+
+            $geom = self::geojsonGeometry($im['geo']);
+            if ($geom === null) {
+                continue;
+            }
+            $features[] = [
+                'type' => 'Feature',
+                'geometry' => $geom,
+                'properties' => [
+                    'codCar' => $cod,
+                    'nomeImovel' => $im['nome_imovel'],
+                    'municipio' => $im['municipio'],
+                    'uf' => $im['uf'],
+                    'areaHa' => round($areaHa, 2),
+                    'produtorPrincipal' => $pinfo['nome'] ?? null,
+                    'produtorId' => $pinfo['id'] ?? null,
+                    'statusComercial' => $status,
+                    'culturaPrincipal' => $cultura,
+                    'potencial' => $potencial,
+                    'realizado' => $realizado,
+                    'share' => $share,
+                    'gap' => $gap,
+                    'rtv' => $pinfo['rtv'] ?? null,
+                    'ultimaVisita' => null, // preenchido em PR futuro (visitas por produtor)
+                ],
+            ];
+        }
+
+        return [
+            'type' => 'FeatureCollection',
+            'features' => $features,
+            'fonte_score' => 'mock', // PR 3: score sintético — Qlik entra no PR 9
+            'total' => count($features),
+            'truncado' => $truncado,
+        ];
+    }
+
+    /** Filtro de município: cod_ibge (indexado) quando houver; senão nome/UF exatos. */
+    private static function filtroMunicipio(string $municipio, ?string $uf): array
+    {
+        $uf = $uf !== null && trim($uf) !== '' ? mb_strtoupper(substr(trim($uf), 0, 2)) : null;
+        $alvo = self::semAcento($municipio);
+        $cands = Database::todos(
+            'SELECT DISTINCT municipio, uf, cod_ibge FROM dim_imovel' . ($uf ? ' WHERE uf = ?' : ''),
+            $uf ? [$uf] : []
+        );
+        $ibges = [];
+        $mun = $municipio;
+        $ufv = $uf ?? 'SC';
+        foreach ($cands as $c) {
+            if (strpos(self::semAcento((string) $c['municipio']), $alvo) !== false) {
+                if (!empty($c['cod_ibge'])) {
+                    $ibges[(string) $c['cod_ibge']] = true;
+                }
+                $mun = (string) $c['municipio'];
+                $ufv = (string) $c['uf'];
+            }
+        }
+        if ($ibges) {
+            $marks = implode(',', array_fill(0, count($ibges), '?'));
+            return ["cod_ibge IN ($marks)", array_map('strval', array_keys($ibges))];
+        }
+        return ['municipio = ? AND uf = ?', [$mun, $ufv]];
+    }
+
+    /** cod_car → produtor principal (nome/id/rtv), em lote. */
+    private static function produtorPrincipalDe(array $cods): array
+    {
+        $map = [];
+        foreach (array_chunk($cods, 500) as $chunk) {
+            $marks = implode(',', array_fill(0, count($chunk), '?'));
+            $rows = Database::todos(
+                "SELECT b.cod_car, b.produtor_id, c.nome, u.nome AS rtv
+                   FROM bridge_imovel_produtor b
+                   JOIN clientes c ON c.id = b.produtor_id
+                   LEFT JOIN usuarios u ON u.id = c.responsavel_id
+                  WHERE b.cod_car IN ($marks)
+                  ORDER BY b.principal DESC, b.id ASC",
+                $chunk
+            );
+            foreach ($rows as $r) {
+                $cod = (string) $r['cod_car'];
+                if (!isset($map[$cod])) { // 1º = principal (ORDER principal DESC)
+                    $map[$cod] = ['nome' => $r['nome'], 'id' => (int) $r['produtor_id'], 'rtv' => $r['rtv']];
+                }
+            }
+        }
+        return $map;
+    }
+
+    /** cod_car → cultura principal (maior área na safra), em lote. */
+    private static function culturaPrincipalDe(array $cods, string $safra): array
+    {
+        $melhor = []; // cod_car => [cultura, area]
+        foreach (array_chunk($cods, 500) as $chunk) {
+            $marks = implode(',', array_fill(0, count($chunk), '?'));
+            $params = $chunk;
+            $fSafra = '';
+            if ($safra !== '') {
+                $fSafra = ' AND safra = ?';
+                $params[] = $safra;
+            }
+            $rows = Database::todos(
+                "SELECT cod_car, cultura, SUM(area_plantada) AS area
+                   FROM fato_talhao_safra
+                  WHERE cod_car IN ($marks)$fSafra
+                  GROUP BY cod_car, cultura",
+                $params
+            );
+            foreach ($rows as $r) {
+                $cod = (string) $r['cod_car'];
+                $a = (float) $r['area'];
+                if (!isset($melhor[$cod]) || $a > $melhor[$cod][1]) {
+                    $melhor[$cod] = [(string) $r['cultura'], $a];
+                }
+            }
+        }
+        return array_map(static fn ($v) => $v[0], $melhor);
+    }
+
+    /** Normaliza o contorno em lista de anéis ([lat,lng]). */
+    private static function aneis($contorno): array
+    {
+        if (!is_array($contorno) || !$contorno) {
+            return [];
+        }
+        return (isset($contorno[0][0]) && is_array($contorno[0][0])) ? $contorno : [$contorno];
+    }
+
+    /** Contorno (JSON [lat,lng]) → geometria GeoJSON ([lng,lat], anéis fechados). */
+    private static function geojsonGeometry($geo): ?array
+    {
+        $contorno = is_string($geo) ? json_decode($geo, true) : $geo;
+        $partes = [];
+        foreach (self::aneis($contorno) as $anel) {
+            if (!is_array($anel) || count($anel) < 3) {
+                continue;
+            }
+            $ring = [];
+            foreach ($anel as $pt) {
+                $ring[] = [(float) $pt[1], (float) $pt[0]]; // [lng, lat]
+            }
+            if ($ring[0] !== $ring[count($ring) - 1]) {
+                $ring[] = $ring[0]; // GeoJSON exige o anel fechado
+            }
+            $partes[] = [$ring]; // polígono = [anel externo]
+        }
+        if (!$partes) {
+            return null;
+        }
+        return count($partes) === 1
+            ? ['type' => 'Polygon', 'coordinates' => $partes[0]]
+            : ['type' => 'MultiPolygon', 'coordinates' => $partes];
+    }
 }
