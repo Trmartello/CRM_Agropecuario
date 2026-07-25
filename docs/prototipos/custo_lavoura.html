@@ -1,0 +1,449 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Custo da Lavoura — Portal do Produtor · Copérdia</title>
+<style>
+:root{
+  --paper:#F2F5F1;
+  --card:#FFFFFF;
+  --ink:#141E17;
+  --mid:#4B5C51;
+  --dim:#7F8F85;
+  --rule:#DCE3DD;
+  --rule-hard:#141E17;
+  --leaf:#2F6B45;
+  --leaf-soft:#E6F0E9;
+  --cover:#3D8C5A;
+  --free:#BE8E20;
+  --risk:#A33A2A;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:940px;margin:0 auto;padding:18px 16px 60px}
+
+.lbl{font-family:var(--mono);font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--dim)}
+.n{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* header */
+header{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:6px 0 16px;flex-wrap:wrap}
+.hd h1{margin:0;font-size:19px;font-weight:650;letter-spacing:-.015em}
+.hd p{margin:2px 0 0;font-size:13px;color:var(--mid)}
+.coop{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--leaf);border:1px solid var(--leaf);padding:4px 8px;border-radius:2px}
+
+/* cards */
+.card{background:var(--card);border:1px solid var(--rule);border-radius:6px;margin-bottom:14px;overflow:hidden}
+.card > h2{margin:0;padding:13px 16px;font-size:13px;font-weight:600;letter-spacing:.01em;border-bottom:1px solid var(--rule);display:flex;justify-content:space-between;align-items:center;gap:10px}
+.card > h2 em{font-style:normal;font-family:var(--mono);font-size:10.5px;color:var(--dim);letter-spacing:.02em;font-weight:400}
+.pad{padding:16px}
+
+/* setup row */
+.setup{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.fld label{display:block;margin-bottom:4px}
+.fld input,.fld select{width:100%;padding:8px 9px;border:1px solid var(--rule);border-radius:4px;background:#fff;color:var(--ink);font-family:var(--mono);font-size:15px;font-variant-numeric:tabular-nums}
+.fld input:focus,.fld select:focus{outline:2px solid var(--leaf);outline-offset:0;border-color:var(--leaf)}
+.crops{display:flex;gap:6px}
+.crop{flex:1;padding:8px;border:1px solid var(--rule);background:#fff;border-radius:4px;cursor:pointer;font-family:var(--sans);font-size:13.5px;color:var(--mid)}
+.crop[aria-pressed="true"]{background:var(--leaf);border-color:var(--leaf);color:#fff;font-weight:600}
+.crop:focus-visible{outline:2px solid var(--leaf);outline-offset:2px}
+
+/* cost table */
+table{width:100%;border-collapse:collapse}
+td,th{padding:7px 16px;text-align:left;font-size:14px}
+th{font-family:var(--mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);font-weight:400;border-bottom:1px solid var(--rule)}
+td.v{text-align:right;width:120px}
+td.v input{width:100%;text-align:right;padding:5px 7px;border:1px solid transparent;border-radius:3px;background:transparent;font-family:var(--mono);font-size:14px;font-variant-numeric:tabular-nums;color:var(--ink)}
+td.v input:hover{border-color:var(--rule);background:#FAFCFA}
+td.v input:focus{outline:none;border-color:var(--leaf);background:#fff}
+tr.sub td{background:var(--leaf-soft);font-weight:600;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
+tr.sub td.v{padding-right:23px;font-family:var(--mono);font-variant-numeric:tabular-nums}
+tr.sub small{display:block;font-weight:400;font-size:11.5px;color:var(--mid);margin-top:1px}
+.grp td{padding-top:14px;color:var(--dim);font-family:var(--mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase}
+
+/* equilibrium */
+.eqrow{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--rule)}
+.eq{background:#fff;padding:18px 16px}
+.eq .big{font-family:var(--mono);font-size:38px;font-weight:500;letter-spacing:-.03em;line-height:1;margin:6px 0 3px;font-variant-numeric:tabular-nums}
+.eq .exp{font-size:12.5px;color:var(--mid);line-height:1.45}
+.basesel{display:flex;gap:5px;padding:12px 16px;border-bottom:1px solid var(--rule);flex-wrap:wrap;align-items:center}
+.bs{padding:5px 11px;border:1px solid var(--rule);background:#fff;border-radius:99px;cursor:pointer;font-family:var(--mono);font-size:11.5px;color:var(--mid)}
+.bs[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:#fff}
+.bs:focus-visible{outline:2px solid var(--leaf);outline-offset:2px}
+
+/* coverage bar — signature */
+.cov{padding:20px 16px 16px}
+.covbar{position:relative;height:54px;background:#EDF1EC;border-radius:4px;overflow:hidden;display:flex}
+.covbar i{display:block;height:100%;transition:width .35s cubic-bezier(.4,0,.2,1)}
+.i-cov{background:var(--cover)}
+.i-free{background:var(--free)}
+.i-risk{background:repeating-linear-gradient(45deg,#E4C9C3,#E4C9C3 6px,#EFD9D4 6px,#EFD9D4 12px)}
+.eqline{position:absolute;top:-7px;bottom:-7px;width:2px;background:var(--rule-hard);z-index:3;transition:left .35s cubic-bezier(.4,0,.2,1)}
+.eqline::after{content:"equilíbrio";position:absolute;top:-15px;left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:9px;letter-spacing:.13em;text-transform:uppercase;white-space:nowrap;color:var(--ink)}
+.covleg{display:flex;gap:18px;margin-top:16px;flex-wrap:wrap}
+.cl{display:flex;gap:7px;align-items:flex-start;font-size:12.5px;color:var(--mid);flex:1;min-width:150px}
+.cl i{width:11px;height:11px;border-radius:2px;flex:none;margin-top:4px}
+.cl b{display:block;color:var(--ink);font-family:var(--mono);font-size:14px;font-variant-numeric:tabular-nums;font-weight:500}
+.verdict{margin-top:16px;padding:12px 14px;border-radius:4px;font-size:13.5px;line-height:1.5;border-left:3px solid}
+.verdict.ok{background:var(--leaf-soft);border-color:var(--cover)}
+.verdict.warn{background:#FBF3E2;border-color:var(--free)}
+.verdict.bad{background:#F8E9E6;border-color:var(--risk)}
+.verdict b{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* sliders */
+.sl{padding:4px 0 10px}
+.sl .top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}
+.sl .top b{font-family:var(--mono);font-size:16px;font-variant-numeric:tabular-nums;font-weight:500}
+input[type=range]{width:100%;accent-color:var(--leaf);height:22px}
+.hint{font-size:12px;color:var(--dim);margin-top:2px}
+
+/* market ref */
+.mkt{display:flex;gap:14px;flex-wrap:wrap;padding:12px 16px;border-top:1px solid var(--rule);background:#FAFCFA}
+.mk{flex:1;min-width:130px}
+.mk .p{font-family:var(--mono);font-size:16px;font-variant-numeric:tabular-nums;margin-top:1px}
+
+/* matrix */
+.mtx{width:100%;border-collapse:collapse;font-size:12.5px}
+.mtx th,.mtx td{padding:8px 6px;text-align:center;border:1px solid var(--rule);font-family:var(--mono);font-variant-numeric:tabular-nums}
+.mtx th{background:#FAFCFA;font-size:10.5px;letter-spacing:.05em;text-transform:none;color:var(--mid)}
+.mtx td.pos{background:#E6F0E9;color:#1E4F31}
+.mtx td.neg{background:#F8E9E6;color:#8C2F21}
+.mtx td.mark{outline:2px solid var(--ink);outline-offset:-2px;font-weight:700}
+
+/* footer note */
+.note{font-size:12.5px;color:var(--mid);line-height:1.6;padding:14px 16px;background:#fff;border:1px solid var(--rule);border-radius:6px}
+.note strong{color:var(--ink)}
+
+.cta{display:flex;gap:9px;padding:16px;flex-wrap:wrap}
+.btn{flex:1;min-width:170px;padding:12px;border-radius:4px;cursor:pointer;font-family:var(--sans);font-size:14px;font-weight:600;border:1px solid var(--leaf);background:#fff;color:var(--leaf)}
+.btn.pri{background:var(--leaf);color:#fff}
+.btn:hover{filter:brightness(.96)}
+.btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+
+@media(max-width:700px){
+  .setup{grid-template-columns:1fr 1fr}
+  .eqrow{grid-template-columns:1fr}
+  .eq .big{font-size:32px}
+  td,th{padding:7px 12px}
+  td.v{width:100px}
+}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="hd">
+    <h1>Custo da lavoura e ponto de equilíbrio</h1>
+    <p>Safra 2025/26 · Sítio Boa Vista · Talhão T1 Sede</p>
+  </div>
+  <span class="coop">Portal do Produtor</span>
+</header>
+
+<!-- ============ SETUP ============ -->
+<div class="card">
+  <h2>1. A sua lavoura</h2>
+  <div class="pad">
+    <div class="setup">
+      <div class="fld">
+        <label class="lbl">Cultura</label>
+        <div class="crops">
+          <button class="crop" data-c="soja" aria-pressed="true">Soja</button>
+          <button class="crop" data-c="milho" aria-pressed="false">Milho</button>
+        </div>
+      </div>
+      <div class="fld"><label class="lbl" for="iArea">Área (ha)</label>
+        <input id="iArea" type="number" value="64" min="1" step="1"></div>
+      <div class="fld"><label class="lbl" for="iProd">Produtividade esperada (sc/ha)</label>
+        <input id="iProd" type="number" value="60" min="1" step="1"></div>
+      <div class="fld"><label class="lbl" for="iPreco">Preço de referência (R$/sc)</label>
+        <input id="iPreco" type="number" value="132" min="1" step="0.5"></div>
+    </div>
+  </div>
+  <div class="mkt">
+    <div class="mk"><div class="lbl">Indicador CEPEA/ESALQ</div><div class="p" id="mCepea">R$ 130,40</div></div>
+    <div class="mk"><div class="lbl">Futuro B3 · maio/26</div><div class="p" id="mB3">R$ 134,10</div></div>
+    <div class="mk"><div class="lbl">Oferta Copérdia hoje</div><div class="p" id="mCoop">R$ 131,00</div></div>
+    <div class="mk" style="flex:2;min-width:200px"><div class="lbl">Atenção</div>
+      <div style="font-size:12px;color:var(--mid);margin-top:3px">A Copérdia é <b>uma</b> das compradoras possíveis. Compare sempre com o mercado antes de fechar.</div></div>
+  </div>
+</div>
+
+<!-- ============ CUSTO ============ -->
+<div class="card">
+  <h2>2. Formação do custo <em>valores por hectare</em></h2>
+  <table id="tCusto"></table>
+</div>
+
+<!-- ============ EQUILÍBRIO ============ -->
+<div class="card">
+  <h2>3. Ponto de equilíbrio</h2>
+  <div class="basesel">
+    <span class="lbl" style="margin-right:4px">Base de custo</span>
+    <button class="bs" data-b="coe" aria-pressed="false">COE</button>
+    <button class="bs" data-b="cot" aria-pressed="false">COT</button>
+    <button class="bs" data-b="ct"  aria-pressed="true">CT</button>
+    <span class="hint" id="baseHint" style="flex-basis:100%;margin-top:5px"></span>
+  </div>
+  <div class="eqrow">
+    <div class="eq">
+      <div class="lbl">Preço de equilíbrio</div>
+      <div class="big" id="eqPreco">—</div>
+      <div class="exp">Abaixo deste preço por saca, a safra fecha no prejuízo com a produtividade que você espera.</div>
+    </div>
+    <div class="eq">
+      <div class="lbl">Produtividade de equilíbrio</div>
+      <div class="big" id="eqProd">—</div>
+      <div class="exp">Quanto você precisa colher por hectare, ao preço de referência, para apenas empatar.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TRAVAMENTO ============ -->
+<div class="card">
+  <h2>4. Simulação de venda antecipada <em>quanto travar, e a que preço</em></h2>
+  <div class="pad" style="padding-bottom:6px">
+    <div class="sl">
+      <div class="top"><span class="lbl">Percentual da produção travada</span><b id="vTrav">40%</b></div>
+      <input type="range" id="sTrav" min="0" max="100" step="5" value="40">
+      <div class="hint" id="hTrav"></div>
+    </div>
+    <div class="sl">
+      <div class="top"><span class="lbl">Preço travado (R$/sc)</span><b id="vPT">R$ 131</b></div>
+      <input type="range" id="sPT" min="60" max="200" step="1" value="131">
+      <div class="hint">Preço que você consegue fechar hoje em contrato a termo ou troca-troca.</div>
+    </div>
+  </div>
+
+  <div class="cov">
+    <div class="lbl" style="margin-bottom:20px">Sua produção esperada, saca por saca</div>
+    <div class="covbar" id="covbar">
+      <i class="i-cov"  id="bCov"  style="width:0"></i>
+      <i class="i-free" id="bFree" style="width:0"></i>
+      <i class="i-risk" id="bRisk" style="width:0"></i>
+      <div class="eqline" id="eqline" style="left:0"></div>
+    </div>
+    <div class="covleg">
+      <div class="cl"><i style="background:var(--cover)"></i><span>Já vendido<b id="lCov">—</b><span class="hint" id="lCovP"></span></span></div>
+      <div class="cl"><i style="background:var(--free)"></i><span>Produção livre<b id="lFree">—</b><span class="hint">exposta ao preço da colheita</span></span></div>
+      <div class="cl"><i style="background:#141E17"></i><span>Sacas só para pagar a conta<b id="lEq">—</b><span class="hint" id="lEqP"></span></span></div>
+    </div>
+    <div class="verdict" id="verdict"></div>
+  </div>
+
+  <div class="cta">
+    <button class="btn pri">Solicitar visita do agrônomo</button>
+    <button class="btn">Salvar cenário</button>
+    <button class="btn">Enviar para o meu contador</button>
+  </div>
+</div>
+
+<!-- ============ CENÁRIOS ============ -->
+<div class="card">
+  <h2>5. E se a safra não vier como o esperado <em>resultado em R$/ha</em></h2>
+  <div class="pad"><table class="mtx" id="mtx"></table>
+  <div class="hint" style="margin-top:10px">Linhas: produtividade colhida. Colunas: preço da parte não travada. O quadro destacado é o seu cenário atual.</div></div>
+</div>
+
+<div class="note">
+  <strong>Esta ferramenta não recomenda comprar nem vender.</strong> Ela mostra os seus próprios números
+  frente a referências públicas de mercado, para que a decisão seja sua. Os custos que você digita aqui
+  são seus e não são compartilhados com a equipe comercial da Copérdia. Para decisões de contrato futuro
+  ou operações em bolsa, procure seu contador ou assessor.
+</div>
+
+</div>
+
+<script>
+/* ================= PRESETS ================= */
+const PRESET = {
+  soja:{ prod:60, preco:132, ref:{cepea:130.40,b3:134.10,coop:131.00},
+    linhas:[
+      ["g","COE — Custo Operacional Efetivo"],
+      ["Sementes",620],["Fertilizantes",1450],["Defensivos",1180],["Corretivos e condicionadores",240],
+      ["Operações mecanizadas",780],["Mão de obra contratada",190],["Secagem, transporte e beneficiamento",320],
+      ["Seguro agrícola e juros do custeio",260],
+      ["s","COE"],
+      ["g","Complemento até o COT"],
+      ["Depreciação de máquinas e benfeitorias",620],["Mão de obra familiar",340],["Manutenção periódica",180],
+      ["s","COT"],
+      ["g","Complemento até o CT"],
+      ["Custo de oportunidade da terra",900],["Custo de oportunidade do capital próprio",280],
+      ["s","CT"]
+    ]},
+  milho:{ prod:160, preco:62, ref:{cepea:60.80,b3:63.50,coop:61.20},
+    linhas:[
+      ["g","COE — Custo Operacional Efetivo"],
+      ["Sementes",1150],["Fertilizantes",1980],["Defensivos",720],["Corretivos e condicionadores",210],
+      ["Operações mecanizadas",890],["Mão de obra contratada",210],["Secagem, transporte e beneficiamento",640],
+      ["Seguro agrícola e juros do custeio",290],
+      ["s","COE"],
+      ["g","Complemento até o COT"],
+      ["Depreciação de máquinas e benfeitorias",680],["Mão de obra familiar",360],["Manutenção periódica",200],
+      ["s","COT"],
+      ["g","Complemento até o CT"],
+      ["Custo de oportunidade da terra",900],["Custo de oportunidade do capital próprio",320],
+      ["s","CT"]
+    ]}
+};
+const SUBEXP = {
+  COE:"Desembolso direto da safra. Responde: eu consigo pagar as contas?",
+  COT:"COE mais depreciação e mão de obra familiar. Responde: estou repondo o que gasto?",
+  CT :"COT mais o custo de oportunidade da terra e do capital. Responde: compensa plantar ou arrendar?"
+};
+const BASEHINT = {
+  coe:"COE — o mínimo para não ficar devendo nesta safra. Não repõe máquina nem remunera a terra.",
+  cot:"COT — cobre o desgaste do que você já tem. É o piso da sustentabilidade no médio prazo.",
+  ct :"CT — inclui o que a terra e o capital renderiam em outro uso. É a régua econômica de verdade."
+};
+
+/* ================= ESTADO ================= */
+let cultura="soja", base="ct", custos=[];
+const $=s=>document.querySelector(s);
+const brl=v=>"R$ "+v.toLocaleString("pt-BR",{minimumFractionDigits:0,maximumFractionDigits:0});
+const brl2=v=>"R$ "+v.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+const sc=v=>v.toLocaleString("pt-BR",{maximumFractionDigits:0})+" sc";
+
+function carregar(c){
+  cultura=c;
+  custos=PRESET[c].linhas.map(l=>[...l]);
+  $("#iProd").value=PRESET[c].prod;
+  $("#iPreco").value=PRESET[c].preco;
+  const r=PRESET[c].ref;
+  $("#mCepea").textContent=brl2(r.cepea);
+  $("#mB3").textContent=brl2(r.b3);
+  $("#mCoop").textContent=brl2(r.coop);
+  $("#sPT").value=Math.round(r.coop);
+  tabela(); calc();
+}
+
+/* ================= TABELA DE CUSTO ================= */
+function tabela(){
+  const t=$("#tCusto");
+  let html="<tr><th>Item</th><th style='text-align:right'>R$/ha</th></tr>";
+  custos.forEach((l,i)=>{
+    if(l[0]==="g") html+=`<tr class="grp"><td colspan="2">${l[1]}</td></tr>`;
+    else if(l[0]==="s") html+=`<tr class="sub" data-s="${l[1]}"><td>${l[1]}
+        <small>${SUBEXP[l[1]]}</small></td><td class="v" id="sub-${l[1]}">—</td></tr>`;
+    else html+=`<tr><td>${l[0]}</td><td class="v">
+        <input type="number" data-i="${i}" value="${l[1]}" min="0" step="10"></td></tr>`;
+  });
+  t.innerHTML=html;
+  t.querySelectorAll("input").forEach(inp=>inp.addEventListener("input",e=>{
+    custos[+e.target.dataset.i][1]=+e.target.value||0; calc();
+  }));
+}
+
+function totais(){
+  let acc=0, out={};
+  custos.forEach(l=>{
+    if(l[0]==="s") out[l[1]]=acc;
+    else if(l[0]!=="g") acc+=l[1];
+  });
+  return out; // {COE, COT, CT} em R$/ha
+}
+
+/* ================= CÁLCULO ================= */
+function calc(){
+  const area=+$("#iArea").value||0, prod=+$("#iProd").value||0, preco=+$("#iPreco").value||0;
+  const T=totais();
+  ["COE","COT","CT"].forEach(k=>{ const el=$("#sub-"+k); if(el) el.textContent=brl(T[k]||0); });
+
+  const custoHa = T[base.toUpperCase()]||0;
+  const custoTotal = custoHa*area;
+  const producao = prod*area;
+
+  // equilíbrio
+  const eqPreco = prod>0 ? custoHa/prod : 0;
+  const eqProd  = preco>0 ? custoHa/preco : 0;
+  $("#eqPreco").textContent = brl2(eqPreco).replace("R$ ","R$ ")+" ";
+  $("#eqPreco").insertAdjacentHTML;
+  $("#eqPreco").innerHTML = brl2(eqPreco)+'<span style="font-size:15px;color:var(--dim)"> /sc</span>';
+  $("#eqProd").innerHTML  = eqProd.toFixed(1).replace(".",",")+'<span style="font-size:15px;color:var(--dim)"> sc/ha</span>';
+  $("#baseHint").textContent = BASEHINT[base];
+
+  // travamento
+  const pct=+$("#sTrav").value/100, pTrav=+$("#sPT").value;
+  $("#vTrav").textContent=(pct*100).toFixed(0)+"%";
+  $("#vPT").textContent=brl(pTrav);
+
+  const scTrav = producao*pct;
+  const receitaTrav = scTrav*pTrav;
+  const scEquilibrio = pTrav>0 ? custoTotal/pTrav : 0;   // sacas p/ pagar a conta ao preço travado
+  const pctEq = producao>0 ? scEquilibrio/producao : 0;
+
+  // barra: coberto (travado), livre, e faixa de risco se travou acima do conservador
+  const conservador = 0.80;  // produção conservadora = 80% da esperada
+  const pctRisco = Math.max(0, pct-conservador);
+  const pctCov   = Math.min(pct, conservador);
+  $("#bCov").style.width  = (pctCov*100)+"%";
+  $("#bRisk").style.width = (pctRisco*100)+"%";
+  $("#bFree").style.width = ((1-pct)*100)+"%";
+  $("#eqline").style.left = Math.min(pctEq*100,100)+"%";
+
+  $("#lCov").textContent  = sc(scTrav);
+  $("#lCovP").textContent = brl(receitaTrav)+" já garantidos";
+  $("#lFree").textContent = sc(producao-scTrav);
+  $("#lEq").textContent   = sc(scEquilibrio);
+  $("#lEqP").textContent  = (pctEq*100).toFixed(0)+"% da produção esperada";
+
+  $("#hTrav").textContent = pct>conservador
+    ? "Acima de 80% da produção esperada. Se a safra frustrar, você pode ter que comprar saca no mercado para entregar."
+    : "Produção conservadora de referência: 80% do esperado ("+sc(producao*conservador)+").";
+
+  // veredito
+  const v=$("#verdict");
+  const coberturaCusto = custoTotal>0 ? receitaTrav/custoTotal : 0;
+  if(pTrav < eqPreco){
+    v.className="verdict bad";
+    v.innerHTML=`O preço de <b>${brl(pTrav)}</b> por saca está <b>abaixo</b> do seu ponto de equilíbrio de
+      <b>${brl2(eqPreco)}</b>. Cada saca travada neste preço entra no prejuízo pela base ${base.toUpperCase()}.`;
+  } else if(pct>conservador){
+    v.className="verdict warn";
+    v.innerHTML=`Você travou <b>${(pct*100).toFixed(0)}%</b> da produção esperada — acima da margem de segurança.
+      Cobre <b>${(coberturaCusto*100).toFixed(0)}%</b> do custo, mas assume risco de entrega se a lavoura frustrar.`;
+  } else {
+    v.className="verdict ok";
+    v.innerHTML=`Ao preço de <b>${brl(pTrav)}</b>, você precisa entregar <b>${sc(scEquilibrio)}</b> —
+      <b>${(pctEq*100).toFixed(0)}%</b> da sua produção esperada — só para cobrir o custo ${base.toUpperCase()}.
+      Com <b>${(pct*100).toFixed(0)}%</b> travado, <b>${(coberturaCusto*100).toFixed(0)}%</b> do custo já está garantido.
+      O que passar disso é seu.`;
+  }
+
+  matriz(area,prod,preco,custoTotal,pct,pTrav);
+}
+
+/* ================= MATRIZ DE CENÁRIOS ================= */
+function matriz(area,prod,preco,custoTotal,pct,pTrav){
+  const dp=[-.30,-.15,0,.10], dpr=[-.20,-.10,0,.10,.20];
+  let h="<tr><th>colheita ↓ &nbsp; preço →</th>"+dpr.map(d=>
+    `<th>${brl(preco*(1+d))}</th>`).join("")+"</tr>";
+  dp.forEach(a=>{
+    const p=prod*(1+a), producao=p*area;
+    h+=`<tr><th>${p.toFixed(0)} sc/ha${a===0?" (esperada)":""}</th>`;
+    dpr.forEach(b=>{
+      const pm=preco*(1+b);
+      const scT=Math.min(prod*area*pct, producao);     // não entrega mais do que colheu
+      const rec=scT*pTrav + (producao-scT)*pm;
+      const res=(rec-custoTotal)/area;
+      const mark=(a===0&&b===0)?" mark":"";
+      h+=`<td class="${res>=0?"pos":"neg"}${mark}">${res>=0?"":"−"}${brl(Math.abs(res)).replace("R$ ","")}</td>`;
+    });
+    h+="</tr>";
+  });
+  $("#mtx").innerHTML=h;
+}
+
+/* ================= EVENTOS ================= */
+document.querySelectorAll(".crop").forEach(b=>b.addEventListener("click",()=>{
+  document.querySelectorAll(".crop").forEach(x=>x.setAttribute("aria-pressed","false"));
+  b.setAttribute("aria-pressed","true"); carregar(b.dataset.c);
+}));
+document.querySelectorAll(".bs").forEach(b=>b.addEventListener("click",()=>{
+  document.querySelectorAll(".bs").forEach(x=>x.setAttribute("aria-pressed","false"));
+  b.setAttribute("aria-pressed","true"); base=b.dataset.b; calc();
+}));
+["iArea","iProd","iPreco","sTrav","sPT"].forEach(id=>$("#"+id).addEventListener("input",calc));
+
+carregar("soja");
+</script>
