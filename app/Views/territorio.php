@@ -16,6 +16,12 @@
     </select>
   </div>
   <button class="btn btn-success btn-sm" onclick="Territorio.carregar()"><i class="bi bi-arrow-repeat me-1"></i>Carregar</button>
+  <div>
+    <label class="form-label small mb-1">RTV</label>
+    <select id="terRtv" class="form-select form-select-sm" style="min-width:150px" onchange="Territorio.trocarRtv()">
+      <option value="">Todos os RTVs</option>
+    </select>
+  </div>
   <span id="terContagem" class="small text-muted"></span>
   <span class="badge text-bg-warning ms-auto" title="No piloto o score (potencial/realizado/share/gap) é sintético; o Qlik entra na integração real">
     <i class="bi bi-flask me-1"></i>Score de demonstração
@@ -26,6 +32,8 @@
   .ter-poly { transition: fill .45s ease-in-out, fill-opacity .45s ease-in-out; }
   .ter-ramp { display:inline-flex; height:10px; width:120px; border-radius:2px; overflow:hidden; vertical-align:middle; margin-right:6px; border:1px solid rgba(0,0,0,.15); }
   .ter-ramp i { flex:1; }
+  .ter-kpi { border:1px solid var(--bs-border-color,#dee2e6); border-radius:6px; padding:5px 14px; min-width:120px; line-height:1.25; }
+  .ter-kpi .fw-semibold { font-size:15px; }
   .ter-ficha { position:absolute; top:0; right:0; width:min(340px,92%); height:100%; overflow-y:auto; background:#fff; border-left:1px solid rgba(0,0,0,.1); box-shadow:-6px 0 18px rgba(0,0,0,.12); z-index:5; }
   .ter-carcode { font-family:var(--bs-font-monospace,monospace); font-size:10px; word-break:break-all; line-height:1.5; background:rgba(212,166,74,.08); border:1px solid rgba(212,166,74,.25); border-radius:3px; padding:5px 7px; color:#8a6d2e; }
   @media (prefers-reduced-motion: reduce) { .ter-poly { transition: none; } }
@@ -41,6 +49,14 @@
   <span id="terInfo" class="small ms-auto"></span>
 </div>
 
+<div id="terKpis" class="d-flex flex-wrap gap-2 mb-2 small">
+  <div class="ter-kpi"><div class="text-muted">Área mapeada</div><div class="fw-semibold" id="kpiArea">—</div></div>
+  <div class="ter-kpi"><div class="text-muted">Potencial insumos</div><div class="fw-semibold" style="color:#8a6d2e" id="kpiPot">—</div></div>
+  <div class="ter-kpi"><div class="text-muted">Realizado Copérdia</div><div class="fw-semibold text-success" id="kpiReal">—</div></div>
+  <div class="ter-kpi"><div class="text-muted">Share of wallet</div><div class="fw-semibold" id="kpiShare">—</div></div>
+  <div class="ter-kpi"><div class="text-muted">Gap a capturar</div><div class="fw-semibold" style="color:#c7452a" id="kpiGap">—</div></div>
+</div>
+
 <div id="terWrap" style="position:relative">
   <div id="terPalco" class="croqui-palco" style="height:66vh;min-height:400px"></div>
   <div id="terFicha" class="ter-ficha d-none"></div>
@@ -51,7 +67,7 @@
 <script>
 window.__terTiles = <?= json_encode($tiles, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>;
 const Territorio = {
-  tiles: null, vista: null, feats: [], sel: null, camada: 'cobertura', _maxGap: 0,
+  tiles: null, vista: null, feats: [], sel: null, camada: 'cobertura', _maxGap: 0, rtvFiltro: '',
   _pan: null, _pinch: null, _ponteiros: new Map(), _eventosOk: false, _alvo: null,
 
   /* Escalas de cor (valores do protótipo docs/prototipos/mapa_territorial.html) */
@@ -92,6 +108,7 @@ const Territorio = {
       this.feats = (fc.features || []).map(f => ({ aneis: this._aneisDe(f.geometry), p: f.properties })).filter(f => f.aneis.length);
       this._maxGap = this.feats.reduce((m, f) => Math.max(m, Number(f.p.gap) || 0), 0); // gap normalizado pelo filtro
       cont.textContent = this.feats.length + ' imóvel(is)' + (fc.truncado ? ' (limite de 5000 — aproxime/filtre)' : '');
+      this._popularRtv();
       this._fecharFicha();
       this.sel = null;
       this._enquadrar();
@@ -158,13 +175,49 @@ const Territorio = {
     const svg = document.getElementById('terSvg');
     if (!svg) { this.render(); return; }
     this.feats.forEach((f, i) => {
-      const [fill, op] = this._estilo(f.p);
+      const [fill, op0] = this._estilo(f.p);
+      const op = this._visivel(f) ? op0 : '.12';
       svg.querySelectorAll('.ter-poly[data-i="' + i + '"]').forEach(el => {
         el.setAttribute('fill', fill);
         el.setAttribute('fill-opacity', op);
       });
     });
     this._legenda();
+  },
+
+  /* --- Filtro de RTV (client-side) + barra de KPI dos imóveis visíveis --- */
+  _visivel(f) { return !this.rtvFiltro || (f.p.rtv || '') === this.rtvFiltro; },
+
+  _popularRtv() {
+    const sel = document.getElementById('terRtv');
+    const rtvs = [...new Set(this.feats.map(f => f.p.rtv).filter(Boolean))].sort();
+    sel.innerHTML = '<option value="">Todos os RTVs</option>' + rtvs.map(r => `<option>${App.escapeHtml(r)}</option>`).join('');
+    this.rtvFiltro = '';
+  },
+
+  trocarRtv() {
+    this.rtvFiltro = (document.getElementById('terRtv') || {}).value || '';
+    if (this.sel !== null && this.feats[this.sel] && !this._visivel(this.feats[this.sel])) this._fecharFicha();
+    this.render(); // recolore/esmaece + recalcula os KPIs só com os visíveis
+  },
+
+  _brlK(v) {
+    v = Number(v) || 0;
+    return v >= 1e6 ? 'R$ ' + (v / 1e6).toFixed(2).replace('.', ',') + ' mi'
+      : (v >= 1e3 ? 'R$ ' + Math.round(v / 1e3) + ' mil' : 'R$ ' + Math.round(v));
+  },
+
+  _kpis() {
+    const vis = this.feats.filter(f => this._visivel(f));
+    let area = 0, pot = 0, re = 0, gap = 0;
+    vis.forEach(f => { area += Number(f.p.areaHa) || 0; pot += Number(f.p.potencial) || 0; re += Number(f.p.realizado) || 0; gap += Number(f.p.gap) || 0; });
+    const share = pot > 0 ? re / pot : 0;
+    const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+    set('kpiArea', area.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + ' ha');
+    set('kpiPot', this._brlK(pot));
+    set('kpiReal', this._brlK(re));
+    set('kpiShare', (share * 100).toFixed(0) + '%');
+    set('kpiGap', this._brlK(gap));
   },
 
   _legenda() {
@@ -200,7 +253,9 @@ const Territorio = {
     let svg = '<defs><pattern id="terHatch" width="7" height="7" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">'
       + '<rect width="7" height="7" fill="#0f1c25" fill-opacity=".35"/><line x1="0" y1="0" x2="0" y2="7" stroke="#c3ced6" stroke-width="1.4"/></pattern></defs>';
     this.feats.forEach((f, i) => {
-      const [fill, op] = this._estilo(f.p); // cor conforme a camada temática ativa
+      const vis = this._visivel(f);              // filtro de RTV: fora do filtro = esmaecido
+      const [fill, op0] = this._estilo(f.p);      // cor conforme a camada temática ativa
+      const op = vis ? op0 : '.12';
       const sel = (this.sel === i);
       f.aneis.forEach(anel => {
         if (anel.length < 3) return;
@@ -208,7 +263,8 @@ const Territorio = {
         if (tela.every(p => p[0] < -40 || p[0] > larg + 40 || p[1] < -40 || p[1] > alt + 40)) return; // fora da tela
         const pts = tela.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
         svg += `<polygon points="${pts}" data-i="${i}" class="ter-poly" fill="${fill}" fill-opacity="${op}"
-                  stroke="${sel ? '#fff' : '#0A1217'}" stroke-width="${sel ? 2.6 : 1}" style="cursor:pointer"/>`;
+                  stroke="${sel ? '#fff' : (vis ? '#0A1217' : '#5a6b75')}" stroke-width="${sel ? 2.6 : 1}"
+                  style="cursor:pointer;${vis ? '' : 'pointer-events:none;'}"/>`;
       });
     });
     palco.innerHTML = `
@@ -223,6 +279,7 @@ const Territorio = {
     palco.querySelector('#terSvg').innerHTML = svg;
     this._info();
     this._legenda();
+    this._kpis();
   },
 
   _tilesHtml(url, larg, alt) {
