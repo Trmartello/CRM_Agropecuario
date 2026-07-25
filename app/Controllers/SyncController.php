@@ -132,14 +132,27 @@ class SyncController
     public function carMunicipio(): void
     {
         Permissoes::exigirInterno();
-        // Emite o JSON em FLUXO (linha a linha): a base de um município inteiro
-        // (milhares de imóveis com contorno) não cabe na memória de uma vez —
-        // montar o array + json_encode estourava o memory_limit (512 MB).
+        // REGIÃO offline = caixa dos clientes da carteira (+ margem). Com base
+        // estadual (SC inteiro), baixar tudo para o aparelho travaria; o offline
+        // cobre só a área onde o técnico atua (o online segue statewide).
+        [$filtro, $params] = Permissoes::filtroCarteira();
+        $reg = Database::um(
+            "SELECT MIN(latitude) mila, MAX(latitude) mala, MIN(longitude) milo, MAX(longitude) malo
+               FROM clientes WHERE ativo = 1 AND latitude IS NOT NULL AND longitude IS NOT NULL AND {$filtro}",
+            $params
+        );
+        $bbox = null;
+        if ($reg && $reg['mila'] !== null) {
+            $m = 0.3; // ~33 km de margem ao redor da carteira
+            $bbox = [(float) $reg['mila'] - $m, (float) $reg['milo'] - $m, (float) $reg['mala'] + $m, (float) $reg['malo'] + $m];
+        }
+        // Emite o JSON em FLUXO (linha a linha): a base (mesmo de uma região) não
+        // cabe na memória de uma vez — montar o array + json_encode estourava os 512 MB.
         while (ob_get_level() > 0) {
             ob_end_clean();
         }
         header('Content-Type: application/json; charset=utf-8');
-        echo '{"ok":true,"atualizado_em":' . json_encode(date('c')) . ',"imoveis":[';
+        echo '{"ok":true,"atualizado_em":' . json_encode(date('c')) . ',"regiao":' . ($bbox ? 1 : 0) . ',"imoveis":[';
         $primeiro = true;
         $n = 0;
         \App\Services\CarService::streamSnapshot(function ($im) use (&$primeiro, &$n) {
@@ -159,7 +172,7 @@ class SyncController
             if ((++$n % 500) === 0) {
                 flush(); // esvazia o buffer periodicamente (não acumula na memória)
             }
-        });
+        }, $bbox);
         echo ']}';
     }
 }

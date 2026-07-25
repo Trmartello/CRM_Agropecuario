@@ -440,16 +440,31 @@ class CarService
         return $dentro;
     }
 
+    /** Teto de imóveis na base offline (protege o aparelho: base estadual não cabe no celular). */
+    public const MAX_SNAPSHOT = 25000;
+
     /**
-     * Base do município para o snapshot offline, em FLUXO (streaming) — chama
-     * $cb(linha) para cada imóvel sem carregar a tabela inteira na memória.
-     * Município grande (Concórdia: milhares de imóveis com contorno em MEDIUMTEXT)
-     * estourava o memory_limit (512 MB) no fetchAll; a query NÃO-bufferizada puxa
-     * do servidor linha a linha (pico de memória ~1 linha). Só o essencial:
-     * código, caixa e contorno.
+     * Base do CAR para o snapshot offline, em FLUXO (streaming) — chama $cb(linha)
+     * para cada imóvel sem carregar a tabela inteira na memória (query NÃO-bufferizada,
+     * pico ~1 linha; sem isso o fetchAll estourava o memory_limit num município grande).
+     *
+     * $bbox = [minLat,minLng,maxLat,maxLng] limita à REGIÃO (caixa da carteira + margem):
+     * com base estadual (SC inteiro, >1 mi de imóveis) baixar tudo travaria o aparelho,
+     * então o offline cobre só a região onde o técnico atua. $limite é o teto de segurança.
+     * Só o essencial: código, caixa e contorno.
      */
-    public static function streamSnapshot(callable $cb): void
+    public static function streamSnapshot(callable $cb, ?array $bbox = null, int $limite = self::MAX_SNAPSHOT): void
     {
+        $sql = 'SELECT cod_imovel AS cod, contorno, min_lat, min_lng, max_lat, max_lng FROM car_imoveis';
+        $params = [];
+        if ($bbox !== null) {
+            [$minLat, $minLng, $maxLat, $maxLng] = $bbox;
+            // mesmo padrão indexável de imoveisNaArea (limite inferior de min_lat)
+            $sql .= ' WHERE min_lat >= ? AND min_lat <= ? AND max_lat >= ? AND max_lng >= ? AND min_lng <= ?';
+            $params = [$minLat - self::MAX_SPAN_GRAU, $maxLat, $minLat, $minLng, $maxLng];
+        }
+        $sql .= ' LIMIT ' . max(1, (int) $limite);
+
         $pdo = Database::conexao();
         $bufferAntes = null;
         // Query não-bufferizada: só o driver mysql tem essa flag; ignora se ausente.
@@ -458,10 +473,9 @@ class CarService
             $pdo->setAttribute(\PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, false);
         }
         try {
-            $stmt = $pdo->query(
-                'SELECT cod_imovel AS cod, contorno, min_lat, min_lng, max_lat, max_lng FROM car_imoveis'
-            );
-            foreach ($stmt as $row) {
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            while ($row = $stmt->fetch()) {
                 $cb($row);
             }
             $stmt->closeCursor();
