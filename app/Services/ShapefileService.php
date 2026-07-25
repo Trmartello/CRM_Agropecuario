@@ -538,7 +538,7 @@ class ShapefileService
      * ("UF-IBGE-hash", ex.: "SC-4204202-ABC..."). Identifica o município com
      * precisão — usado para dedup e para o nome (via MunicipiosSul).
      */
-    private static function ibgeDeCodImovel(string $cod): ?string
+    public static function ibgeDeCodImovel(string $cod): ?string
     {
         if (preg_match('/^\s*[A-Za-z]{2}[-\s.](\d{7})[-\s.]/', $cod, $m)) {
             return $m[1];

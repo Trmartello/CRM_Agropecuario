@@ -405,6 +405,35 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '30'"
             );
         }
+        if ($versao < 31) {
+            // Backfill dos imóveis do CAR já importados (antes do v30, sem cod_ibge):
+            // deriva o código IBGE do próprio cod_imovel e preenche o NOME do
+            // município pela tabela oficial (MunicipiosSul, Sul do país). Assim os
+            // dados existentes ganham o nome certo e passam a deduplicar por IBGE
+            // sem precisar reimportar.
+            if (self::temColuna('car_imoveis', 'cod_ibge')) {
+                $rows = Database::todos('SELECT id, cod_imovel FROM car_imoveis WHERE cod_ibge IS NULL');
+                foreach ($rows as $r) {
+                    $ibge = \App\Services\ShapefileService::ibgeDeCodImovel((string) $r['cod_imovel']);
+                    if (!$ibge) {
+                        continue;
+                    }
+                    $nome = \App\Services\MunicipiosSul::nome($ibge);
+                    if ($nome !== null) {
+                        Database::executar(
+                            'UPDATE car_imoveis SET cod_ibge = ?, municipio = ? WHERE id = ?',
+                            [$ibge, mb_strtoupper($nome), (int) $r['id']]
+                        );
+                    } else {
+                        Database::executar('UPDATE car_imoveis SET cod_ibge = ? WHERE id = ?', [$ibge, (int) $r['id']]);
+                    }
+                }
+            }
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '31')
+                 ON DUPLICATE KEY UPDATE valor = '31'"
+            );
+        }
     }
 
     /** Fase 6E (refinamento): características fisiológicas por estágio (cartão ilustrado). */
