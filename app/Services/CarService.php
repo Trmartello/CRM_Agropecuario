@@ -257,12 +257,27 @@ class CarService
     public static function imoveisNaArea(float $lat, float $lng, float $raioMetros = 3000.0, int $limite = 500): array
     {
         $grau = $raioMetros / 111000.0;
-        $rows = Database::todos(
-            'SELECT cod_imovel, contorno, area_ha FROM car_imoveis
-              WHERE min_lat >= ? AND min_lat <= ? AND max_lat >= ? AND max_lng >= ? AND min_lng <= ?
-              LIMIT ' . max(1, (int) $limite),
-            [$lat - $grau - self::MAX_SPAN_GRAU, $lat + $grau, $lat - $grau, $lng - $grau, $lng + $grau]
-        );
+        return self::imoveisNaBBox($lat - $grau, $lng - $grau, $lat + $grau, $lng + $grau, null, $limite);
+    }
+
+    /**
+     * Imóveis do CAR numa CAIXA (viewport do mapa) para o overlay do croqui —
+     * carrega só a área visível (menos dados). $municipio filtra (opcional, sem
+     * acento, "contém") para respeitar um filtro por município. Devolve
+     * [ ['cod','contorno','area_ha'], ... ] (limitado).
+     */
+    public static function imoveisNaBBox(float $minLat, float $minLng, float $maxLat, float $maxLng, ?string $municipio = null, int $limite = 800): array
+    {
+        $sql = 'SELECT cod_imovel, contorno, area_ha FROM car_imoveis
+                 WHERE min_lat >= ? AND min_lat <= ? AND max_lat >= ? AND max_lng >= ? AND min_lng <= ?';
+        $params = [$minLat - self::MAX_SPAN_GRAU, $maxLat, $minLat, $minLng, $maxLng];
+        if ($municipio !== null && trim($municipio) !== '') {
+            // filtro só no subconjunto já recortado pela caixa (indexada) — REPLACE não pesa
+            $sql .= ' AND ' . self::normMunSql('municipio') . ' LIKE ?';
+            $params[] = '%' . self::semAcentoMun($municipio) . '%';
+        }
+        $sql .= ' LIMIT ' . max(1, (int) $limite);
+        $rows = Database::todos($sql, $params);
         $out = [];
         foreach ($rows as $r) {
             $pts = json_decode((string) $r['contorno'], true);
@@ -272,6 +287,26 @@ class CarService
             }
         }
         return $out;
+    }
+
+    /** Acentos comuns → sem acento (para casar município digitado sem acento). */
+    private const ACENTOS_MUN = [
+        'Á' => 'A', 'Â' => 'A', 'Ã' => 'A', 'À' => 'A', 'É' => 'E', 'Ê' => 'E',
+        'Í' => 'I', 'Ó' => 'O', 'Ô' => 'O', 'Õ' => 'O', 'Ú' => 'U', 'Ç' => 'C',
+    ];
+
+    private static function semAcentoMun(string $s): string
+    {
+        return strtr(mb_strtoupper(trim($s), 'UTF-8'), self::ACENTOS_MUN);
+    }
+
+    private static function normMunSql(string $col): string
+    {
+        $e = "UPPER({$col})";
+        foreach (self::ACENTOS_MUN as $de => $para) {
+            $e = "REPLACE({$e}, '{$de}', '{$para}')";
+        }
+        return $e;
     }
 
     /** Há algum imóvel do CAR até ~6 km do ponto? (base do município importada na região). */

@@ -814,6 +814,7 @@ const Croqui = {
     // Botões andam em níveis inteiros mesmo depois de um zoom de pinça fracionário
     Croqui.vista.z = Math.max(3, Math.min(19, Math.round(Croqui.vista.z) + delta));
     Croqui.render();
+    Croqui._agendarRecargaCar(); // recarrega o CAR para a nova área visível
   },
 
   trocarTalhao() {
@@ -958,22 +959,49 @@ const Croqui = {
     Croqui.render();
   },
 
-  /** Carrega os imóveis do CAR ao redor do centro atual (online, ou snapshot offline). */
+  /** Caixa (bbox) da área VISÍVEL no mapa, com uma margem para arrastar sem buraco. */
+  _viewportBBox(margem = 0.15) {
+    const palco = document.getElementById('croquiPalco');
+    const larg = Math.max(300, palco.clientWidth), alt = Math.max(260, palco.clientHeight);
+    const tl = Croqui._paraGeo(0, 0, larg, alt), br = Croqui._paraGeo(larg, alt, larg, alt);
+    let minLat = Math.min(tl[0], br[0]), maxLat = Math.max(tl[0], br[0]);
+    let minLng = Math.min(tl[1], br[1]), maxLng = Math.max(tl[1], br[1]);
+    const mLat = (maxLat - minLat) * margem, mLng = (maxLng - minLng) * margem;
+    return { minLat: minLat - mLat, minLng: minLng - mLng, maxLat: maxLat + mLat, maxLng: maxLng + mLng };
+  },
+
+  /** Município do filtro (campo "Ir para") — plota só esse município, se preenchido. */
+  _carFiltroMun() { return (document.getElementById('croquiIrMun')?.value || '').trim(); },
+
+  /** Carrega os imóveis do CAR na ÁREA VISÍVEL (menos dados) + filtro de município. */
   async _carregarCarLayer(silencioso = false) {
     if (!Croqui.vista) return;
-    const c = Croqui._geo(Croqui.vista.cx, Croqui.vista.cy); // [lat,lng] do centro da tela
+    const b = Croqui._viewportBBox();
+    const mun = Croqui._carFiltroMun();
     try {
       if (navigator.onLine) {
-        const r = await App.json(`index.php?r=clientes/car-proximos&lat=${c[0].toFixed(7)}&lng=${c[1].toFixed(7)}&raio=5000`);
+        const qs = `minLat=${b.minLat.toFixed(7)}&minLng=${b.minLng.toFixed(7)}&maxLat=${b.maxLat.toFixed(7)}&maxLng=${b.maxLng.toFixed(7)}`
+          + (mun ? `&municipio=${encodeURIComponent(mun)}` : '');
+        const r = await App.json(`index.php?r=clientes/car-proximos&${qs}`);
         Croqui.carLayer = r.imoveis || [];
       } else if (typeof Offline !== 'undefined') {
         const base = await Offline.lerCarMunicipio();
         Croqui.carLayer = (base && base.imoveis) ? base.imoveis.map(im => ({ cod: im.cod, contorno: im.contorno })) : [];
       }
-      Croqui._carLayerCentro = c;
+      Croqui._carVista = b; // área já carregada (evita recarregar à toa)
     } catch (e) {
       if (!silencioso) App.alerta('Não consegui carregar os imóveis do CAR aqui.', 'warning');
     }
+  },
+
+  /** Recarrega o overlay do CAR ao mover o mapa (pan/zoom), sem spam (debounce). */
+  _agendarRecargaCar() {
+    if (!Croqui.carLayerOn) return;
+    clearTimeout(Croqui._carTimer);
+    Croqui._carTimer = setTimeout(async () => {
+      await Croqui._carregarCarLayer(true);
+      Croqui.render();
+    }, 400);
   },
 
   /** Imóvel do overlay que contém o ponto [lat,lng] (o de menor área, se houver sobreposição). */
@@ -1566,14 +1594,16 @@ const Croqui = {
       Croqui._ponteiros.delete(ev.pointerId);
       if (Croqui._pinch) {
         // Fim (ou redução) da pinça: nunca vira clique/ponto
-        if (Croqui._ponteiros.size < 2) Croqui._pinch = null;
+        if (Croqui._ponteiros.size < 2) { Croqui._pinch = null; Croqui._agendarRecargaCar(); }
         return;
       }
       if (Croqui._arrasto !== null) { Croqui._arrasto = null; return; }
       if (Croqui._pan) {
         // Gesto CANCELADO pelo navegador (ligação, palm rejection) nunca vira ponto
         const foiClique = ev.type === 'pointerup' && ev.isPrimary && !Croqui._pan.moved;
+        const arrastou = Croqui._pan.moved;
         Croqui._pan = null;
+        if (arrastou) Croqui._agendarRecargaCar(); // moveu o mapa: recarrega o CAR da nova área
         if (foiClique && Croqui.vista && !ev.target.closest('.croqui-zoom')) {
           const [x, y, w, h] = pos(ev);
           const geo = Croqui._paraGeo(x, y, w, h);

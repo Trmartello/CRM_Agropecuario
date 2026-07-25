@@ -626,13 +626,33 @@ class ClientesController
     public function carProximos(): void
     {
         Permissoes::exigirInterno();
+        $municipio = trim($_GET['municipio'] ?? ''); // filtro opcional (só esse município)
+        // Preferência: CAIXA visível do mapa (menos dados — só a área na tela);
+        // fallback para lat/lng/raio (compatibilidade).
+        $temBBox = ($_GET['minLat'] ?? '') !== '' && ($_GET['maxLat'] ?? '') !== ''
+            && ($_GET['minLng'] ?? '') !== '' && ($_GET['maxLng'] ?? '') !== '';
+        if ($temBBox) {
+            $minLat = (float) $_GET['minLat'];
+            $minLng = (float) $_GET['minLng'];
+            $maxLat = (float) $_GET['maxLat'];
+            $maxLng = (float) $_GET['maxLng'];
+            // guarda contra caixa absurda (zoom muito longe): limita o span
+            if (($maxLat - $minLat) > 1.5 || ($maxLng - $minLng) > 1.5) {
+                $cLat = ($minLat + $maxLat) / 2;
+                $cLng = ($minLng + $maxLng) / 2;
+                $minLat = $cLat - 0.75; $maxLat = $cLat + 0.75;
+                $minLng = $cLng - 0.75; $maxLng = $cLng + 0.75;
+            }
+            json_ok(['imoveis' => \App\Services\CarService::imoveisNaBBox($minLat, $minLng, $maxLat, $maxLng, $municipio ?: null, 800)]);
+        }
         $lat = ($_GET['lat'] ?? '') !== '' ? (float) $_GET['lat'] : null;
         $lng = ($_GET['lng'] ?? '') !== '' ? (float) $_GET['lng'] : null;
         if ($lat === null || $lng === null) {
             json_erro('Posição não informada.');
         }
         $raio = min(8000.0, max(500.0, (float) ($_GET['raio'] ?? 3000)));
-        json_ok(['imoveis' => \App\Services\CarService::imoveisNaArea($lat, $lng, $raio, 500)]);
+        $grau = $raio / 111000.0;
+        json_ok(['imoveis' => \App\Services\CarService::imoveisNaBBox($lat - $grau, $lng - $grau, $lat + $grau, $lng + $grau, $municipio ?: null, 800)]);
     }
 
     /**
