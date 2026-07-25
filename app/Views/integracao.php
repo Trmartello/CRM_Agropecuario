@@ -35,7 +35,9 @@
           <code>cap_anual</code> — vínculo pelo Cód. vendedor no cadastro de Usuários; reimportar o
           mesmo ano substitui) e <strong>cadastro de clientes</strong> (tipo <code>clientes</code> —
           cria/atualiza produtores pelo código do ERP sem tocar no que o CRM enriquece:
-          responsável, nível tecnológico, potencial, segmento e coordenadas).
+          responsável, nível tecnológico, potencial, segmento e coordenadas) e
+          <strong>score do território</strong> (tipo <code>score_imovel</code> — potencial/realizado/share/gap
+          por imóvel e safra para o Mapa Territorial; substitui o score de demonstração).
         </p>
         <form id="formCargaCap" onsubmit="return Integracao.importarCarga(event)" class="d-flex gap-2 align-items-center flex-wrap">
           <input type="file" name="arquivo" class="form-control" accept="application/json,.json" required style="max-width:320px">

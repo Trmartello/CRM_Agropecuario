@@ -10,7 +10,7 @@ CREATE DATABASE IF NOT EXISTS crm_agropecuario CHARACTER SET utf8mb4 COLLATE utf
 USE crm_agropecuario;
 
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS fato_talhao_safra, bridge_imovel_produtor, dim_imovel,
+DROP TABLE IF EXISTS cache_score_imovel, fato_talhao_safra, bridge_imovel_produtor, dim_imovel,
   sessoes_persistentes, configuracoes, auditoria,
   integracao_log, notificacoes, agenda_eventos,
   documentos, prestacao_contas, reclamacao_fotos, reembolso_refeicoes, refeicoes, quilometragem, veiculos, reclamacoes, categorias_reembolso,
@@ -236,6 +236,21 @@ CREATE TABLE fato_talhao_safra (
   UNIQUE KEY uk_talhao_safra (cod_car, safra, nome_talhao),
   INDEX idx_fts_cod_car (cod_car),
   FOREIGN KEY (cod_car) REFERENCES dim_imovel(cod_car) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Cache do score vindo do Qlik (SCORE_QLIK) por imóvel+safra (PR 9). O Qlik
+-- calcula, o CRM só exibe: os 4 números entram verbatim (invariante 1).
+CREATE TABLE cache_score_imovel (
+  cod_car VARCHAR(60) NOT NULL,
+  safra VARCHAR(9) NOT NULL,
+  potencial DECIMAL(14,2) NOT NULL DEFAULT 0,
+  realizado DECIMAL(14,2) NOT NULL DEFAULT 0,
+  share DECIMAL(6,4) NOT NULL DEFAULT 0,
+  gap DECIMAL(14,2) NOT NULL DEFAULT 0,
+  status_comercial ENUM('ativo','inativo','prospect') NULL,
+  dt_atualizacao DATETIME NOT NULL,
+  PRIMARY KEY (cod_car, safra),
+  INDEX idx_csi_safra (safra)
 ) ENGINE=InnoDB;
 
 -- ============================================================================

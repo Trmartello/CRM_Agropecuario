@@ -233,6 +233,9 @@ class MapaTerritorialService
         $cods = array_column($imoveis, 'cod_car');
         $prod = self::produtorPrincipalDe($cods);        // cod_car → {nome,id,rtv}
         $cult = self::culturaPrincipalDe($cods, $safra); // cod_car → cultura
+        $scores = self::scoresDe($cods, $safra);         // cod_car → score do Qlik (cache)
+        $nQlik = 0;
+        $nMock = 0;
 
         $features = [];
         foreach ($imoveis as $im) {
@@ -245,7 +248,8 @@ class MapaTerritorialService
 
             $areaHa = (float) $im['area_ha'];
             $cultura = $cult[$cod] ?? null;
-            $sc = self::scoreMock($cod, $areaHa, $cultura, $pinfo !== null);
+            $sc = self::scoreResolvido($cod, $areaHa, $cultura, $pinfo !== null, $scores[$cod] ?? null);
+            $sc['fonte'] === 'qlik' ? $nQlik++ : $nMock++;
             $potencial = $sc['potencial'];
             $realizado = $sc['realizado'];
             $gap = $sc['gap'];
@@ -279,10 +283,13 @@ class MapaTerritorialService
             ];
         }
 
+        [$atualizadoEm, $desatualizado] = self::frescor($scores);
         return [
             'type' => 'FeatureCollection',
             'features' => $features,
-            'fonte_score' => 'mock', // PR 3: score sintético — Qlik entra no PR 9
+            'fonte_score' => $nQlik === 0 ? 'mock' : ($nMock === 0 ? 'qlik' : 'misto'),
+            'atualizado_em' => $atualizadoEm, // do cache do Qlik; null se tudo mock
+            'desatualizado' => $desatualizado, // cache > 48h
             'total' => count($features),
             'truncado' => $truncado,
         ];
@@ -299,6 +306,63 @@ class MapaTerritorialService
         $share = $potencial > 0 ? round($realizado / $potencial, 4) : 0.0;
         $status = !$temProd ? 'prospect' : ($share >= 0.05 ? 'ativo' : 'inativo');
         return compact('potencial', 'realizado', 'gap', 'share', 'status');
+    }
+
+    /** cache_score_imovel (Qlik) para os cods na safra, em lote: cod_car → linha. */
+    private static function scoresDe(array $cods, string $safra): array
+    {
+        if (!$cods || $safra === '') {
+            return [];
+        }
+        $map = [];
+        try {
+            foreach (array_chunk($cods, 500) as $chunk) {
+                $marks = implode(',', array_fill(0, count($chunk), '?'));
+                $rows = Database::todos(
+                    "SELECT cod_car, potencial, realizado, share, gap, status_comercial, dt_atualizacao
+                       FROM cache_score_imovel WHERE safra = ? AND cod_car IN ($marks)",
+                    array_merge([$safra], $chunk)
+                );
+                foreach ($rows as $r) {
+                    $map[(string) $r['cod_car']] = $r;
+                }
+            }
+        } catch (\Throwable $e) {
+            return []; // banco ainda sem a tabela (pré-migração): cai no mock
+        }
+        return $map;
+    }
+
+    /** Score do imóvel: do Qlik (cache) quando houver; senão o mock (demonstração). */
+    private static function scoreResolvido(string $cod, float $areaHa, ?string $cultura, bool $temProd, ?array $cache): array
+    {
+        if ($cache) {
+            $re = (int) round((float) $cache['realizado']);
+            return [
+                'potencial' => (int) round((float) $cache['potencial']),
+                'realizado' => $re,
+                'gap' => (int) round((float) $cache['gap']),   // verbatim do Qlik (não recalcula — invariante 1)
+                'share' => round((float) $cache['share'], 4),
+                'status' => $cache['status_comercial'] ?: ($re > 0 ? 'ativo' : ($temProd ? 'inativo' : 'prospect')),
+                'fonte' => 'qlik',
+            ];
+        }
+        $sc = self::scoreMock($cod, $areaHa, $cultura, $temProd);
+        $sc['fonte'] = 'mock';
+        return $sc;
+    }
+
+    /** min(dt_atualizacao) do cache + flag de desatualizado (> 48h). */
+    private static function frescor(array $scores): array
+    {
+        $min = null;
+        foreach ($scores as $s) {
+            $d = (string) $s['dt_atualizacao'];
+            if ($min === null || $d < $min) {
+                $min = $d;
+            }
+        }
+        return [$min, $min !== null && (time() - strtotime($min)) > 48 * 3600];
     }
 
     /**
@@ -359,7 +423,9 @@ class MapaTerritorialService
         }
 
         $cultura = $talhoes[0]['cultura'] ?? null; // maior área na safra
-        $sc = self::scoreMock($codCar, (float) $im['area_ha'], $cultura, count($produtores) > 0);
+        $cacheScore = self::scoresDe([$codCar], $safra)[$codCar] ?? null;
+        $sc = self::scoreResolvido($codCar, (float) $im['area_ha'], $cultura, count($produtores) > 0, $cacheScore);
+        $desat = $cacheScore && (time() - strtotime((string) $cacheScore['dt_atualizacao'])) > 48 * 3600;
         $principal = $produtores[0] ?? null;
 
         return [
@@ -378,7 +444,9 @@ class MapaTerritorialService
             'share' => $sc['share'],
             'gap' => $sc['gap'],
             'rtv' => $principal['rtv'] ?? null,
-            'fonte_score' => 'mock',
+            'fonte_score' => $sc['fonte'],
+            'atualizado_em' => $cacheScore['dt_atualizacao'] ?? null,
+            'desatualizado' => $desat,
             'produtores' => array_map(static fn ($p) => [
                 'id' => (int) $p['produtor_id'],
                 'nome' => $p['nome'],

@@ -165,6 +165,61 @@ class IntegracaoService
         ];
     }
 
+    /**
+     * Carga do score do Qlik (SCORE_QLIK) → cache_score_imovel (PR 9 Mapa Territorial).
+     * O Qlik calcula, o CRM só exibe — os 4 números entram VERBATIM (invariante 1).
+     * JSON: {tipo:'score_imovel', safra:'2025/26', itens:[{codCar, potencial, realizado, share, gap, status?}]}
+     */
+    public static function importarCargaScore(array $carga): array
+    {
+        if (($carga['tipo'] ?? '') !== 'score_imovel' || empty($carga['itens']) || !is_array($carga['itens'])) {
+            throw new \Exception('Arquivo inválido: esperado JSON "score_imovel" com a lista de itens.');
+        }
+        $safra = trim((string) ($carga['safra'] ?? ''));
+        if ($safra === '') {
+            throw new \Exception('Informe a safra da carga de score (ex.: "2025/26").');
+        }
+        $pdo = Database::conexao();
+        $stmt = $pdo->prepare(
+            'INSERT INTO cache_score_imovel (cod_car, safra, potencial, realizado, share, gap, status_comercial, dt_atualizacao)
+             VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+             ON DUPLICATE KEY UPDATE potencial = VALUES(potencial), realizado = VALUES(realizado),
+                share = VALUES(share), gap = VALUES(gap), status_comercial = VALUES(status_comercial), dt_atualizacao = NOW()'
+        );
+        $ok = 0;
+        $ignorados = 0;
+        $statusOk = ['ativo', 'inativo', 'prospect'];
+        $pdo->beginTransaction();
+        try {
+            foreach ($carga['itens'] as $it) {
+                $cod = trim((string) ($it['codCar'] ?? $it['cod_car'] ?? ''));
+                if ($cod === '') {
+                    $ignorados++;
+                    continue;
+                }
+                $st = strtolower(trim((string) ($it['status'] ?? $it['statusComercial'] ?? '')));
+                $stmt->execute([
+                    mb_substr($cod, 0, 60),
+                    $safra,
+                    round((float) ($it['potencial'] ?? 0), 2),
+                    round((float) ($it['realizado'] ?? 0), 2),
+                    round((float) ($it['share'] ?? 0), 4),
+                    round((float) ($it['gap'] ?? 0), 2),
+                    in_array($st, $statusOk, true) ? $st : null,
+                ]);
+                $ok++;
+            }
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+        self::registrar('CAPE', 'score_imovel', 'Sucesso', $ok, "safra {$safra}: {$ok} imoveis, {$ignorados} ignorados");
+        return ['safra' => $safra, 'atualizados' => $ok, 'ignorados' => $ignorados];
+    }
+
     public static function importarCargaCap(array $carga): array
     {
         if (($carga['tipo'] ?? '') !== 'cap_anual' || empty($carga['vendedores']) || !is_array($carga['vendedores'])) {

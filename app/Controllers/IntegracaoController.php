@@ -167,18 +167,22 @@ class IntegracaoController
         if (!is_array($carga)) {
             json_erro('O arquivo não é um JSON válido.');
         }
-        // O tipo do arquivo decide o importador (cap_anual | clientes)
+        // O tipo do arquivo decide o importador (cap_anual | clientes | score_imovel)
         $tipo = (string) ($carga['tipo'] ?? '');
         try {
-            $resumo = $tipo === 'clientes'
-                ? IntegracaoService::importarCargaClientes($carga)
-                : IntegracaoService::importarCargaCap($carga);
+            $resumo = match ($tipo) {
+                'clientes' => IntegracaoService::importarCargaClientes($carga),
+                'score_imovel' => IntegracaoService::importarCargaScore($carga),
+                default => IntegracaoService::importarCargaCap($carga),
+            };
         } catch (\Exception $e) {
             json_erro($e->getMessage());
         }
-        $detalhe = $tipo === 'clientes'
-            ? 'carga clientes — ' . $resumo['criados'] . ' criados, ' . $resumo['atualizados'] . ' atualizados'
-            : 'carga CAP ' . ($resumo['ano'] ?? '?') . ' — ' . $resumo['vinculados'] . ' vinculados';
+        $detalhe = match ($tipo) {
+            'clientes' => 'carga clientes — ' . $resumo['criados'] . ' criados, ' . $resumo['atualizados'] . ' atualizados',
+            'score_imovel' => 'carga score ' . ($resumo['safra'] ?? '?') . ' — ' . ($resumo['atualizados'] ?? 0) . ' imóveis',
+            default => 'carga CAP ' . ($resumo['ano'] ?? '?') . ' — ' . $resumo['vinculados'] . ' vinculados',
+        };
         auditar('importar', 'integracao', 0, $detalhe);
         json_ok(['resumo' => $resumo, 'tipo' => $tipo]);
     }

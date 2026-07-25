@@ -23,7 +23,7 @@
     </select>
   </div>
   <span id="terContagem" class="small text-muted"></span>
-  <span class="badge text-bg-warning ms-auto" title="No piloto o score (potencial/realizado/share/gap) é sintético; o Qlik entra na integração real">
+  <span id="terFonte" class="badge text-bg-warning ms-auto" title="No piloto o score (potencial/realizado/share/gap) é sintético; o Qlik entra na integração real">
     <i class="bi bi-flask me-1"></i>Score de demonstração
   </span>
 </div>
@@ -108,6 +108,7 @@ const Territorio = {
       this.feats = (fc.features || []).map(f => ({ aneis: this._aneisDe(f.geometry), p: f.properties })).filter(f => f.aneis.length);
       this._maxGap = this.feats.reduce((m, f) => Math.max(m, Number(f.p.gap) || 0), 0); // gap normalizado pelo filtro
       cont.textContent = this.feats.length + ' imóvel(is)' + (fc.truncado ? ' (limite de 5000 — aproxime/filtre)' : '');
+      this._fonteBadge(fc);
       this._popularRtv();
       this._fecharFicha();
       this.sel = null;
@@ -205,6 +206,20 @@ const Territorio = {
     v = Number(v) || 0;
     return v >= 1e6 ? 'R$ ' + (v / 1e6).toFixed(2).replace('.', ',') + ' mi'
       : (v >= 1e3 ? 'R$ ' + Math.round(v / 1e3) + ' mil' : 'R$ ' + Math.round(v));
+  },
+
+  _fonteBadge(fc) {
+    const el = document.getElementById('terFonte'); if (!el) return;
+    const f = fc.fonte_score, stale = fc.desatualizado;
+    if (f === 'qlik' || f === 'misto') {
+      el.className = 'badge ms-auto ' + (stale ? 'text-bg-warning' : (f === 'misto' ? 'text-bg-info' : 'text-bg-success'));
+      el.innerHTML = '<i class="bi bi-database-check me-1"></i>Score: Qlik' + (f === 'misto' ? ' + demo' : '') + (stale ? ' · cache >48h' : '');
+      el.title = fc.atualizado_em ? ('Atualizado do Qlik em ' + fc.atualizado_em) : 'Score do Qlik';
+    } else {
+      el.className = 'badge text-bg-warning ms-auto';
+      el.innerHTML = '<i class="bi bi-flask me-1"></i>Score de demonstração';
+      el.title = 'No piloto o score é sintético; o Qlik entra na integração real';
+    }
   },
 
   _kpis() {
@@ -366,7 +381,9 @@ const Territorio = {
       + '<div class="progress my-1" style="height:6px"><div class="progress-bar bg-success" style="width:' + (Number(d.share) * 100).toFixed(1) + '%"></div></div>'
       + '<div class="text-muted small">Share of wallet — ' + (Number(d.share) * 100).toFixed(0) + '%</div>'
       + '<div class="d-flex justify-content-between border-top mt-1 pt-1"><span>Gap a capturar</span><strong style="color:#c7452a">' + brl(d.gap) + '</strong></div>'
-      + '<div class="text-warning small mt-1"><i class="bi bi-flask me-1"></i>Score de demonstração</div></div>'
+      + (d.fonte_score === 'qlik'
+        ? `<div class="small mt-1 ${d.desatualizado ? 'text-warning' : 'text-success'}"><i class="bi bi-database-check me-1"></i>Score do Qlik${d.desatualizado ? ' (cache >48h)' : ''}</div>`
+        : '<div class="text-warning small mt-1"><i class="bi bi-flask me-1"></i>Score de demonstração</div>') + '</div>'
       + '<div class="mt-3"><div class="fw-semibold small mb-1">Produtores vinculados</div>' + prods + '</div>'
       + '<div class="mt-3"><div class="fw-semibold small mb-1">Talhões declarados</div>' + tal + '</div>'
       + '<div class="mt-3"><div class="fw-semibold small mb-1">Últimas visitas</div>' + vis + '</div>'

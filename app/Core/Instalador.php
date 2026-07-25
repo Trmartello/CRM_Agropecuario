@@ -541,6 +541,31 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '32'"
             );
         }
+
+        if ($versao < 33) {
+            // Mapa Territorial (PR 9): cache do score vindo do Qlik (SCORE_QLIK).
+            // O Qlik calcula, o CRM só exibe — os 4 números entram verbatim aqui.
+            if (!self::temTabela('cache_score_imovel')) {
+                Database::executar(
+                    'CREATE TABLE cache_score_imovel (
+                        cod_car VARCHAR(60) NOT NULL,
+                        safra VARCHAR(9) NOT NULL,
+                        potencial DECIMAL(14,2) NOT NULL DEFAULT 0,
+                        realizado DECIMAL(14,2) NOT NULL DEFAULT 0,
+                        share DECIMAL(6,4) NOT NULL DEFAULT 0,
+                        gap DECIMAL(14,2) NOT NULL DEFAULT 0,
+                        status_comercial ENUM("ativo","inativo","prospect") NULL,
+                        dt_atualizacao DATETIME NOT NULL,
+                        PRIMARY KEY (cod_car, safra),
+                        INDEX idx_csi_safra (safra)
+                     ) ENGINE=InnoDB'
+                );
+            }
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '33')
+                 ON DUPLICATE KEY UPDATE valor = '33'"
+            );
+        }
     }
 
     /** Fase 6E (refinamento): características fisiológicas por estágio (cartão ilustrado). */
