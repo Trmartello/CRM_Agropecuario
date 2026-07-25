@@ -173,6 +173,7 @@ $router->registrar('clientes/localizar-area', ClientesController::class, 'locali
 $router->registrar('integracao/importar-car-municipio', \App\Controllers\IntegracaoController::class, 'importarCarMunicipio');
 $router->registrar('integracao/vincular-car-propriedades', \App\Controllers\IntegracaoController::class, 'vincularCarPropriedades');
 $router->registrar('integracao/gerar-territorio', \App\Controllers\IntegracaoController::class, 'gerarTerritorio');
+$router->registrar('territorio', \App\Controllers\TerritorioController::class, 'index');
 $router->registrar('territorio/imoveis', \App\Controllers\TerritorioController::class, 'imoveis');
 $router->registrar('clientes/salvar-plano-safra', ClientesController::class, 'salvarPlanoSafra');
 $router->registrar('clientes/salvar-documento', ClientesController::class, 'salvarDocumento');

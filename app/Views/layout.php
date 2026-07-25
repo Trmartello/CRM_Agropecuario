@@ -70,6 +70,7 @@ $logoRaio = (int) ConfigService::obter('logo_borda_raio', '10');
               $comercial[] = ['pacotes', 'bi-box-seam', 'Pacotes'];
           }
           $comercial[] = ['funil', 'bi-funnel', 'Funil'];
+          $comercial[] = ['territorio', 'bi-map', 'Mapa Territorial'];
           $comercial[] = ['relatorios/potencial', 'bi-bar-chart-line', 'Potencial de Vendas'];
           $comercial[] = ['cap', 'bi-trophy', 'Metas CAP'];
 
