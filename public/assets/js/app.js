@@ -1379,7 +1379,10 @@ const Croqui = {
     return html;
   },
 
-  render() {
+  // leve=true: atualiza só o DESENHO (SVG), sem recriar os tiles do satélite —
+  // usado ao ARRASTAR um vértice (a vista não muda, então a imagem fica FIXA e
+  // não pisca/recarrega, facilitando posicionar o ponto).
+  render(leve = false) {
     const palco = document.getElementById('croquiPalco');
     if (!palco) return;
     const larg = Math.max(300, palco.clientWidth), alt = Math.max(260, palco.clientHeight);
@@ -1390,12 +1393,14 @@ const Croqui = {
       Croqui._atualizarArea();
       return;
     }
+    const svgEl = palco.querySelector('#croquiSvg');
+    const podeLeve = leve && svgEl; // só faz leve se o mapa já foi montado uma vez
 
     // Camada de satélite (Web Mercator) — some offline; o desenho continua.
     // A camada de RÓTULOS (nomes de cidades/localidades/ruas, como no Google) é
     // outra camada de tiles transparente por cima do satélite (provedor configurável).
     let tilesHtml = '', labelsHtml = '';
-    if (Croqui.tiles && Croqui.tiles.url && navigator.onLine) {
+    if (!podeLeve && Croqui.tiles && Croqui.tiles.url && navigator.onLine) {
       tilesHtml = Croqui._tilesHtml(Croqui.tiles.url, larg, alt);
       if (Croqui.tiles.labels) labelsHtml = Croqui._tilesHtml(Croqui.tiles.labels, larg, alt);
     }
@@ -1491,16 +1496,21 @@ const Croqui = {
       <text x="${(20 + escalaPx / 2).toFixed(1)}" y="${alt - 21}" text-anchor="middle" font-size="11" fill="#222">${escalaM >= 1000 ? (escalaM / 1000) + ' km' : escalaM + ' m'}</text></g>
       <g transform="translate(${larg - 26},34)"><circle r="14" fill="#fff" opacity=".75"/><path d="M0,-9 L4,5 L0,2 L-4,5 Z" fill="#222"/><text y="-14" text-anchor="middle" font-size="10" fill="#fff" stroke="#333" stroke-width=".4">N</text></g>`;
 
-    palco.innerHTML = `
-      <div class="croqui-tiles">${tilesHtml}</div>
-      ${labelsHtml ? `<div class="croqui-tiles croqui-labels">${labelsHtml}</div>` : ''}
-      <svg id="croquiSvg" viewBox="0 0 ${larg} ${alt}" width="${larg}" height="${alt}"></svg>
-      <div class="croqui-zoom">
-        <button type="button" class="btn btn-light btn-sm" onclick="Croqui.zoom(1)" title="Aproximar"><i class="bi bi-plus-lg"></i></button>
-        <button type="button" class="btn btn-light btn-sm" onclick="Croqui.zoom(-1)" title="Afastar"><i class="bi bi-dash-lg"></i></button>
-      </div>
-      ${Croqui.tiles && navigator.onLine ? `<div class="croqui-atribuicao">${App.escapeHtml(Croqui.tiles.atribuicao || '')}</div>` : ''}`;
-    palco.querySelector('#croquiSvg').innerHTML = svg;
+    if (podeLeve) {
+      // Render leve: só troca o desenho; os tiles do satélite ficam INTACTOS (não piscam).
+      svgEl.innerHTML = svg;
+    } else {
+      palco.innerHTML = `
+        <div class="croqui-tiles">${tilesHtml}</div>
+        ${labelsHtml ? `<div class="croqui-tiles croqui-labels">${labelsHtml}</div>` : ''}
+        <svg id="croquiSvg" viewBox="0 0 ${larg} ${alt}" width="${larg}" height="${alt}"></svg>
+        <div class="croqui-zoom">
+          <button type="button" class="btn btn-light btn-sm" onclick="Croqui.zoom(1)" title="Aproximar"><i class="bi bi-plus-lg"></i></button>
+          <button type="button" class="btn btn-light btn-sm" onclick="Croqui.zoom(-1)" title="Afastar"><i class="bi bi-dash-lg"></i></button>
+        </div>
+        ${Croqui.tiles && navigator.onLine ? `<div class="croqui-atribuicao">${App.escapeHtml(Croqui.tiles.atribuicao || '')}</div>` : ''}`;
+      palco.querySelector('#croquiSvg').innerHTML = svg;
+    }
     document.getElementById('croquiLegenda').innerHTML = legenda.join('');
     Croqui._atualizarArea();
   },
@@ -1596,7 +1606,7 @@ const Croqui = {
         const [x, y, w, h] = pos(ev);
         Croqui.pontos[Croqui._arrasto] = Croqui._prender(Croqui._paraGeo(x, y, w, h));
         Croqui._dirty = true;
-        Croqui.render();
+        Croqui.render(true); // leve: mapa FIXO enquanto arrasta o ponto (não pisca/recarrega)
         ev.preventDefault();
         return;
       }
