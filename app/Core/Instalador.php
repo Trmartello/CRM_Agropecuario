@@ -406,22 +406,25 @@ class Instalador
             );
         }
         if ($versao < 31) {
-            // Backfill dos imóveis do CAR já importados (antes do v30, sem cod_ibge):
-            // deriva o código IBGE do próprio cod_imovel e preenche o NOME do
-            // município pela tabela oficial (MunicipiosSul, Sul do país). Assim os
-            // dados existentes ganham o nome certo e passam a deduplicar por IBGE
-            // sem precisar reimportar.
-            if (self::temTabela('car_imoveis') && self::temColuna('car_imoveis', 'cod_ibge')) {
-                // Em LOTES por id (não carrega a tabela inteira; base estadual seria enorme).
-                // "id > ultimo" avança mesmo em linhas sem código IBGE (não vira loop infinito).
-                $ultimoId = 0;
-                do {
+            // IMPORTANTE: marca a versão ANTES do backfill. O backfill é um EXTRA
+            // (renomear imóveis JÁ importados) e NÃO pode bloquear o boot — a versão
+            // anterior rodava milhares de UPDATE no boot de CADA requisição e, num
+            // município grande, passava do timeout do Railway e NUNCA concluía →
+            // schema_versao nunca virava 31 → app inacessível (ERR_CONNECTION_TIMED_OUT).
+            // Marcando a versão primeiro, o boot volta a responder na hora; o resto
+            // dos nomes é corrigido na REIMPORTAÇÃO do município (que grava cod_ibge
+            // + nome oficial de qualquer jeito).
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '31')
+                 ON DUPLICATE KEY UPDATE valor = '31'"
+            );
+            try {
+                if (self::temTabela('car_imoveis') && self::temColuna('car_imoveis', 'cod_ibge')) {
+                    // Best-effort e LIMITADO (uma leva pequena, roda 1x): nunca trava o boot.
                     $rows = Database::todos(
-                        'SELECT id, cod_imovel FROM car_imoveis WHERE cod_ibge IS NULL AND id > ? ORDER BY id LIMIT 2000',
-                        [$ultimoId]
+                        'SELECT id, cod_imovel FROM car_imoveis WHERE cod_ibge IS NULL LIMIT 1000'
                     );
                     foreach ($rows as $r) {
-                        $ultimoId = (int) $r['id'];
                         $ibge = \App\Services\ShapefileService::ibgeDeCodImovel((string) $r['cod_imovel']);
                         if (!$ibge) {
                             continue;
@@ -430,18 +433,16 @@ class Instalador
                         if ($nome !== null) {
                             Database::executar(
                                 'UPDATE car_imoveis SET cod_ibge = ?, municipio = ? WHERE id = ?',
-                                [$ibge, mb_strtoupper($nome), $ultimoId]
+                                [$ibge, mb_strtoupper($nome), (int) $r['id']]
                             );
                         } else {
-                            Database::executar('UPDATE car_imoveis SET cod_ibge = ? WHERE id = ?', [$ibge, $ultimoId]);
+                            Database::executar('UPDATE car_imoveis SET cod_ibge = ? WHERE id = ?', [$ibge, (int) $r['id']]);
                         }
                     }
-                } while (count($rows) === 2000);
+                }
+            } catch (\Throwable $e) {
+                // o backfill nunca derruba o boot
             }
-            Database::executar(
-                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '31')
-                 ON DUPLICATE KEY UPDATE valor = '31'"
-            );
         }
     }
 
