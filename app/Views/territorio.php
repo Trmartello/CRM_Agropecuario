@@ -22,21 +22,39 @@
   </span>
 </div>
 
-<div id="terPalco" class="croqui-palco" style="height:70vh;min-height:420px"></div>
+<style>
+  .ter-poly { transition: fill .45s ease-in-out, fill-opacity .45s ease-in-out; }
+  .ter-ramp { display:inline-flex; height:10px; width:120px; border-radius:2px; overflow:hidden; vertical-align:middle; margin-right:6px; border:1px solid rgba(0,0,0,.15); }
+  .ter-ramp i { flex:1; }
+  @media (prefers-reduced-motion: reduce) { .ter-poly { transition: none; } }
+</style>
 
-<div class="d-flex flex-wrap align-items-center gap-3 mt-2 small">
-  <span class="text-muted">Cobertura comercial:</span>
-  <span><span class="croqui-cor" style="background:#4FA87C"></span>Cliente ativo</span>
-  <span><span class="croqui-cor" style="background:#D4A64A"></span>Inativo</span>
-  <span><span class="croqui-cor" style="background:#8899a6"></span>Prospect (só CAR)</span>
-  <span id="terInfo" class="ms-auto"></span>
+<div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+  <div class="btn-group btn-group-sm" role="group" aria-label="Camada temática">
+    <button type="button" class="btn btn-outline-success active" data-camada="cobertura" onclick="Territorio.trocarCamada('cobertura', this)"><i class="bi bi-people me-1"></i>Cobertura</button>
+    <button type="button" class="btn btn-outline-success" data-camada="share" onclick="Territorio.trocarCamada('share', this)">Share of wallet</button>
+    <button type="button" class="btn btn-outline-success" data-camada="gap" onclick="Territorio.trocarCamada('gap', this)">Gap em R$</button>
+    <button type="button" class="btn btn-outline-success" data-camada="cultura" onclick="Territorio.trocarCamada('cultura', this)">Cultura</button>
+  </div>
+  <span id="terInfo" class="small ms-auto"></span>
 </div>
+
+<div id="terPalco" class="croqui-palco" style="height:66vh;min-height:400px"></div>
+
+<div id="terLegenda" class="d-flex flex-wrap align-items-center mt-2 small"></div>
 
 <script>
 window.__terTiles = <?= json_encode($tiles, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>;
 const Territorio = {
-  tiles: null, vista: null, feats: [], sel: null,
+  tiles: null, vista: null, feats: [], sel: null, camada: 'cobertura', _maxGap: 0,
   _pan: null, _pinch: null, _ponteiros: new Map(), _eventosOk: false, _alvo: null,
+
+  /* Escalas de cor (valores do protótipo docs/prototipos/mapa_territorial.html) */
+  CORES_COB: { ativo: '#4FA87C', inativo: '#D4A64A' },
+  RAMP_SHARE: ['#17332B', '#20553F', '#2C7A59', '#41986F', '#68BF93'],
+  RAMP_GAP: ['#2C2418', '#6B4A1D', '#A2681E', '#CE8226', '#C7452A'],
+  CULT_CORES: { 'Milho': '#D4A64A', 'Soja': '#4FA87C', 'Pastagem / Leite': '#7E9B5A', 'Integração aves': '#8C7BA6', 'Integração suínos': '#8C7BA6', 'Trigo': '#C7862A' },
+  _PALETA: ['#4FA87C', '#D4A64A', '#7E9B5A', '#8C7BA6', '#5B8CA8', '#C7452A', '#9a7d0a', '#00695c'],
 
   /* --- Web Mercator (mesma projeção dos tiles) — coords GeoJSON [lng,lat] --- */
   _wx(lng) { return (Number(lng) + 180) / 360; },
@@ -67,6 +85,7 @@ const Territorio = {
       const fc = await resp.json();
       if (fc && fc.erro) throw new Error(fc.erro);
       this.feats = (fc.features || []).map(f => ({ aneis: this._aneisDe(f.geometry), p: f.properties })).filter(f => f.aneis.length);
+      this._maxGap = this.feats.reduce((m, f) => Math.max(m, Number(f.p.gap) || 0), 0); // gap normalizado pelo filtro
       cont.textContent = this.feats.length + ' imóvel(is)' + (fc.truncado ? ' (limite de 5000 — aproxime/filtre)' : '');
       this.sel = null;
       this._enquadrar();
@@ -94,7 +113,74 @@ const Territorio = {
     this.vista = { z: Math.max(3, Math.min(18, z)), cx: (minx + maxx) / 2, cy: (miny + maxy) / 2 };
   },
 
-  cor(status) { return status === 'ativo' ? '#4FA87C' : (status === 'inativo' ? '#D4A64A' : '#8899a6'); },
+  /* useEscalaCor: (imóvel, camada) → [fill, fill-opacity]. Mesma geometria, cor muda de sentido. */
+  _estilo(p) {
+    const c = this.camada;
+    if (c === 'cobertura') {
+      return p.statusComercial === 'prospect' ? ['url(#terHatch)', '1'] : [this.CORES_COB[p.statusComercial] || '#8899a6', '.5'];
+    }
+    if (c === 'cultura') {
+      return [this._corCultura(p.culturaPrincipal), '.6'];
+    }
+    if (c === 'share') {
+      const idx = Math.min(4, Math.max(0, Math.floor((Number(p.share) || 0) * 5)));
+      return [this.RAMP_SHARE[idx], '.62'];
+    }
+    if (c === 'gap') {
+      const r = this._maxGap > 0 ? (Number(p.gap) || 0) / this._maxGap : 0;
+      const idx = Math.min(4, Math.max(0, Math.floor(r * 5)));
+      return [this.RAMP_GAP[idx], '.62'];
+    }
+    return ['#8899a6', '.5'];
+  },
+
+  _corCultura(cult) {
+    if (!cult) return '#6b7a83'; // sem cultura declarada = cinza
+    if (this.CULT_CORES[cult]) return this.CULT_CORES[cult];
+    let h = 0; for (let i = 0; i < cult.length; i++) h = (h * 31 + cult.charCodeAt(i)) >>> 0; // cor estável por nome
+    return this._PALETA[h % this._PALETA.length];
+  },
+
+  /* Troca a camada temática SEM refazer a requisição: só recolore o que já está em memória. */
+  trocarCamada(c, btn) {
+    this.camada = c;
+    document.querySelectorAll('[data-camada]').forEach(b => b.classList.toggle('active', b === btn));
+    this._recolorir();
+  },
+
+  _recolorir() {
+    const svg = document.getElementById('terSvg');
+    if (!svg) { this.render(); return; }
+    this.feats.forEach((f, i) => {
+      const [fill, op] = this._estilo(f.p);
+      svg.querySelectorAll('.ter-poly[data-i="' + i + '"]').forEach(el => {
+        el.setAttribute('fill', fill);
+        el.setAttribute('fill-opacity', op);
+      });
+    });
+    this._legenda();
+  },
+
+  _legenda() {
+    const el = document.getElementById('terLegenda'); if (!el) return;
+    const c = this.camada;
+    const sw = (cor, txt, ex) => `<span class="me-3"><span class="croqui-cor" style="background:${cor}"></span>${App.escapeHtml(txt)}${ex ? ` <span class="text-muted">${App.escapeHtml(ex)}</span>` : ''}</span>`;
+    if (c === 'cobertura') {
+      el.innerHTML = sw('#4FA87C', 'Cliente ativo') + sw('#D4A64A', 'Inativo')
+        + '<span class="me-3"><span class="croqui-cor" style="background:repeating-linear-gradient(45deg,#0f1c25,#0f1c25 3px,#c3ced6 3px,#c3ced6 5px)"></span>Prospect (só CAR)</span>';
+    } else if (c === 'cultura') {
+      const pres = [...new Set(this.feats.map(f => f.p.culturaPrincipal).filter(Boolean))].sort();
+      el.innerHTML = (pres.length ? pres.map(cu => sw(this._corCultura(cu), cu)).join('') : '<span class="text-muted">sem culturas nesta safra</span>')
+        + (this.feats.some(f => !f.p.culturaPrincipal) ? sw('#6b7a83', 'Sem cultura') : '');
+    } else {
+      const ramp = c === 'share' ? this.RAMP_SHARE : this.RAMP_GAP;
+      const bar = `<span class="ter-ramp">${ramp.map(cor => `<i style="background:${cor}"></i>`).join('')}</span>`;
+      const min = c === 'share' ? '0%' : 'R$ 0';
+      const max = c === 'share' ? '100%' : ('R$ ' + Number(this._maxGap || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 }));
+      const nota = c === 'share' ? 'mais claro = maior fatia da carteira já nossa' : 'mais quente = mais receita disponível não capturada (white space)';
+      el.innerHTML = `${bar}<span class="text-muted me-3">${min} → ${max}</span><span class="text-muted">${nota}</span>`;
+    }
+  },
 
   render() {
     const palco = document.getElementById('terPalco'); if (!palco) return;
@@ -108,9 +194,7 @@ const Territorio = {
     let svg = '<defs><pattern id="terHatch" width="7" height="7" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">'
       + '<rect width="7" height="7" fill="#0f1c25" fill-opacity=".35"/><line x1="0" y1="0" x2="0" y2="7" stroke="#c3ced6" stroke-width="1.4"/></pattern></defs>';
     this.feats.forEach((f, i) => {
-      const status = f.p.statusComercial;
-      const fill = status === 'prospect' ? 'url(#terHatch)' : this.cor(status);
-      const op = status === 'prospect' ? '1' : '.5';
+      const [fill, op] = this._estilo(f.p); // cor conforme a camada temática ativa
       const sel = (this.sel === i);
       f.aneis.forEach(anel => {
         if (anel.length < 3) return;
@@ -132,6 +216,7 @@ const Territorio = {
       ${this.tiles && navigator.onLine ? `<div class="croqui-atribuicao">${App.escapeHtml(this.tiles.atribuicao || '')}</div>` : ''}`;
     palco.querySelector('#terSvg').innerHTML = svg;
     this._info();
+    this._legenda();
   },
 
   _tilesHtml(url, larg, alt) {
