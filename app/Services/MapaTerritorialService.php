@@ -245,17 +245,12 @@ class MapaTerritorialService
 
             $areaHa = (float) $im['area_ha'];
             $cultura = $cult[$cod] ?? null;
-            $rate = $cultura !== null ? (self::RHA_MOCK[$cultura] ?? self::RHA_MOCK_PADRAO) : self::RHA_MOCK_PADRAO;
-
-            // Score MOCKADO determinístico (estável por imóvel; Qlik substitui no PR 9).
-            // Sem produtor vinculado = prospect: a Copérdia ainda não vendeu (realizado 0).
-            $temProd = $pinfo !== null;
-            $frac = (crc32($cod) % 1000) / 1000.0;
-            $potencial = (int) round($areaHa * $rate);
-            $realizado = $temProd ? (int) round($potencial * $frac) : 0;
-            $gap = $potencial - $realizado;
-            $share = $potencial > 0 ? round($realizado / $potencial, 4) : 0.0;
-            $status = !$temProd ? 'prospect' : ($share >= 0.05 ? 'ativo' : 'inativo');
+            $sc = self::scoreMock($cod, $areaHa, $cultura, $pinfo !== null);
+            $potencial = $sc['potencial'];
+            $realizado = $sc['realizado'];
+            $gap = $sc['gap'];
+            $share = $sc['share'];
+            $status = $sc['status'];
 
             $geom = self::geojsonGeometry($im['geo']);
             if ($geom === null) {
@@ -290,6 +285,126 @@ class MapaTerritorialService
             'fonte_score' => 'mock', // PR 3: score sintético — Qlik entra no PR 9
             'total' => count($features),
             'truncado' => $truncado,
+        ];
+    }
+
+    /** Score de demonstração (mock) determinístico por imóvel — Qlik substitui no PR 9. */
+    private static function scoreMock(string $cod, float $areaHa, ?string $cultura, bool $temProd): array
+    {
+        $rate = $cultura !== null ? (self::RHA_MOCK[$cultura] ?? self::RHA_MOCK_PADRAO) : self::RHA_MOCK_PADRAO;
+        $frac = (crc32($cod) % 1000) / 1000.0;
+        $potencial = (int) round($areaHa * $rate);
+        $realizado = $temProd ? (int) round($potencial * $frac) : 0; // prospect: Copérdia ainda não vendeu
+        $gap = $potencial - $realizado;
+        $share = $potencial > 0 ? round($realizado / $potencial, 4) : 0.0;
+        $status = !$temProd ? 'prospect' : ($share >= 0.05 ? 'ativo' : 'inativo');
+        return compact('potencial', 'realizado', 'gap', 'share', 'status');
+    }
+
+    /**
+     * Ficha completa de um imóvel (spec §8): cadastro + vínculos + talhões + visitas.
+     *
+     * @return array|null  null se o imóvel não existir.
+     */
+    public static function ficha(string $codCar, string $safra = ''): ?array
+    {
+        $codCar = trim($codCar);
+        $im = Database::um(
+            'SELECT cod_car, nome_imovel, municipio, uf, area_ha, cod_ibge, modulos_fiscais, tipo_imovel, situacao_car
+               FROM dim_imovel WHERE cod_car = ?',
+            [$codCar]
+        );
+        if (!$im) {
+            return null;
+        }
+
+        $produtores = Database::todos(
+            'SELECT b.produtor_id, b.papel, b.principal, b.origem, b.confianca,
+                    c.nome, c.telefone, c.municipio AS cli_municipio, u.nome AS rtv
+               FROM bridge_imovel_produtor b
+               JOIN clientes c ON c.id = b.produtor_id
+               LEFT JOIN usuarios u ON u.id = c.responsavel_id
+              WHERE b.cod_car = ?
+              ORDER BY b.principal DESC, c.nome',
+            [$codCar]
+        );
+
+        $talWhere = 'cod_car = ?';
+        $talParams = [$codCar];
+        if ($safra !== '') {
+            $talWhere .= ' AND safra = ?';
+            $talParams[] = $safra;
+        }
+        $talhoes = Database::todos(
+            "SELECT safra, nome_talhao, cultura, area_plantada, produtividade
+               FROM fato_talhao_safra WHERE $talWhere ORDER BY area_plantada DESC",
+            $talParams
+        );
+
+        $visitas = [];
+        $ids = array_column($produtores, 'produtor_id');
+        if ($ids) {
+            $marks = implode(',', array_fill(0, count($ids), '?'));
+            $visitas = Database::todos(
+                "SELECT v.data_visita, v.objetivo, v.estagio_cultura, v.finalizada,
+                        c.nome AS produtor, u.nome AS tecnico
+                   FROM visitas v
+                   JOIN clientes c ON c.id = v.cliente_id
+                   LEFT JOIN usuarios u ON u.id = v.usuario_id
+                  WHERE v.cliente_id IN ($marks)
+                  ORDER BY v.data_visita DESC, v.id DESC
+                  LIMIT 12",
+                $ids
+            );
+        }
+
+        $cultura = $talhoes[0]['cultura'] ?? null; // maior área na safra
+        $sc = self::scoreMock($codCar, (float) $im['area_ha'], $cultura, count($produtores) > 0);
+        $principal = $produtores[0] ?? null;
+
+        return [
+            'codCar' => $im['cod_car'],
+            'nomeImovel' => $im['nome_imovel'],
+            'municipio' => $im['municipio'],
+            'uf' => $im['uf'],
+            'areaHa' => round((float) $im['area_ha'], 2),
+            'modulosFiscais' => $im['modulos_fiscais'] !== null ? (float) $im['modulos_fiscais'] : null,
+            'tipoImovel' => $im['tipo_imovel'],
+            'situacaoCar' => $im['situacao_car'],
+            'culturaPrincipal' => $cultura,
+            'statusComercial' => $sc['status'],
+            'potencial' => $sc['potencial'],
+            'realizado' => $sc['realizado'],
+            'share' => $sc['share'],
+            'gap' => $sc['gap'],
+            'rtv' => $principal['rtv'] ?? null,
+            'fonte_score' => 'mock',
+            'produtores' => array_map(static fn ($p) => [
+                'id' => (int) $p['produtor_id'],
+                'nome' => $p['nome'],
+                'telefone' => $p['telefone'],
+                'municipio' => $p['cli_municipio'],
+                'papel' => $p['papel'],
+                'principal' => (int) $p['principal'] === 1,
+                'origem' => $p['origem'],
+                'confianca' => $p['confianca'],
+                'rtv' => $p['rtv'],
+            ], $produtores),
+            'talhoes' => array_map(static fn ($t) => [
+                'safra' => $t['safra'],
+                'nomeTalhao' => $t['nome_talhao'],
+                'cultura' => $t['cultura'],
+                'areaPlantada' => (float) $t['area_plantada'],
+                'produtividade' => $t['produtividade'] !== null ? (float) $t['produtividade'] : null,
+            ], $talhoes),
+            'visitas' => array_map(static fn ($v) => [
+                'data' => $v['data_visita'],
+                'objetivo' => $v['objetivo'],
+                'estagio' => $v['estagio_cultura'],
+                'finalizada' => (int) $v['finalizada'] === 1,
+                'produtor' => $v['produtor'],
+                'tecnico' => $v['tecnico'],
+            ], $visitas),
         ];
     }
 

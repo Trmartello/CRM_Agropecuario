@@ -72,4 +72,21 @@ class TerritorioController
         }
         json_resposta($fc);
     }
+
+    /** GET territorio/imovel?cod=&safra= → ficha completa do imóvel (PR 6). */
+    public function imovel(): void
+    {
+        Permissoes::exigir(self::PERFIS);
+        liberar_sessao();
+        $cod = trim($_GET['cod'] ?? '');
+        $safra = trim($_GET['safra'] ?? '');
+        if ($cod === '') {
+            json_erro('Código do imóvel não informado.');
+        }
+        $ficha = MapaTerritorialService::ficha($cod, $safra);
+        if ($ficha === null) {
+            json_resposta(['erro' => 'Imóvel não encontrado.'], 404);
+        }
+        json_resposta($ficha);
+    }
 }

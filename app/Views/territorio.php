@@ -26,6 +26,8 @@
   .ter-poly { transition: fill .45s ease-in-out, fill-opacity .45s ease-in-out; }
   .ter-ramp { display:inline-flex; height:10px; width:120px; border-radius:2px; overflow:hidden; vertical-align:middle; margin-right:6px; border:1px solid rgba(0,0,0,.15); }
   .ter-ramp i { flex:1; }
+  .ter-ficha { position:absolute; top:0; right:0; width:min(340px,92%); height:100%; overflow-y:auto; background:#fff; border-left:1px solid rgba(0,0,0,.1); box-shadow:-6px 0 18px rgba(0,0,0,.12); z-index:5; }
+  .ter-carcode { font-family:var(--bs-font-monospace,monospace); font-size:10px; word-break:break-all; line-height:1.5; background:rgba(212,166,74,.08); border:1px solid rgba(212,166,74,.25); border-radius:3px; padding:5px 7px; color:#8a6d2e; }
   @media (prefers-reduced-motion: reduce) { .ter-poly { transition: none; } }
 </style>
 
@@ -39,7 +41,10 @@
   <span id="terInfo" class="small ms-auto"></span>
 </div>
 
-<div id="terPalco" class="croqui-palco" style="height:66vh;min-height:400px"></div>
+<div id="terWrap" style="position:relative">
+  <div id="terPalco" class="croqui-palco" style="height:66vh;min-height:400px"></div>
+  <div id="terFicha" class="ter-ficha d-none"></div>
+</div>
 
 <div id="terLegenda" class="d-flex flex-wrap align-items-center mt-2 small"></div>
 
@@ -87,6 +92,7 @@ const Territorio = {
       this.feats = (fc.features || []).map(f => ({ aneis: this._aneisDe(f.geometry), p: f.properties })).filter(f => f.aneis.length);
       this._maxGap = this.feats.reduce((m, f) => Math.max(m, Number(f.p.gap) || 0), 0); // gap normalizado pelo filtro
       cont.textContent = this.feats.length + ' imóvel(is)' + (fc.truncado ? ' (limite de 5000 — aproxime/filtre)' : '');
+      this._fecharFicha();
       this.sel = null;
       this._enquadrar();
       this.render();
@@ -239,7 +245,77 @@ const Territorio = {
 
   zoom(d) { if (!this.vista) return; this.vista.z = Math.max(3, Math.min(19, Math.round(this.vista.z) + d)); this.render(); },
 
-  _selecionar(i) { this.sel = (this.sel === i ? null : i); this.render(); },
+  _selecionar(i) {
+    if (i === null || i === this.sel) { this.sel = null; this._fecharFicha(); this.render(); return; }
+    this.sel = i; this.render();
+    this._abrirFicha(this.feats[i].p); // painel lateral com a ficha completa
+  },
+
+  async _abrirFicha(p) {
+    const box = document.getElementById('terFicha');
+    box.classList.remove('d-none');
+    box.innerHTML = '<div class="p-3 text-muted"><span class="spinner-border spinner-border-sm me-1"></span>Carregando ficha…</div>';
+    try {
+      const safra = (document.getElementById('terSafra') || {}).value || '';
+      const resp = await fetch('index.php?r=territorio/imovel&' + new URLSearchParams({ cod: p.codCar, safra }).toString(), { headers: { 'X-Requested-With': 'fetch' } });
+      if (!resp.ok) throw new Error('Falha ao carregar a ficha (HTTP ' + resp.status + ').');
+      const d = await resp.json();
+      if (d.erro) throw new Error(d.erro);
+      box.innerHTML = this._fichaHtml(d);
+    } catch (e) {
+      box.innerHTML = '<div class="p-3"><button type="button" class="btn-close float-end" onclick="Territorio._fecharFicha()"></button>'
+        + '<div class="text-danger small">' + App.escapeHtml(e.message) + '</div></div>';
+    }
+  },
+
+  _fecharFicha() {
+    const box = document.getElementById('terFicha');
+    if (box) { box.classList.add('d-none'); box.innerHTML = ''; }
+    if (this.sel !== null) { this.sel = null; this.render(); }
+  },
+
+  _fichaHtml(d) {
+    const esc = App.escapeHtml;
+    const brl = v => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+    const chip = { ativo: ['#e6f0e9', '#2f6b45', 'Cliente ativo'], inativo: ['#fbf3e2', '#8a6d2e', 'Inativo'], prospect: ['#eef1f3', '#5f6b73', 'Prospect'] }[d.statusComercial] || ['#eee', '#555', d.statusComercial];
+    const prods = (d.produtores || []).map(p => {
+      const tel = (p.telefone || '').replace(/\D/g, '');
+      return '<div class="d-flex justify-content-between align-items-start border-bottom py-1">'
+        + '<span class="small">' + esc(p.nome) + (p.principal ? ' <span class="badge text-bg-success">principal</span>' : '')
+        + '<br><span class="text-muted">' + esc(p.papel) + ' · ' + esc(p.origem) + ' · confiança ' + esc(p.confianca) + '</span></span>'
+        + (tel ? '<a class="btn btn-sm btn-outline-success ms-1" href="https://wa.me/55' + esc(tel) + '" target="_blank" rel="noopener"><i class="bi bi-whatsapp"></i></a>' : '')
+        + '</div>';
+    }).join('') || '<div class="text-muted small">Sem produtor vinculado (prospect). Vincule por GPS na visita.</div>';
+    const tal = (d.talhoes || []).map(t => '<div class="d-flex justify-content-between py-1 border-bottom small">'
+      + '<span>' + esc(t.nomeTalhao) + ' <span class="text-muted">· ' + esc(t.cultura) + '</span></span>'
+      + '<span>' + Number(t.areaPlantada).toLocaleString('pt-BR') + ' ha' + (t.produtividade ? ' · ' + Number(t.produtividade).toLocaleString('pt-BR') + ' sc/ha' : '') + '</span></div>'
+    ).join('') || '<div class="text-muted small">Sem talhões declarados nesta safra.</div>';
+    const vis = (d.visitas || []).map(v => '<div class="py-1 border-bottom small">'
+      + '<span class="text-muted">' + esc(v.data) + '</span> · ' + esc(v.tecnico || '—') + (v.finalizada ? '' : ' <span class="badge text-bg-warning">incompleta</span>')
+      + '<br><span>' + esc(v.objetivo || v.estagio || '—') + '</span></div>'
+    ).join('') || '<div class="text-muted small">Sem visitas registradas.</div>';
+    return '<div class="p-3">'
+      + '<button type="button" class="btn-close float-end" aria-label="Fechar" onclick="Territorio._fecharFicha()"></button>'
+      + '<div class="small text-muted">Imóvel (CAR)</div>'
+      + '<div class="fw-semibold" style="font-size:15px">' + esc(d.nomeImovel || d.codCar) + '</div>'
+      + '<div class="text-muted small">' + esc(d.municipio) + '/' + esc(d.uf) + ' · ' + Number(d.areaHa).toLocaleString('pt-BR') + ' ha'
+      + (d.situacaoCar ? ' · CAR ' + esc(d.situacaoCar) : '') + '</div>'
+      + '<div class="mt-1"><span class="badge" style="background:' + chip[0] + ';color:' + chip[1] + '">' + esc(chip[2]) + '</span>'
+      + (d.culturaPrincipal ? ' <span class="badge text-bg-light border">' + esc(d.culturaPrincipal) + '</span>' : '') + '</div>'
+      + '<div class="ter-carcode mt-2">' + esc(d.codCar) + '</div>'
+      + '<div class="mt-3">'
+      + '<div class="d-flex justify-content-between"><span class="text-muted small">Potencial</span><strong>' + brl(d.potencial) + '</strong></div>'
+      + '<div class="d-flex justify-content-between"><span class="text-muted small">Realizado Copérdia</span><strong class="text-success">' + brl(d.realizado) + '</strong></div>'
+      + '<div class="progress my-1" style="height:6px"><div class="progress-bar bg-success" style="width:' + (Number(d.share) * 100).toFixed(1) + '%"></div></div>'
+      + '<div class="text-muted small">Share of wallet — ' + (Number(d.share) * 100).toFixed(0) + '%</div>'
+      + '<div class="d-flex justify-content-between border-top mt-1 pt-1"><span>Gap a capturar</span><strong style="color:#c7452a">' + brl(d.gap) + '</strong></div>'
+      + '<div class="text-warning small mt-1"><i class="bi bi-flask me-1"></i>Score de demonstração</div></div>'
+      + '<div class="mt-3"><div class="fw-semibold small mb-1">Produtores vinculados</div>' + prods + '</div>'
+      + '<div class="mt-3"><div class="fw-semibold small mb-1">Talhões declarados</div>' + tal + '</div>'
+      + '<div class="mt-3"><div class="fw-semibold small mb-1">Últimas visitas</div>' + vis + '</div>'
+      + (d.rtv ? '<div class="mt-3 small text-muted">RTV responsável: <strong>' + esc(d.rtv) + '</strong></div>' : '')
+      + '</div>';
+  },
 
   _info() {
     const box = document.getElementById('terInfo');
@@ -295,7 +371,7 @@ const Territorio = {
         const foiClique = ev.type === 'pointerup' && ev.isPrimary && !this._pan.moved;
         this._pan = null;
         if (foiClique && this._alvo) this._selecionar(Number(this._alvo.dataset.i));
-        else if (foiClique && this.sel !== null) { this.sel = null; this.render(); }
+        else if (foiClique) this._selecionar(null); // clique no vazio fecha a ficha
       }
       this._alvo = null;
     }));

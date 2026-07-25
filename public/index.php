@@ -175,6 +175,7 @@ $router->registrar('integracao/vincular-car-propriedades', \App\Controllers\Inte
 $router->registrar('integracao/gerar-territorio', \App\Controllers\IntegracaoController::class, 'gerarTerritorio');
 $router->registrar('territorio', \App\Controllers\TerritorioController::class, 'index');
 $router->registrar('territorio/imoveis', \App\Controllers\TerritorioController::class, 'imoveis');
+$router->registrar('territorio/imovel', \App\Controllers\TerritorioController::class, 'imovel');
 $router->registrar('clientes/salvar-plano-safra', ClientesController::class, 'salvarPlanoSafra');
 $router->registrar('clientes/salvar-documento', ClientesController::class, 'salvarDocumento');
 $router->registrar('clientes/baixar-documento', ClientesController::class, 'baixarDocumento');
