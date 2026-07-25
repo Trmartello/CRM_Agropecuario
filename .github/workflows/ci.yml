@@ -1,0 +1,50 @@
+name: CI
+
+# Rede de proteção antes do deploy: o Railway ("Wait for CI" ligado) só publica
+# se este workflow passar. Checa SINTAXE (rápido e confiável) — php -l em todos
+# os arquivos PHP e node --check nos JS do app (menos os libs de terceiros).
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    name: Sintaxe (php -l + node --check)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+
+      - name: Sintaxe PHP (php -l em todos os arquivos)
+        run: |
+          erro=0
+          while IFS= read -r -d '' f; do
+            if ! php -l "$f" > /dev/null 2>&1; then
+              echo "::error file=$f::Erro de sintaxe PHP"
+              php -l "$f" || true
+              erro=1
+            fi
+          done < <(find . -path ./vendor -prune -o -name '*.php' -print0)
+          exit $erro
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Sintaxe JS (node --check, exceto vendor)
+        run: |
+          erro=0
+          while IFS= read -r -d '' f; do
+            if ! node --check "$f"; then
+              echo "::error file=$f::Erro de sintaxe JS"
+              erro=1
+            fi
+          done < <(find public tests -name '*.js' -not -path '*/vendor/*' -print0)
+          exit $erro

@@ -110,3 +110,4 @@ Login seed: admin@coperdia.com.br / senha definida no seed de `database.sql`. H�
 - Branch de trabalho: `claude/novo-projeto-w35g2t` (nunca commitar direto na `main`).
 - Push: `git push -u origin claude/novo-projeto-w35g2t`.
 - Commits em português, descritivos, um assunto por commit.
+- **Deploy**: o Railway (produção) sai **direto do branch `claude/novo-projeto-w35g2t`** com auto-deploy a cada push e **"Wait for CI" ligado** — só publica se o CI passar. **CI** (`.github/workflows/ci.yml`): `php -l` em todos os PHP + `node --check` nos JS do app (menos `vendor/`), PHP 8.3 (igual ao Dockerfile). Rode o mesmo lint local antes de commitar; se a sintaxe quebrar, o CI falha e o Railway NÃO publica (protege a produção).
