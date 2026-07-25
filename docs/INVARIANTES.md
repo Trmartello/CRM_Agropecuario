@@ -2,18 +2,37 @@
 
 ## O que este sistema é
 
-Ferramenta comercial e técnica para a equipe agro da Copérdia (RTV, gerência
-regional, Controladoria). NÃO é um sistema de gestão de lavoura para o produtor.
+Duas aplicações sobre um modelo de dados e uma biblioteca de cálculo comuns.
 
-Tese: vender por **potencial do produtor**, não por histórico de compra.
-Quem nunca comprou pode ser o maior gap do território.
+**CRM interno** — usuários: RTV, gerência regional, Controladoria.
+Território, carteira, visitas, oportunidade comercial.
+
+**Portal do Produtor** — usuário: o cooperado.
+Custo de lavoura, ponto de equilíbrio, simulação de venda antecipada,
+solicitação de visita técnica, monitoria de lavoura.
+
+Não é um sistema de gestão de lavoura no modelo Aegro. Não construímos caderno
+de campo, controle de estoque do produtor nem gestão de maquinário.
+
+Tese comercial: vender por **potencial do produtor**, não por histórico de compra.
+Tese do portal: dar ao produtor visibilidade sobre a própria margem. É a
+contrapartida que justifica a confiança e o dado.
 
 ## Invariantes — nunca violar
 
-1. **O Qlik calcula, o CRM exibe.** Nenhum indicador financeiro, margem, share
-   ou potencial é recalculado neste código. Tudo vem do `SCORE_QLIK` (read-only,
-   sync diário). Se um número precisa existir e não está lá, a solução é pedir a
-   medida no Qlik — não implementar a fórmula aqui.
+1. **Duas classes de número, duas regras.**
+
+   *Indicador da Copérdia* — share, gap, potencial, margem, faturamento, EVA:
+   calculado **no Qlik**, consumido via `SCORE_QLIK`. Nunca reimplementar a
+   fórmula aqui. Se o número não existe lá, peça a medida no Qlik.
+
+   *Cálculo do produtor sobre dados que o próprio produtor digitou* — custo,
+   ponto de equilíbrio, cobertura de travamento: calculado em
+   `src/core/custo/motor.js`, funções puras, testadas, versionadas. Não é dado
+   da Copérdia, não entra no DRE, e precisa responder em tempo real.
+
+   Na dúvida sobre qual regra se aplica: se o número descreve a Copérdia, é Qlik.
+   Se descreve a lavoura do cooperado, é motor local.
 
 2. **CAR identifica área, não pessoa.** A relação imóvel × produtor é N:M por
    causa de condomínio e posse localizada. Nunca modelar como 1:1, nunca usar
@@ -25,6 +44,31 @@ Quem nunca comprou pode ser o maior gap do território.
 4. **Dado de produtor é sensível.** CPF, CNPJ, coordenada de propriedade e
    faturamento individual nunca aparecem em log, URL, query string ou mensagem
    de erro.
+
+5. **Firewall do dado do cooperado.** As tabelas `lavoura_custo`,
+   `lavoura_cenario` e o campo `resultado_json` são inacessíveis a qualquer
+   perfil comercial. Restrição aplicada no usuário de banco, não só na aplicação.
+   Nenhuma view, join ou endpoint do CRM interno pode referenciá-las. Para a
+   Controladoria, apenas `agg_custo_regional`, com mínimo de 5 produtores por
+   bucket.
+
+   Motivo: se o RTV souber o ponto de equilíbrio do cooperado, negocia com
+   vantagem informacional sobre ele. Numa cooperativa isso é indefensável.
+
+6. **A ferramenta é descritiva, nunca prescritiva.** Nada no Portal recomenda
+   comprar, vender, travar ou aguardar. Nada afirma direção de preço. Nenhuma
+   oferta da Copérdia aparece sem a referência CEPEA e o futuro B3 na mesma tela
+   e com igual destaque. Lista de termos proibidos e teste de lint em
+   `docs/specs/custo-lavoura.md`, seção 8.
+
+   Motivo: a Copérdia é compradora da produção. Uma ferramenta que aconselha
+   vender é instrumento de venda disfarçado, e o cooperado percebe.
+
+7. **Código do Portal é território separado.** Frontend em `apps/portal/`, API
+   em rotas `/portal/*`, autenticação de usuário externo. Nunca importar módulo
+   do CRM interno no Portal nem o contrário. O compartilhado vive em `src/core/`.
+
+   Motivo: superfície de ataque, LGPD e tolerância a falha são diferentes.
 
 ## Stack
 
@@ -45,6 +89,19 @@ Geometria em SRID 4326.
 - Um PR por item da ordem de implementação do spec. Não adiantar etapas.
 - Se o spec estiver ambíguo, pergunte. Não escolha por conta própria em
   regra de negócio.
+
+## Rigor por criticidade
+
+| Área | Exigência |
+|---|---|
+| `src/core/custo/` | teste escrito antes da implementação, cobertura 100%, funções puras |
+| Endpoints do Portal | validação de propriedade do recurso em toda rota; servidor recalcula, nunca confia no cliente |
+| CRM interno | teste em regra de negócio; UI sem exigência de cobertura |
+| Scripts de ETL | relatório de carga obrigatório; sem descarte silencioso |
+
+Motivo do primeiro item: um erro no ponto de equilíbrio faz um cooperado travar
+preço abaixo do custo dele. É a única parte do sistema onde o defeito tem
+consequência financeira para terceiro.
 
 ## Estado atual
 
