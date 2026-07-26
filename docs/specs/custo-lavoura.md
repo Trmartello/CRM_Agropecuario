@@ -63,19 +63,28 @@ sacas_livres     = producao_total * (1 - t)
 Escrever estes testes **antes** do motor. Tolerância de 0,01.
 
 **Caso A — soja, base CT**
+
+> **Correção (2026-07-26).** A versão original imprimia `custo_total = 470.240,00`
+> e, por arrasto, `sacas_equilibrio = 3.589,62`, `pct_equilibrio = 0,9348` e
+> `cobertura_custo = 0,4279`. Isso contraria a própria fórmula do §3
+> (`custo_total = C × A = 7360 × 64 = 471.040,00`). Os golden values abaixo já
+> estão corrigidos para o resultado da fórmula literal (confirmado pela Diretoria).
+> `preco_equilibrio` e `produtividade_equilibrio` não dependem de `custo_total` e
+> já estavam corretos.
+
 ```
 entrada:  A=64  P=60  M=132  Pt=131  t=0.40
 custos/ha: COE=5040  COT=6180  CT=7360
 esperado:
-  custo_total             = 470.240,00
+  custo_total             = 471.040,00
   producao_total          = 3.840 sc
   preco_equilibrio        = 122,67 R$/sc
   produtividade_equilibrio= 55,76 sc/ha
-  sacas_equilibrio        = 3.589,62 sc
-  pct_equilibrio          = 0,9348
+  sacas_equilibrio        = 3.595,73 sc
+  pct_equilibrio          = 0,9364
   sacas_travadas          = 1.536 sc
   receita_travada         = 201.216,00
-  cobertura_custo         = 0,4279
+  cobertura_custo         = 0,4272
 ```
 
 **Caso B — milho, base CT**

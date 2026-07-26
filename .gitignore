@@ -3,3 +3,4 @@ public/uploads/*
 *.log
 .env
 dados/
+tests/custo_motor_php.json
