@@ -327,8 +327,16 @@ class MapaTerritorialService
                     $map[(string) $r['cod_car']] = $r;
                 }
             }
-        } catch (\Throwable $e) {
-            return []; // banco ainda sem a tabela (pré-migração): cai no mock
+        } catch (\PDOException $e) {
+            // Só o caso "tabela ainda não existe" (banco pré-migração) cai no
+            // mock em silêncio; qualquer OUTRO erro (deadlock, timeout, coluna)
+            // é logado e propagado — senão uma falha real do cache do Qlik
+            // viraria "score de demonstração" sem ninguém perceber.
+            if ($e->getCode() !== '42S02') {
+                error_log('[CRM][territorio] falha ao ler cache_score_imovel: ' . $e->getMessage());
+                throw $e;
+            }
+            return [];
         }
         return $map;
     }

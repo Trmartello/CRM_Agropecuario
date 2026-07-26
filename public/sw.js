@@ -2,7 +2,7 @@
  * Cache do app e assets para abrir sem conexão (offline básico da Fase 1).
  */
 
-const CACHE = 'crm-coperdia-v33';
+const CACHE = 'crm-coperdia-v34';
 
 const ARQUIVOS_APP = [
   'assets/vendor/bootstrap.min.css',
@@ -69,7 +69,24 @@ function removerSW(db, id) {
     tx.oncomplete = res; tx.onerror = res;
   });
 }
+function putSW(db, reg) {
+  return new Promise(res => {
+    const tx = db.transaction('fila_sync', 'readwrite');
+    tx.objectStore('fila_sync').put(reg);
+    tx.oncomplete = res; tx.onerror = res;
+  });
+}
 async function sincronizarFilaSW() {
+  // Mesmo Web Lock da página (offline.js): evita SW e página reenviarem a MESMA
+  // fila ao mesmo tempo (o servidor deduplica por uuid, mas o envio dobrado de
+  // payload/anexos é desperdício de rede no campo).
+  if (self.navigator && navigator.locks && navigator.locks.request) {
+    return navigator.locks.request('crm-sync-fila', { ifAvailable: true },
+      trava => (trava ? _sincronizarFilaSW() : null));
+  }
+  return _sincronizarFilaSW();
+}
+async function _sincronizarFilaSW() {
   let db;
   try { db = await abrirBancoSW(); } catch (e) { return; }
   if (!db.objectStoreNames.contains('fila_sync')) return;
@@ -85,7 +102,16 @@ async function sincronizarFilaSW() {
     if ((resp.redirected && /r=login/.test(resp.url)) || resp.status === 401 || resp.status === 403) break; // sessão expirada
     let dados = null;
     try { dados = await resp.json(); } catch (e) { /* ignore */ }
-    if (dados && dados.ok) await removerSW(db, reg.id);
+    if (dados && dados.ok) {
+      await removerSW(db, reg.id);
+    } else if (dados && dados.ok === false) {
+      // Recusa de NEGÓCIO (validação): marca o erro — como a página faz — para
+      // o item parar de ser reenviado a cada reconexão e aparecer no painel de
+      // pendências com o motivo (antes ficava em loop infinito pela via do SW).
+      reg.erro = dados.erro || ('HTTP ' + resp.status);
+      await putSW(db, reg);
+    }
+    // resposta ilegível (proxy/5xx): mantém sem erro p/ tentar de novo depois
   }
 }
 // ---- Web Push: o push chega SEM payload; buscamos a última notificação para exibir ----

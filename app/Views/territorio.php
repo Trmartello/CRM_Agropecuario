@@ -102,9 +102,11 @@ const Territorio = {
       // Endpoint é GeoJSON puro (sem envelope {ok}): fetch direto, não App.json.
       const qs = new URLSearchParams({ municipio, uf, safra });
       const resp = await fetch('index.php?r=territorio/imoveis&' + qs.toString(), { headers: { 'X-Requested-With': 'fetch' } });
-      if (!resp.ok) throw new Error('Falha ao carregar o mapa (HTTP ' + resp.status + ').');
-      const fc = await resp.json();
+      // Lê o corpo ANTES de decidir: um 400 do servidor traz {erro:"mensagem útil"}
+      // — sem isso o usuário via só "HTTP 400" genérico.
+      const fc = await resp.json().catch(() => null);
       if (fc && fc.erro) throw new Error(fc.erro);
+      if (!resp.ok || !fc) throw new Error('Falha ao carregar o mapa (HTTP ' + resp.status + ').');
       this.feats = (fc.features || []).map(f => ({ aneis: this._aneisDe(f.geometry), p: f.properties })).filter(f => f.aneis.length);
       this._maxGap = this.feats.reduce((m, f) => Math.max(m, Number(f.p.gap) || 0), 0); // gap normalizado pelo filtro
       cont.textContent = this.feats.length + ' imóvel(is)' + (fc.truncado ? ' (limite de 5000 — aproxime/filtre)' : '');
@@ -411,6 +413,7 @@ const Territorio = {
       this._ponteiros.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
       if (this._ponteiros.size === 2 && this.vista) {
         this._pan = null;
+        palco.style.transform = ''; // encerra o pan leve antes da pinça
         const [a, b] = [...this._ponteiros.values()]; const r = palco.getBoundingClientRect(); const e = this._escala();
         const mx = (a.x + b.x) / 2 - r.left, my = (a.y + b.y) / 2 - r.top;
         this._pinch = { d0: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), z0: this.vista.z, wx: this.vista.cx + (mx - r.width / 2) / e, wy: this.vista.cy + (my - r.height / 2) / e };
@@ -434,7 +437,15 @@ const Territorio = {
       if (this._pan) {
         const dx = ev.clientX - this._pan.x, dy = ev.clientY - this._pan.y;
         if (Math.hypot(dx, dy) > 6) this._pan.moved = true;
-        if (this._pan.moved && this.vista) { const e = this._escala(); this.vista.cx = this._pan.cx0 - dx / e; this.vista.cy = this._pan.cy0 - dy / e; this.render(); }
+        if (this._pan.moved && this.vista) {
+          const e = this._escala();
+          this.vista.cx = this._pan.cx0 - dx / e; this.vista.cy = this._pan.cy0 - dy / e;
+          // PAN LEVE: não reconstrói tiles/SVG a cada pointermove (com milhares
+          // de polígonos o innerHTML por frame fazia a imagem piscar e travava o
+          // arraste — mesmo bug já corrigido no Croqui). Só desloca o palco; o
+          // render completo acontece ao soltar.
+          palco.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+        }
         ev.preventDefault();
       }
     });
@@ -443,7 +454,10 @@ const Territorio = {
       if (this._pinch) { if (this._ponteiros.size < 2) this._pinch = null; this._alvo = null; return; }
       if (this._pan) {
         const foiClique = ev.type === 'pointerup' && ev.isPrimary && !this._pan.moved;
+        const moveu = this._pan.moved;
         this._pan = null;
+        palco.style.transform = '';
+        if (moveu) this.render(); // render completo só ao soltar o arraste
         if (foiClique && this._alvo) this._selecionar(Number(this._alvo.dataset.i));
         else if (foiClique) this._selecionar(null); // clique no vazio fecha a ficha
       }

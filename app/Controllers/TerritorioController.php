@@ -95,9 +95,12 @@ class TerritorioController
     {
         Permissoes::exigir(self::PERFIS);
         liberar_sessao();
-        $lat = isset($_GET['lat']) && $_GET['lat'] !== '' ? (float) $_GET['lat'] : null;
-        $lng = isset($_GET['lng']) && $_GET['lng'] !== '' ? (float) $_GET['lng'] : null;
-        $produtor = (int) ($_GET['produtor'] ?? 0);
+        // Coordenada via POST (corpo), nunca query string: o GPS na propriedade é
+        // efetivamente a coordenada da propriedade do cooperado e não pode parar
+        // no access log do proxy (invariante 4).
+        $lat = isset($_POST['lat']) && $_POST['lat'] !== '' ? (float) $_POST['lat'] : null;
+        $lng = isset($_POST['lng']) && $_POST['lng'] !== '' ? (float) $_POST['lng'] : null;
+        $produtor = (int) ($_POST['produtor'] ?? 0);
         if ($lat === null || $lng === null || ($lat === 0.0 && $lng === 0.0)) {
             json_erro('Coordenada inválida.');
         }

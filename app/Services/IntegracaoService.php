@@ -241,6 +241,11 @@ class IntegracaoService
         $vinculados = 0;
         $metasImportadas = 0;
         $semUsuario = [];
+        // Atômico: a recarga apaga as metas do ano antes de reinserir — se cair
+        // no meio (conexão/erro), sem transação o vendedor ficava SEM meta.
+        $pdo = Database::conexao();
+        $pdo->beginTransaction();
+        try {
         foreach ($carga['vendedores'] as $v) {
             $cod = (int) ($v['cod'] ?? 0);
             $usuarioId = $porCodigo[$cod] ?? null;
@@ -288,8 +293,16 @@ class IntegracaoService
                 $metasImportadas++;
             }
         }
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
 
-        self::registrar('CAPE', 'metas_cap', $vinculados > 0 ? 'Sucesso' : 'Sem vínculos', $metasImportadas,
+        // status é ENUM('Sucesso','Parcial','Erro') — valor fora disso quebra no MySQL 8 estrito
+        self::registrar('CAPE', 'metas_cap', $vinculados > 0 ? 'Sucesso' : 'Parcial', $metasImportadas,
             "Carga Qlik {$ano}: {$vinculados} vendedor(es) vinculados, " . count($semUsuario) . ' sem usuário');
 
         return [

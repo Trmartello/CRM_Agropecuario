@@ -95,7 +95,11 @@ class PrestacaoService
             $pdo->commit();
             return $prestacaoId;
         } catch (\Throwable $e) {
-            $pdo->rollBack();
+            // guard: se a exceção veio do próprio commit, a transação já acabou e
+            // um rollBack cru lançaria outra exceção, engolindo a causa original
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             throw $e;
         }
     }

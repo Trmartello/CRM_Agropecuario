@@ -102,7 +102,11 @@ Auth::iniciarSessao();
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     $fetchSite = strtolower($_SERVER['HTTP_SEC_FETCH_SITE'] ?? '');
     $origem = $_SERVER['HTTP_ORIGIN'] ?? '';
-    $crossSite = ($fetchSite !== '' && !in_array($fetchSite, ['same-origin', 'same-site', 'none'], true));
+    // 'same-site' (outro subdomínio do mesmo domínio registrável) NÃO entra na
+    // lista: com cookies SameSite=Lax um subdomínio vizinho comprometido poderia
+    // forjar POSTs autenticados ao migrar para domínio próprio. A fila offline é
+    // same-origin e navegação de topo manda 'none' — nada legítimo quebra.
+    $crossSite = ($fetchSite !== '' && !in_array($fetchSite, ['same-origin', 'none'], true));
     if (!$crossSite && $fetchSite === '' && $origem !== '' && strtolower($origem) !== 'null') {
         $hostOrigem = strtolower((string) parse_url($origem, PHP_URL_HOST));
         $hostAtual = strtolower(explode(':', $_SERVER['HTTP_HOST'] ?? '')[0]);

@@ -97,7 +97,9 @@ const App = {
   /** Aceita apenas links internos (index.php…); descarta esquemas perigosos como javascript:. */
   linkSeguro(v) {
     const s = String(v || '');
-    return /^(index\.php|\?|#|\/|uploads\/)/.test(s) ? s : '#';
+    // "/(?!\/)": caminho interno sim, mas NUNCA "//host" (URL protocolo-relativa
+    // navegaria para domínio externo — open redirect)
+    return /^(index\.php|\?|#|uploads\/|\/(?!\/))/.test(s) ? s : '#';
   },
 
   /**
@@ -1969,8 +1971,12 @@ const Visitas = {
     const clienteId = sel ? Number(sel.value) : 0;
     if (!box || !clienteId) return;
     try {
-      const qs = new URLSearchParams({ lat: lat.toFixed(7), lng: lng.toFixed(7), produtor: clienteId });
-      const r = await App.json('index.php?r=territorio/localizar&' + qs.toString());
+      // POST no corpo: coordenada da propriedade nunca vai em query string (Inv.4)
+      const fd = new FormData();
+      fd.append('lat', lat.toFixed(7));
+      fd.append('lng', lng.toFixed(7));
+      fd.append('produtor', clienteId);
+      const r = await App.json('index.php?r=territorio/localizar', { method: 'POST', body: fd });
       const nome = sel.selectedOptions[0] ? sel.selectedOptions[0].text : 'este produtor';
       Visitas._vinculoCtx = { clienteId, nome };
       const ms = (r.match || []).filter(Boolean);
