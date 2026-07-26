@@ -268,6 +268,7 @@ $router->registrar('notificacoes/ler-todas', \App\Controllers\NotificacoesContro
 // Painel gerencial e mapa (Fase 4)
 $router->registrar('gerencial', \App\Controllers\GerencialController::class, 'index');
 $router->registrar('gerencial/desempenho', \App\Controllers\GerencialController::class, 'desempenho');
+$router->registrar('gerencial/custo-regional', \App\Controllers\GerencialController::class, 'custoRegional');
 $router->registrar('gerencial/auditoria-campo', \App\Controllers\GerencialController::class, 'auditoriaCampo');
 $router->registrar('auditoria', \App\Controllers\AuditoriaController::class, 'index');
 $router->registrar('backup/baixar', \App\Controllers\BackupController::class, 'baixar');

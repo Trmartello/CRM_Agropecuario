@@ -132,6 +132,29 @@ class GerencialController
     }
 
     /**
+     * Custo regional agregado (custo-lavoura §7): a visão de custo permitida à
+     * gestão — medianas k-anônimas (≥5 produtores por linha), NUNCA o número
+     * individual do cooperado. O agregado em si não é dado sob firewall.
+     */
+    public function custoRegional(): void
+    {
+        Permissoes::exigir(['Administrador', 'Gestor Comercial', 'Gestor Técnico', 'Analista']);
+        $f = [
+            'safra' => trim($_GET['safra'] ?? ''),
+            'cultura' => trim($_GET['cultura'] ?? ''),
+            'municipio' => trim($_GET['municipio'] ?? ''),
+            'faixa' => trim($_GET['faixa'] ?? ''),
+        ];
+        render('custo_regional', [
+            'linhas' => \App\Services\AgregacaoCustoService::consultar($f['safra'], $f['cultura'], $f['municipio'], $f['faixa']),
+            'opcoes' => \App\Services\AgregacaoCustoService::opcoes(),
+            'filtros' => $f,
+            'kMinimo' => \App\Services\AgregacaoCustoService::K_MINIMO,
+            'titulo' => 'Custo Regional (agregado)',
+        ]);
+    }
+
+    /**
      * Auditoria de campo (antifraude): visitas lançadas fora da propriedade
      * cadastrada do produtor. Restrita ao Administrador.
      */

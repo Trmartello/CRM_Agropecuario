@@ -114,6 +114,43 @@ class AgregacaoCustoService
         ];
     }
 
+    /* ---------- consulta do agregado (tela da gestão — NÃO é firewall) ---------- */
+
+    /** Valores distintos para os filtros da tela (do que está publicado). */
+    public static function opcoes(): array
+    {
+        return [
+            'safras' => array_column(Database::todos('SELECT DISTINCT safra FROM agg_custo_regional ORDER BY safra DESC'), 'safra'),
+            'culturas' => array_column(Database::todos('SELECT DISTINCT cultura FROM agg_custo_regional ORDER BY cultura'), 'cultura'),
+            'municipios' => array_column(Database::todos('SELECT DISTINCT municipio FROM agg_custo_regional ORDER BY municipio'), 'municipio'),
+            'faixas' => array_column(Database::todos("SELECT DISTINCT faixa_area FROM agg_custo_regional
+                ORDER BY FIELD(faixa_area,'ate_20','20_50','50_100','acima_100')"), 'faixa_area'),
+        ];
+    }
+
+    /** Linhas publicadas (já k-anônimas) com o rótulo do item, por filtros. */
+    public static function consultar(string $safra = '', string $cultura = '', string $municipio = '', string $faixa = ''): array
+    {
+        $where = [];
+        $params = [];
+        foreach (['safra' => $safra, 'cultura' => $cultura, 'municipio' => $municipio, 'faixa_area' => $faixa] as $col => $v) {
+            if ($v !== '') {
+                $where[] = "a.{$col} = ?";
+                $params[] = $v;
+            }
+        }
+        return Database::todos(
+            'SELECT a.safra, a.cultura, a.municipio, a.faixa_area, a.valor_mediano,
+                    a.qtd_produtores, a.dt_calculo, c.codigo, c.descricao, c.grupo, c.ordem
+               FROM agg_custo_regional a
+               JOIN cat_item_custo c ON c.id = a.cat_item_id'
+            . ($where ? ' WHERE ' . implode(' AND ', $where) : '') . "
+              ORDER BY a.safra DESC, a.cultura, a.municipio, a.faixa_area,
+                       FIELD(c.grupo,'coe','cot','ct'), c.ordem",
+            $params
+        );
+    }
+
     /** Mediana clássica (par = média dos dois centrais). */
     public static function mediana(array $valores): float
     {
