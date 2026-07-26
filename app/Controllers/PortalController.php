@@ -268,6 +268,57 @@ class PortalController
         json_ok($r + ['detalhe' => \App\Services\CustoLavouraService::detalhe($clienteId, $lavouraId)]);
     }
 
+    /**
+     * POST portal/fiscal-upload — canal 2 (§3): o produtor envia o XML da NF-e
+     * (contador/e-mail) SEM precisar da captura automática. Mesmo pipeline do
+     * pull — parse, posse pelo destinatário e dedup pela chave (aceite §11.6).
+     */
+    public function fiscalUpload(): void
+    {
+        $clienteId = $this->produtorId();
+        $arquivos = $_FILES['xmls'] ?? null;
+        if ($arquivos === null || empty($arquivos['tmp_name'])) {
+            json_erro('Selecione o arquivo XML da nota (NF-e).');
+        }
+        // normaliza single/multiple
+        $tmp = is_array($arquivos['tmp_name']) ? $arquivos['tmp_name'] : [$arquivos['tmp_name']];
+        $nomes = is_array($arquivos['name']) ? $arquivos['name'] : [$arquivos['name']];
+        $tam = is_array($arquivos['size']) ? $arquivos['size'] : [$arquivos['size']];
+        if (count($tmp) > 20) {
+            json_erro('Envie até 20 arquivos por vez.');
+        }
+        $resultados = [];
+        $novas = 0;
+        foreach ($tmp as $k => $t) {
+            $nome = (string) ($nomes[$k] ?? 'arquivo');
+            if ($t === '' || !is_uploaded_file($t)) {
+                continue;
+            }
+            if (strtolower(pathinfo($nome, PATHINFO_EXTENSION)) !== 'xml') {
+                $resultados[] = ['arquivo' => $nome, 'ok' => false, 'erro' => 'Envie o arquivo .xml da nota.'];
+                continue;
+            }
+            if ((int) ($tam[$k] ?? 0) > 2 * 1024 * 1024) {
+                $resultados[] = ['arquivo' => $nome, 'ok' => false, 'erro' => 'Arquivo muito grande (máximo 2 MB).'];
+                continue;
+            }
+            try {
+                $r = \App\Services\NotaFiscalService::importarXml($clienteId, (string) file_get_contents($t), 'upload');
+                if ($r['novo']) {
+                    $novas++;
+                }
+                $resultados[] = ['arquivo' => $nome, 'ok' => true, 'novo' => $r['novo'], 'itens' => $r['itens']];
+            } catch (\RuntimeException $e) {
+                $resultados[] = ['arquivo' => $nome, 'ok' => false, 'erro' => $e->getMessage()];
+            }
+        }
+        if (!$resultados) {
+            json_erro('Nenhum arquivo recebido.');
+        }
+        auditar('upload', 'nfe_documento', $clienteId, "portal: {$novas} nota(s) nova(s) por upload de XML");
+        json_ok(['resultados' => $resultados, 'novas' => $novas]);
+    }
+
     /** GET portal/mercado?cultura= — referências públicas (§8: oferta nunca sem CEPEA+B3). */
     public function mercado(): void
     {

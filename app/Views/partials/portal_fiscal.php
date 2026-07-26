@@ -59,6 +59,22 @@
     </div>
     <div class="small text-muted mt-2" id="pfResumo"></div>
     <div class="small text-muted mt-1" id="pfNota"></div>
+
+    <!-- Canal 2 (§3): upload de XML — independe da captura automática -->
+    <div class="border-top pt-3 mt-3">
+      <div class="small text-muted mb-2">
+        Recebeu o XML da nota por e-mail ou do seu contador? Envie aqui — funciona
+        <strong>sem</strong> autorizar a captura automática.
+      </div>
+      <input type="file" id="pfXmls" accept=".xml" multiple class="d-none"
+             onchange="PortalFiscal.upload(this.files)">
+      <button type="button" class="btn btn-outline-success" style="min-height:44px"
+              onclick="document.getElementById('pfXmls').click()">
+        <i class="bi bi-file-earmark-arrow-up me-1"></i>Enviar XML de nota
+      </button>
+      <div class="small mt-2" id="pfUploadResumo"></div>
+    </div>
+
     <div class="mt-3 d-none" id="pfNotas"></div>
   </div>
 </div>
@@ -109,6 +125,26 @@ const PortalFiscal = {
       document.getElementById('pfStatus').textContent = 'indisponível';
       document.getElementById('pfStatus').className = 'badge fs-6 text-bg-secondary';
     }
+    this.listarNotas(); // notas de upload aparecem mesmo sem captura automática
+  },
+
+  /** Canal 2: upload de XML da NF-e (mesmo pipeline do pull — §11.6). */
+  async upload(files) {
+    if (!files || !files.length) return;
+    const resumo = document.getElementById('pfUploadResumo');
+    resumo.innerHTML = '<span class="text-muted"><span class="spinner-border spinner-border-sm me-1"></span>Enviando…</span>';
+    try {
+      const fd = new FormData();
+      for (const f of files) fd.append('xmls[]', f, f.name);
+      const d = await App.json('index.php?r=portal/fiscal-upload', { method: 'POST', body: fd });
+      const linhas = d.resultados.map(r => r.ok
+        ? `<div class="text-success"><i class="bi bi-check-circle me-1"></i>${App.escapeHtml(r.arquivo)} — ${r.novo ? r.itens + ' item(ns) capturados' : 'nota já registrada'}</div>`
+        : `<div class="text-danger"><i class="bi bi-x-circle me-1"></i>${App.escapeHtml(r.arquivo)} — ${App.escapeHtml(r.erro)}</div>`);
+      resumo.innerHTML = linhas.join('');
+      if (d.novas > 0) App.alerta(d.novas + ' nota(s) recebida(s). Revise os itens antes de aplicar ao custo.');
+      this.listarNotas();
+      document.getElementById('pfXmls').value = '';
+    } catch (e) { resumo.innerHTML = ''; App.alerta(e.message, 'danger'); }
   },
 
   render(aut) {
