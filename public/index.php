@@ -269,6 +269,11 @@ $router->registrar('mapa', \App\Controllers\MapaController::class, 'index');
 
 // Portal do Produtor (Fase 4)
 $router->registrar('portal', \App\Controllers\PortalController::class, 'index');
+// Custo da Lavoura (spec custo-lavoura §9) — API do Portal, só perfil Produtor
+$router->registrar('portal/lavouras', \App\Controllers\PortalController::class, 'lavouras');
+$router->registrar('portal/lavoura', \App\Controllers\PortalController::class, 'lavoura');
+$router->registrar('portal/lavoura-criar', \App\Controllers\PortalController::class, 'lavouraCriar');
+$router->registrar('portal/lavoura-custos', \App\Controllers\PortalController::class, 'lavouraCustos');
 
 // Integração ERP/CAPE (Fase 5)
 $router->registrar('integracao', \App\Controllers\IntegracaoController::class, 'index');
