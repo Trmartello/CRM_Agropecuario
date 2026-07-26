@@ -10,6 +10,7 @@
  */
 $arquivos = [
     __DIR__ . '/../app/Views/partials/portal_custo.php',
+    __DIR__ . '/../app/Views/partials/portal_fiscal.php',
     __DIR__ . '/../public/assets/js/custo-motor.js',
 ];
 

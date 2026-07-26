@@ -284,6 +284,10 @@ $router->registrar('portal/lavoura-atualizar', \App\Controllers\PortalController
 $router->registrar('portal/lavoura-custos', \App\Controllers\PortalController::class, 'lavouraCustos');
 $router->registrar('portal/lavoura-cenario', \App\Controllers\PortalController::class, 'lavouraCenario');
 $router->registrar('portal/mercado', \App\Controllers\PortalController::class, 'mercado');
+// Ingestão de NF (spec nf-ingestao §6/§9) — opt-in/revogação da captura
+$router->registrar('portal/fiscal-autorizacao', \App\Controllers\PortalController::class, 'fiscalAutorizacao');
+$router->registrar('portal/fiscal-autorizar', \App\Controllers\PortalController::class, 'fiscalAutorizar');
+$router->registrar('portal/fiscal-revogar', \App\Controllers\PortalController::class, 'fiscalRevogar');
 
 // Integração ERP/CAPE (Fase 5)
 $router->registrar('integracao', \App\Controllers\IntegracaoController::class, 'index');

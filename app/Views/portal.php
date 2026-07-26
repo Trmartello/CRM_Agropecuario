@@ -19,6 +19,7 @@
 </div>
 
 <?php require __DIR__ . '/partials/portal_custo.php'; // Custo da lavoura (spec custo-lavoura §10) ?>
+<?php require __DIR__ . '/partials/portal_fiscal.php'; // Captura de NF — opt-in (spec nf-ingestao §6) ?>
 
 <div class="row g-3">
   <div class="col-lg-6">

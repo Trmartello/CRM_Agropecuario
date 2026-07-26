@@ -52,6 +52,76 @@ class NotaFiscalService
         };
     }
 
+    /* ---------------- autorização do produtor (§6 — PR 3) ---------------- */
+
+    /** Autorização atual do produtor no provedor configurado (null = nunca autorizou). */
+    public static function autorizacao(int $produtorId): ?array
+    {
+        $aut = self::cUm(
+            'SELECT provedor, status, dt_autorizacao, dt_revogacao, dt_atualizacao
+               FROM produtor_autorizacao_fiscal WHERE produtor_id = ? AND provedor = ?',
+            [$produtorId, self::adapter()->nome()]
+        );
+        return $aut ?: null;
+    }
+
+    /**
+     * Opt-in: registra a procuração no provedor e grava a autorização (§6).
+     * Idempotente (já ativa = permanece); re-autorizar após revogação reativa.
+     *
+     * @throws \RuntimeException cadastro sem CPF/CNPJ (provedor exige o documento).
+     */
+    public static function autorizar(int $produtorId): array
+    {
+        $cpf = preg_replace('/\D/', '', (string) Database::valor(
+            'SELECT cpf_cnpj FROM clientes WHERE id = ?', [$produtorId]
+        ));
+        if ($cpf === '') {
+            throw new \RuntimeException(
+                'Seu cadastro ainda não tem CPF/CNPJ — fale com seu consultor Copérdia para completar antes de autorizar.'
+            );
+        }
+        $adapter = self::adapter();
+        $r = $adapter->autorizar($produtorId, $cpf);
+        $status = in_array($r['status'] ?? '', ['pendente', 'ativa', 'erro'], true) ? $r['status'] : 'pendente';
+        self::cExec(
+            'INSERT INTO produtor_autorizacao_fiscal
+                (produtor_id, provedor, status, procuracao_ref, dt_autorizacao, dt_revogacao)
+             VALUES (?,?,?,?, NOW(), NULL)
+             ON DUPLICATE KEY UPDATE status = VALUES(status), procuracao_ref = VALUES(procuracao_ref),
+                dt_autorizacao = NOW(), dt_revogacao = NULL',
+            [$produtorId, $adapter->nome(), $status, mb_substr((string) ($r['procuracao_ref'] ?? ''), 0, 120) ?: null]
+        );
+        return self::autorizacao($produtorId);
+    }
+
+    /** Revogação (§6): encerra no provedor e PARA os pulls futuros na hora. */
+    public static function revogar(int $produtorId): array
+    {
+        $aut = self::cUm(
+            'SELECT procuracao_ref, status FROM produtor_autorizacao_fiscal WHERE produtor_id = ? AND provedor = ?',
+            [$produtorId, self::adapter()->nome()]
+        );
+        if ($aut === null) {
+            throw new \RuntimeException('Não há autorização para revogar.');
+        }
+        if ($aut['status'] !== 'revogada') {
+            try {
+                self::adapter()->revogar($produtorId, (string) ($aut['procuracao_ref'] ?? ''));
+            } catch (\Throwable $e) {
+                // A revogação LOCAL vale mesmo se o provedor falhar (o pull checa
+                // o status local antes de qualquer chamada) — loga e segue.
+                error_log('[CRM][nfe] falha ao revogar no provedor: ' . $e->getMessage());
+            }
+        }
+        self::cExec(
+            "UPDATE produtor_autorizacao_fiscal SET status = 'revogada', dt_revogacao = NOW()
+              WHERE produtor_id = ? AND provedor = ?",
+            [$produtorId, self::adapter()->nome()]
+        );
+        return self::autorizacao($produtorId);
+    }
+
     /* ---------------- captura (job do PR4 chama isto) ---------------- */
 
     /**

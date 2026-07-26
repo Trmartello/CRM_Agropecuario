@@ -148,6 +148,48 @@ class PortalController
         json_ok(['cenario' => $cen]);
     }
 
+    /* ==== Ingestão de NF (spec nf-ingestao §6/§9 — PR 3: opt-in/revogação) ==== */
+
+    /** GET portal/fiscal-autorizacao — status atual da autorização do produtor. */
+    public function fiscalAutorizacao(): void
+    {
+        $clienteId = $this->produtorId();
+        json_ok([
+            'autorizacao' => \App\Services\NotaFiscalService::autorizacao($clienteId),
+            'provedor' => \App\Services\NotaFiscalService::adapter()->nome(),
+        ]);
+    }
+
+    /** POST portal/fiscal-autorizar — opt-in do produtor (termo aceito na tela). */
+    public function fiscalAutorizar(): void
+    {
+        $clienteId = $this->produtorId();
+        if ((string) ($_POST['ciente'] ?? '') !== '1') {
+            json_erro('Confirme a leitura do termo de autorização para continuar.');
+        }
+        try {
+            $aut = \App\Services\NotaFiscalService::autorizar($clienteId);
+        } catch (\RuntimeException $e) {
+            json_erro($e->getMessage());
+        }
+        auditar('autorizar', 'produtor_autorizacao_fiscal', $clienteId,
+            'portal: opt-in da captura de NF-e (termo aceito, provedor ' . ($aut['provedor'] ?? '?') . ')');
+        json_ok(['autorizacao' => $aut]);
+    }
+
+    /** POST portal/fiscal-revogar — revogação (para os pulls imediatamente). */
+    public function fiscalRevogar(): void
+    {
+        $clienteId = $this->produtorId();
+        try {
+            $aut = \App\Services\NotaFiscalService::revogar($clienteId);
+        } catch (\RuntimeException $e) {
+            json_erro($e->getMessage());
+        }
+        auditar('revogar', 'produtor_autorizacao_fiscal', $clienteId, 'portal: revogação da captura de NF-e');
+        json_ok(['autorizacao' => $aut]);
+    }
+
     /** GET portal/mercado?cultura= — referências públicas (§8: oferta nunca sem CEPEA+B3). */
     public function mercado(): void
     {
