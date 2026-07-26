@@ -77,6 +77,21 @@ railway run --service MySQL bash -c 'mysqldump -h $MYSQLHOST -P $MYSQLPORT -u $M
 4. As chaves VAPID são geradas automaticamente no primeiro uso e ficam no banco
    (`configuracoes`) — nenhuma configuração externa é necessária.
 
+## 5b. Firewall do custo do cooperado (quando o módulo de custo entrar no ar)
+
+O módulo Custo da Lavoura guarda dados que a equipe comercial **não pode** ver
+(invariante 5). A proteção é imposta no MySQL, não só na aplicação:
+
+1. Rode uma vez, como usuário administrativo do banco, o script
+   `tools/firewall_custo.sql` (cria o usuário privilegiado `crm_custo` e remove
+   do usuário comercial o acesso a `lavoura_custo` e `lavoura_cenario`). Ajuste
+   nomes/host/senha ao ambiente.
+2. Defina no serviço da aplicação as variáveis `DB_USER_CUSTO` e `DB_PASS_CUSTO`
+   (o usuário `crm_custo` criado acima). Sem elas, a app usa a credencial padrão
+   e o firewall **não** fica ativo — aceitável só em desenvolvimento.
+3. Confirme o critério de aceite: `SELECT` em `lavoura_custo` com a credencial
+   comercial deve retornar **erro de permissão do banco**.
+
 ## 6. Conferências rápidas finais
 
 - [ ] HTTPS ativo (Railway já fornece; cookies `Secure` são automáticos).

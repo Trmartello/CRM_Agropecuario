@@ -10,7 +10,8 @@ CREATE DATABASE IF NOT EXISTS crm_agropecuario CHARACTER SET utf8mb4 COLLATE utf
 USE crm_agropecuario;
 
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS cache_score_imovel, fato_talhao_safra, bridge_imovel_produtor, dim_imovel,
+DROP TABLE IF EXISTS agg_custo_regional, lavoura_cenario, lavoura_custo, lavoura_safra, ref_mercado, cat_item_custo,
+  cache_score_imovel, fato_talhao_safra, bridge_imovel_produtor, dim_imovel,
   sessoes_persistentes, configuracoes, auditoria,
   integracao_log, notificacoes, agenda_eventos,
   documentos, prestacao_contas, reclamacao_fotos, reembolso_refeicoes, refeicoes, quilometragem, veiculos, reclamacoes, categorias_reembolso,
@@ -251,6 +252,96 @@ CREATE TABLE cache_score_imovel (
   dt_atualizacao DATETIME NOT NULL,
   PRIMARY KEY (cod_car, safra),
   INDEX idx_csi_safra (safra)
+) ENGINE=InnoDB;
+
+-- ============================================================================
+-- CUSTO DA LAVOURA E PONTO DE EQUILÍBRIO (Portal do Produtor)
+-- spec docs/specs/custo-lavoura.md — PR 1 (migrations + firewall).
+-- lavoura_custo e lavoura_cenario são SOB FIREWALL (invariante 5): o usuário
+-- COMERCIAL do banco NÃO deve ter SELECT nelas — aplicar tools/firewall_custo.sql
+-- no ambiente real (a app lê essas tabelas por Database::conexaoCusto()).
+-- Tipos adaptados ao schema do repo (INT, FKs para clientes/talhoes/dim_imovel).
+-- ============================================================================
+
+-- Catálogo de itens de custo, mantido pela Copérdia (agronomia + controladoria)
+CREATE TABLE cat_item_custo (
+  id        INT AUTO_INCREMENT PRIMARY KEY,
+  codigo    VARCHAR(30) NOT NULL UNIQUE,
+  descricao VARCHAR(120) NOT NULL,
+  grupo     ENUM('coe','cot','ct') NOT NULL,
+  ordem     SMALLINT NOT NULL DEFAULT 0,
+  ativo     TINYINT(1) NOT NULL DEFAULT 1
+) ENGINE=InnoDB;
+
+-- A lavoura planejada pelo cooperado
+CREATE TABLE lavoura_safra (
+  id                     INT AUTO_INCREMENT PRIMARY KEY,
+  produtor_id            INT NOT NULL COMMENT 'clientes.id',
+  cod_car                VARCHAR(60) NULL COMMENT 'dim_imovel.cod_car (opcional)',
+  talhao_id              INT NULL,
+  safra                  VARCHAR(9) NOT NULL,
+  cultura                VARCHAR(40) NOT NULL,
+  area_ha                DECIMAL(10,3) NOT NULL,
+  produtividade_esperada DECIMAL(10,3) NOT NULL COMMENT 'sc/ha',
+  preco_referencia       DECIMAL(10,2) NOT NULL COMMENT 'R$/sc',
+  base_custo_padrao      ENUM('coe','cot','ct') NOT NULL DEFAULT 'ct',
+  dt_criacao             DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  dt_atualizacao         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX ix_prod_safra (produtor_id, safra),
+  FOREIGN KEY (produtor_id) REFERENCES clientes(id) ON DELETE CASCADE,
+  FOREIGN KEY (cod_car) REFERENCES dim_imovel(cod_car),
+  FOREIGN KEY (talhao_id) REFERENCES talhoes(id)
+) ENGINE=InnoDB;
+
+-- ⚠ TABELA SOB FIREWALL (invariante 5) — custo digitado pelo produtor
+CREATE TABLE lavoura_custo (
+  id               INT AUTO_INCREMENT PRIMARY KEY,
+  lavoura_safra_id INT NOT NULL,
+  cat_item_id      INT NOT NULL,
+  valor_ha         DECIMAL(12,2) NOT NULL,
+  fonte            ENUM('manual','preset','nf_coperdia') NOT NULL DEFAULT 'manual',
+  UNIQUE KEY uk_lc (lavoura_safra_id, cat_item_id),
+  FOREIGN KEY (lavoura_safra_id) REFERENCES lavoura_safra(id) ON DELETE CASCADE,
+  FOREIGN KEY (cat_item_id) REFERENCES cat_item_custo(id)
+) ENGINE=InnoDB;
+
+-- ⚠ TABELA SOB FIREWALL (invariante 5) — cenários e resultado_json do produtor
+CREATE TABLE lavoura_cenario (
+  id               INT AUTO_INCREMENT PRIMARY KEY,
+  lavoura_safra_id INT NOT NULL,
+  nome             VARCHAR(80) NOT NULL,
+  pct_travado      DECIMAL(5,4) NOT NULL,
+  preco_travado    DECIMAL(10,2) NOT NULL,
+  base_custo       ENUM('coe','cot','ct') NOT NULL,
+  versao_motor     VARCHAR(12) NOT NULL,
+  resultado_json   JSON NOT NULL COMMENT 'snapshot completo do cálculo',
+  dt_criacao       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (lavoura_safra_id) REFERENCES lavoura_safra(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Referências públicas de mercado (cache diário) — não é dado sob firewall
+CREATE TABLE ref_mercado (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  cultura    VARCHAR(40) NOT NULL,
+  fonte      ENUM('cepea','b3','coperdia') NOT NULL,
+  vencimento VARCHAR(20) NULL,
+  preco      DECIMAL(10,2) NOT NULL,
+  dt_cotacao DATE NOT NULL,
+  UNIQUE KEY uk_ref (cultura, fonte, vencimento, dt_cotacao)
+) ENGINE=InnoDB;
+
+-- Agregado anonimizado liberado à Controladoria (k-anonimato >= 5 — ver spec §7)
+CREATE TABLE agg_custo_regional (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  safra          VARCHAR(9) NOT NULL,
+  cultura        VARCHAR(40) NOT NULL,
+  municipio      VARCHAR(80) NOT NULL,
+  faixa_area     ENUM('ate_20','20_50','50_100','acima_100') NOT NULL,
+  cat_item_id    INT NOT NULL,
+  valor_mediano  DECIMAL(12,2) NOT NULL,
+  qtd_produtores SMALLINT NOT NULL,
+  dt_calculo     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (cat_item_id) REFERENCES cat_item_custo(id)
 ) ENGINE=InnoDB;
 
 -- ============================================================================
@@ -1443,8 +1534,8 @@ CREATE TABLE sync_processados (
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','29')
-  ON DUPLICATE KEY UPDATE valor = '29';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','34')
+  ON DUPLICATE KEY UPDATE valor = '34';
 
 -- ============================================================================
 -- SEED — Mapa Territorial: 5 imóveis fictícios (Concórdia/SC), vínculos e talhões

@@ -566,6 +566,111 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '33'"
             );
         }
+
+        if ($versao < 34) {
+            // Custo da Lavoura (spec docs/specs/custo-lavoura.md) — PR 1: migrations.
+            // lavoura_custo e lavoura_cenario são SOB FIREWALL (invariante 5): no
+            // ambiente real aplicar tools/firewall_custo.sql (o usuário comercial não
+            // pode ter SELECT nelas; a app lê por Database::conexaoCusto()). Tipos INT,
+            // FKs p/ clientes/talhoes/dim_imovel para casar com o schema do repo.
+            if (!self::temTabela('cat_item_custo')) {
+                Database::executar(
+                    'CREATE TABLE cat_item_custo (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        codigo VARCHAR(30) NOT NULL UNIQUE,
+                        descricao VARCHAR(120) NOT NULL,
+                        grupo ENUM("coe","cot","ct") NOT NULL,
+                        ordem SMALLINT NOT NULL DEFAULT 0,
+                        ativo TINYINT(1) NOT NULL DEFAULT 1
+                     ) ENGINE=InnoDB'
+                );
+            }
+            if (!self::temTabela('lavoura_safra')) {
+                Database::executar(
+                    'CREATE TABLE lavoura_safra (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        produtor_id INT NOT NULL,
+                        cod_car VARCHAR(60) NULL,
+                        talhao_id INT NULL,
+                        safra VARCHAR(9) NOT NULL,
+                        cultura VARCHAR(40) NOT NULL,
+                        area_ha DECIMAL(10,3) NOT NULL,
+                        produtividade_esperada DECIMAL(10,3) NOT NULL,
+                        preco_referencia DECIMAL(10,2) NOT NULL,
+                        base_custo_padrao ENUM("coe","cot","ct") NOT NULL DEFAULT "ct",
+                        dt_criacao DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        dt_atualizacao DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        INDEX ix_prod_safra (produtor_id, safra),
+                        FOREIGN KEY (produtor_id) REFERENCES clientes(id) ON DELETE CASCADE,
+                        FOREIGN KEY (cod_car) REFERENCES dim_imovel(cod_car),
+                        FOREIGN KEY (talhao_id) REFERENCES talhoes(id)
+                     ) ENGINE=InnoDB'
+                );
+            }
+            if (!self::temTabela('lavoura_custo')) {
+                Database::executar(
+                    'CREATE TABLE lavoura_custo (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        lavoura_safra_id INT NOT NULL,
+                        cat_item_id INT NOT NULL,
+                        valor_ha DECIMAL(12,2) NOT NULL,
+                        fonte ENUM("manual","preset","nf_coperdia") NOT NULL DEFAULT "manual",
+                        UNIQUE KEY uk_lc (lavoura_safra_id, cat_item_id),
+                        FOREIGN KEY (lavoura_safra_id) REFERENCES lavoura_safra(id) ON DELETE CASCADE,
+                        FOREIGN KEY (cat_item_id) REFERENCES cat_item_custo(id)
+                     ) ENGINE=InnoDB'
+                );
+            }
+            if (!self::temTabela('lavoura_cenario')) {
+                Database::executar(
+                    'CREATE TABLE lavoura_cenario (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        lavoura_safra_id INT NOT NULL,
+                        nome VARCHAR(80) NOT NULL,
+                        pct_travado DECIMAL(5,4) NOT NULL,
+                        preco_travado DECIMAL(10,2) NOT NULL,
+                        base_custo ENUM("coe","cot","ct") NOT NULL,
+                        versao_motor VARCHAR(12) NOT NULL,
+                        resultado_json JSON NOT NULL,
+                        dt_criacao DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (lavoura_safra_id) REFERENCES lavoura_safra(id) ON DELETE CASCADE
+                     ) ENGINE=InnoDB'
+                );
+            }
+            if (!self::temTabela('ref_mercado')) {
+                Database::executar(
+                    'CREATE TABLE ref_mercado (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        cultura VARCHAR(40) NOT NULL,
+                        fonte ENUM("cepea","b3","coperdia") NOT NULL,
+                        vencimento VARCHAR(20) NULL,
+                        preco DECIMAL(10,2) NOT NULL,
+                        dt_cotacao DATE NOT NULL,
+                        UNIQUE KEY uk_ref (cultura, fonte, vencimento, dt_cotacao)
+                     ) ENGINE=InnoDB'
+                );
+            }
+            if (!self::temTabela('agg_custo_regional')) {
+                Database::executar(
+                    'CREATE TABLE agg_custo_regional (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        safra VARCHAR(9) NOT NULL,
+                        cultura VARCHAR(40) NOT NULL,
+                        municipio VARCHAR(80) NOT NULL,
+                        faixa_area ENUM("ate_20","20_50","50_100","acima_100") NOT NULL,
+                        cat_item_id INT NOT NULL,
+                        valor_mediano DECIMAL(12,2) NOT NULL,
+                        qtd_produtores SMALLINT NOT NULL,
+                        dt_calculo DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (cat_item_id) REFERENCES cat_item_custo(id)
+                     ) ENGINE=InnoDB'
+                );
+            }
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '34')
+                 ON DUPLICATE KEY UPDATE valor = '34'"
+            );
+        }
     }
 
     /** Fase 6E (refinamento): características fisiológicas por estágio (cartão ilustrado). */
