@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
+  <NFe>
+    <infNFe Id="NFe42260701234567000189550010000123451000123458" versao="4.00">
+      <ide>
+        <cUF>42</cUF>
+        <natOp>VENDA DE INSUMOS AGRICOLAS</natOp>
+        <serie>1</serie>
+        <nNF>12345</nNF>
+        <dhEmi>2026-07-10T09:30:00-03:00</dhEmi>
+      </ide>
+      <emit>
+        <CNPJ>01234567000189</CNPJ>
+        <xNome>Agroinsumos Oeste Ltda</xNome>
+      </emit>
+      <dest>
+        <CPF>12345678901</CPF>
+        <xNome>Alberto Antunes</xNome>
+      </dest>
+      <det nItem="1">
+        <prod>
+          <cProd>NPK0920</cProd>
+          <xProd>FERTILIZANTE NPK 09-20-15 BIG BAG 1T</xProd>
+          <NCM>31052000</NCM>
+          <CFOP>5102</CFOP>
+          <uCom>TON</uCom>
+          <qCom>10.0000</qCom>
+          <vUnCom>3250.000000</vUnCom>
+          <vProd>32500.00</vProd>
+        </prod>
+      </det>
+      <det nItem="2">
+        <prod>
+          <cProd>GLI720</cProd>
+          <xProd>HERBICIDA GLIFOSATO 720 WG 5KG</xProd>
+          <NCM>38089329</NCM>
+          <CFOP>5102</CFOP>
+          <uCom>UN</uCom>
+          <qCom>24.0000</qCom>
+          <vUnCom>185.500000</vUnCom>
+          <vProd>4452.00</vProd>
+        </prod>
+      </det>
+      <total>
+        <ICMSTot>
+          <vNF>36952.00</vNF>
+        </ICMSTot>
+      </total>
+    </infNFe>
+  </NFe>
+</nfeProc>
