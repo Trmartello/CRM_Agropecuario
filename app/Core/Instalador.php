@@ -746,6 +746,111 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '35'"
             );
         }
+
+        if ($versao < 36) {
+            // Ingestão de NF do produtor (spec nf-ingestao PR1). As 4 tabelas com
+            // dado de produtor são SOB FIREWALL (tools/firewall_custo.sql);
+            // map_ncm_item é catálogo genérico. O firewall existe ANTES de
+            // qualquer dado de NF entrar (§13).
+            if (!self::temTabela('produtor_autorizacao_fiscal')) {
+                Database::executar(
+                    'CREATE TABLE produtor_autorizacao_fiscal (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        produtor_id INT NOT NULL,
+                        provedor VARCHAR(30) NOT NULL,
+                        status ENUM("pendente","ativa","revogada","expirada","erro") NOT NULL DEFAULT "pendente",
+                        procuracao_ref VARCHAR(120) NULL,
+                        dt_autorizacao DATETIME NULL,
+                        dt_revogacao DATETIME NULL,
+                        dt_atualizacao DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        UNIQUE KEY uk_prod_prov (produtor_id, provedor),
+                        INDEX ix_paf_status (status),
+                        FOREIGN KEY (produtor_id) REFERENCES clientes(id) ON DELETE CASCADE
+                     ) ENGINE=InnoDB'
+                );
+            }
+            if (!self::temTabela('nfe_documento')) {
+                Database::executar(
+                    'CREATE TABLE nfe_documento (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        chave_acesso CHAR(44) NOT NULL,
+                        produtor_id INT NOT NULL,
+                        emit_cnpj VARCHAR(14) NULL,
+                        emit_nome VARCHAR(160) NULL,
+                        serie VARCHAR(6) NULL,
+                        numero VARCHAR(20) NULL,
+                        dt_emissao DATETIME NULL,
+                        valor_total DECIMAL(14,2) NULL,
+                        natureza_op VARCHAR(120) NULL,
+                        fonte ENUM("dfe","upload","ocr") NOT NULL DEFAULT "dfe",
+                        situacao ENUM("capturada","autorizada","cancelada","denegada") NOT NULL DEFAULT "capturada",
+                        xml MEDIUMBLOB NULL,
+                        dt_captura DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE KEY uk_chave (chave_acesso),
+                        INDEX ix_nfe_prod (produtor_id, dt_emissao),
+                        FOREIGN KEY (produtor_id) REFERENCES clientes(id) ON DELETE CASCADE
+                     ) ENGINE=InnoDB'
+                );
+            }
+            if (!self::temTabela('nfe_item')) {
+                Database::executar(
+                    'CREATE TABLE nfe_item (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        nfe_id INT NOT NULL,
+                        n_item SMALLINT NOT NULL,
+                        descricao VARCHAR(200) NOT NULL,
+                        ncm CHAR(8) NULL,
+                        cfop CHAR(4) NULL,
+                        unidade VARCHAR(10) NULL,
+                        quantidade DECIMAL(14,4) NULL,
+                        valor_unit DECIMAL(14,6) NULL,
+                        valor_total DECIMAL(14,2) NULL,
+                        cat_item_id INT NULL,
+                        status_map ENUM("sugerido","confirmado","ignorado") NOT NULL DEFAULT "sugerido",
+                        FOREIGN KEY (nfe_id) REFERENCES nfe_documento(id) ON DELETE CASCADE,
+                        FOREIGN KEY (cat_item_id) REFERENCES cat_item_custo(id),
+                        INDEX ix_nfe_item_ncm (ncm)
+                     ) ENGINE=InnoDB'
+                );
+            }
+            if (!self::temTabela('map_ncm_item')) {
+                Database::executar(
+                    'CREATE TABLE map_ncm_item (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        ncm_prefix VARCHAR(8) NOT NULL,
+                        cat_item_id INT NOT NULL,
+                        confianca ENUM("alta","media","baixa") NOT NULL DEFAULT "media",
+                        UNIQUE KEY uk_ncm (ncm_prefix),
+                        FOREIGN KEY (cat_item_id) REFERENCES cat_item_custo(id) ON DELETE CASCADE
+                     ) ENGINE=InnoDB'
+                );
+            }
+            if (!self::temTabela('nfe_captura_log')) {
+                Database::executar(
+                    'CREATE TABLE nfe_captura_log (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        produtor_id INT NULL,
+                        provedor VARCHAR(30) NOT NULL,
+                        dt_exec DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        documentos INT NOT NULL DEFAULT 0,
+                        novos INT NOT NULL DEFAULT 0,
+                        status ENUM("ok","erro","sem_autorizacao") NOT NULL,
+                        mensagem VARCHAR(255) NULL,
+                        FOREIGN KEY (produtor_id) REFERENCES clientes(id) ON DELETE SET NULL
+                     ) ENGINE=InnoDB'
+                );
+            }
+            // lavoura_custo.fonte ganha 'dfe' e 'upload' (nf-ingestao §5) — MODIFY
+            // idempotente: repete a definição completa do ENUM
+            Database::executar(
+                'ALTER TABLE lavoura_custo MODIFY fonte
+                 ENUM("manual","preset","nf_coperdia","dfe","upload") NOT NULL DEFAULT "manual"'
+            );
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '36')
+                 ON DUPLICATE KEY UPDATE valor = '36'"
+            );
+        }
     }
 
     /** Fase 6E (refinamento): características fisiológicas por estágio (cartão ilustrado). */

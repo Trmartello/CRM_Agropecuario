@@ -10,7 +10,8 @@ CREATE DATABASE IF NOT EXISTS crm_agropecuario CHARACTER SET utf8mb4 COLLATE utf
 USE crm_agropecuario;
 
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS agg_custo_regional, lavoura_cenario, lavoura_custo, lavoura_safra, ref_mercado, custo_preset, cat_item_custo,
+DROP TABLE IF EXISTS nfe_captura_log, nfe_item, nfe_documento, map_ncm_item, produtor_autorizacao_fiscal,
+  agg_custo_regional, lavoura_cenario, lavoura_custo, lavoura_safra, ref_mercado, custo_preset, cat_item_custo,
   cache_score_imovel, fato_talhao_safra, bridge_imovel_produtor, dim_imovel,
   sessoes_persistentes, configuracoes, auditoria,
   integracao_log, notificacoes, agenda_eventos,
@@ -312,7 +313,7 @@ CREATE TABLE lavoura_custo (
   lavoura_safra_id INT NOT NULL,
   cat_item_id      INT NOT NULL,
   valor_ha         DECIMAL(12,2) NOT NULL,
-  fonte            ENUM('manual','preset','nf_coperdia') NOT NULL DEFAULT 'manual',
+  fonte            ENUM('manual','preset','nf_coperdia','dfe','upload') NOT NULL DEFAULT 'manual',
   UNIQUE KEY uk_lc (lavoura_safra_id, cat_item_id),
   FOREIGN KEY (lavoura_safra_id) REFERENCES lavoura_safra(id) ON DELETE CASCADE,
   FOREIGN KEY (cat_item_id) REFERENCES cat_item_custo(id)
@@ -341,6 +342,93 @@ CREATE TABLE ref_mercado (
   preco      DECIMAL(10,2) NOT NULL,
   dt_cotacao DATE NOT NULL,
   UNIQUE KEY uk_ref (cultura, fonte, vencimento, dt_cotacao)
+) ENGINE=InnoDB;
+
+-- ============================================================================
+-- INGESTÃO DE NF DO PRODUTOR (spec docs/specs/nf-ingestao.md — PR 1)
+-- nfe_documento/nfe_item/produtor_autorizacao_fiscal/nfe_captura_log são SOB
+-- FIREWALL (invariante 5): o que o produtor compra FORA da Copérdia é o dado
+-- mais sensível do módulo — o usuário comercial do banco não pode ler (aplicar
+-- tools/firewall_custo.sql; a app acessa via Database::conexaoCusto()).
+-- map_ncm_item é catálogo genérico (sem dado de produtor) — fora do firewall.
+-- ============================================================================
+
+-- Autorização fiscal (procuração p/ captura de DF-e). Opt-in, revogável. ⚠ FIREWALL
+CREATE TABLE produtor_autorizacao_fiscal (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  produtor_id    INT NOT NULL,
+  provedor       VARCHAR(30) NOT NULL,
+  status         ENUM('pendente','ativa','revogada','expirada','erro') NOT NULL DEFAULT 'pendente',
+  procuracao_ref VARCHAR(120) NULL COMMENT 'referência da procuração no provedor',
+  dt_autorizacao DATETIME NULL,
+  dt_revogacao   DATETIME NULL,
+  dt_atualizacao DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_prod_prov (produtor_id, provedor),
+  INDEX ix_paf_status (status),
+  FOREIGN KEY (produtor_id) REFERENCES clientes(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- NF-e capturada (produtor = destinatário). ⚠ FIREWALL
+CREATE TABLE nfe_documento (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  chave_acesso CHAR(44) NOT NULL COMMENT 'dedup',
+  produtor_id  INT NOT NULL,
+  emit_cnpj    VARCHAR(14) NULL,
+  emit_nome    VARCHAR(160) NULL,
+  serie        VARCHAR(6) NULL,
+  numero       VARCHAR(20) NULL,
+  dt_emissao   DATETIME NULL,
+  valor_total  DECIMAL(14,2) NULL,
+  natureza_op  VARCHAR(120) NULL,
+  fonte        ENUM('dfe','upload','ocr') NOT NULL DEFAULT 'dfe',
+  situacao     ENUM('capturada','autorizada','cancelada','denegada') NOT NULL DEFAULT 'capturada',
+  xml          MEDIUMBLOB NULL COMMENT 'XML assinado (dado do produtor)',
+  dt_captura   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_chave (chave_acesso),
+  INDEX ix_nfe_prod (produtor_id, dt_emissao),
+  FOREIGN KEY (produtor_id) REFERENCES clientes(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Item da NF-e. ⚠ FIREWALL
+CREATE TABLE nfe_item (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  nfe_id      INT NOT NULL,
+  n_item      SMALLINT NOT NULL,
+  descricao   VARCHAR(200) NOT NULL,
+  ncm         CHAR(8) NULL,
+  cfop        CHAR(4) NULL,
+  unidade     VARCHAR(10) NULL,
+  quantidade  DECIMAL(14,4) NULL,
+  valor_unit  DECIMAL(14,6) NULL,
+  valor_total DECIMAL(14,2) NULL,
+  cat_item_id INT NULL COMMENT 'mapeamento p/ item de custo',
+  status_map  ENUM('sugerido','confirmado','ignorado') NOT NULL DEFAULT 'sugerido',
+  FOREIGN KEY (nfe_id) REFERENCES nfe_documento(id) ON DELETE CASCADE,
+  FOREIGN KEY (cat_item_id) REFERENCES cat_item_custo(id),
+  INDEX ix_nfe_item_ncm (ncm)
+) ENGINE=InnoDB;
+
+-- Heurística NCM → item de custo (catálogo da Copérdia; NÃO é firewall)
+CREATE TABLE map_ncm_item (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  ncm_prefix  VARCHAR(8) NOT NULL,
+  cat_item_id INT NOT NULL,
+  confianca   ENUM('alta','media','baixa') NOT NULL DEFAULT 'media',
+  UNIQUE KEY uk_ncm (ncm_prefix),
+  FOREIGN KEY (cat_item_id) REFERENCES cat_item_custo(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Log operacional do pull (auditoria da captura). ⚠ FIREWALL (tem produtor_id)
+CREATE TABLE nfe_captura_log (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  produtor_id INT NULL,
+  provedor    VARCHAR(30) NOT NULL,
+  dt_exec     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  documentos  INT NOT NULL DEFAULT 0,
+  novos       INT NOT NULL DEFAULT 0,
+  status      ENUM('ok','erro','sem_autorizacao') NOT NULL,
+  mensagem    VARCHAR(255) NULL,
+  FOREIGN KEY (produtor_id) REFERENCES clientes(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 -- Agregado anonimizado liberado à Controladoria (k-anonimato >= 5 — ver spec §7)
@@ -1547,8 +1635,8 @@ CREATE TABLE sync_processados (
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','35')
-  ON DUPLICATE KEY UPDATE valor = '35';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','36')
+  ON DUPLICATE KEY UPDATE valor = '36';
 
 -- ============================================================================
 -- SEED — Mapa Territorial: 5 imóveis fictícios (Concórdia/SC), vínculos e talhões

@@ -31,6 +31,17 @@ REVOKE SELECT, INSERT, UPDATE, DELETE, REFERENCES
   ON crm_agropecuario.lavoura_custo   FROM 'crm'@'%';
 REVOKE SELECT, INSERT, UPDATE, DELETE, REFERENCES
   ON crm_agropecuario.lavoura_cenario FROM 'crm'@'%';
+-- Ingestão de NF do produtor (spec nf-ingestao §10): o que o cooperado compra
+-- FORA da Copérdia nunca chega à credencial comercial. (map_ncm_item fica fora
+-- do firewall: é catálogo genérico, sem dado de produtor.)
+REVOKE SELECT, INSERT, UPDATE, DELETE, REFERENCES
+  ON crm_agropecuario.produtor_autorizacao_fiscal FROM 'crm'@'%';
+REVOKE SELECT, INSERT, UPDATE, DELETE, REFERENCES
+  ON crm_agropecuario.nfe_documento   FROM 'crm'@'%';
+REVOKE SELECT, INSERT, UPDATE, DELETE, REFERENCES
+  ON crm_agropecuario.nfe_item        FROM 'crm'@'%';
+REVOKE SELECT, INSERT, UPDATE, DELETE, REFERENCES
+  ON crm_agropecuario.nfe_captura_log FROM 'crm'@'%';
 FLUSH PRIVILEGES;
 
 -- 3) Verificação — o primeiro comando DEVE falhar; o segundo DEVE funcionar:

@@ -84,8 +84,10 @@ O módulo Custo da Lavoura guarda dados que a equipe comercial **não pode** ver
 
 1. Rode uma vez, como usuário administrativo do banco, o script
    `tools/firewall_custo.sql` (cria o usuário privilegiado `crm_custo` e remove
-   do usuário comercial o acesso a `lavoura_custo` e `lavoura_cenario`). Ajuste
-   nomes/host/senha ao ambiente.
+   do usuário comercial o acesso a `lavoura_custo`, `lavoura_cenario` e às
+   tabelas de NF do produtor — `produtor_autorizacao_fiscal`, `nfe_documento`,
+   `nfe_item`, `nfe_captura_log`). Ajuste nomes/host/senha ao ambiente. Re-rode
+   o script após migrações que criem novas tabelas sob firewall.
 2. Defina no serviço da aplicação as variáveis `DB_USER_CUSTO` e `DB_PASS_CUSTO`
    (o usuário `crm_custo` criado acima). Sem elas, a app usa a credencial padrão
    e o firewall **não** fica ativo — aceitável só em desenvolvimento.
