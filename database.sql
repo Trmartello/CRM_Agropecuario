@@ -10,7 +10,7 @@ CREATE DATABASE IF NOT EXISTS crm_agropecuario CHARACTER SET utf8mb4 COLLATE utf
 USE crm_agropecuario;
 
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS agg_custo_regional, lavoura_cenario, lavoura_custo, lavoura_safra, ref_mercado, cat_item_custo,
+DROP TABLE IF EXISTS agg_custo_regional, lavoura_cenario, lavoura_custo, lavoura_safra, ref_mercado, custo_preset, cat_item_custo,
   cache_score_imovel, fato_talhao_safra, bridge_imovel_produtor, dim_imovel,
   sessoes_persistentes, configuracoes, auditoria,
   integracao_log, notificacoes, agenda_eventos,
@@ -271,6 +271,19 @@ CREATE TABLE cat_item_custo (
   grupo     ENUM('coe','cot','ct') NOT NULL,
   ordem     SMALLINT NOT NULL DEFAULT 0,
   ativo     TINYINT(1) NOT NULL DEFAULT 1
+) ENGINE=InnoDB;
+
+-- Presets de custo por cultura (R$/ha por item), mantidos pela Copérdia.
+-- São o ponto de partida da tabela de custo do produtor (lavoura_custo entra
+-- com fonte='preset'); o produtor edita à vontade. Somas por base nos seeds
+-- reproduzem os golden tests da spec (soja CT=7360, milho CT=8550).
+CREATE TABLE custo_preset (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  cultura     VARCHAR(40) NOT NULL,
+  cat_item_id INT NOT NULL,
+  valor_ha    DECIMAL(12,2) NOT NULL,
+  UNIQUE KEY uk_preset (cultura, cat_item_id),
+  FOREIGN KEY (cat_item_id) REFERENCES cat_item_custo(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- A lavoura planejada pelo cooperado
@@ -1534,8 +1547,8 @@ CREATE TABLE sync_processados (
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','34')
-  ON DUPLICATE KEY UPDATE valor = '34';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','35')
+  ON DUPLICATE KEY UPDATE valor = '35';
 
 -- ============================================================================
 -- SEED — Mapa Territorial: 5 imóveis fictícios (Concórdia/SC), vínculos e talhões
@@ -1557,3 +1570,44 @@ INSERT INTO fato_talhao_safra (cod_car, safra, nome_talhao, cultura, area_planta
 ('SC-4204202-DEMO0000000000000000000000000001','2025/26','T1 Sede','Milho',22.000,'seed'),
 ('SC-4204202-DEMO0000000000000000000000000001','2025/26','T2 Baixada','Soja',17.000,'seed'),
 ('SC-4204202-DEMO0000000000000000000000000004','2025/26','Q1','Soja',72.000,'seed');
+
+-- ============================================================================
+-- SEED — Custo da Lavoura (spec custo-lavoura §2/§13 PR3)
+-- Catálogo CONAB: COE (desembolso direto), COT (+depreciação, MO familiar,
+-- manutenção), CT (+oportunidade da terra e do capital). Presets por cultura
+-- somam EXATAMENTE as bases dos golden tests da spec §4:
+--   Soja : COE=5040, COT=6180 (+1140), CT=7360 (+1180)   [Caso A]
+--   Milho: COE=6090, COT=7330 (+1240), CT=8550 (+1220)   [Caso B]
+-- ============================================================================
+
+INSERT INTO cat_item_custo (id, codigo, descricao, grupo, ordem) VALUES
+(1,'SEMENTES','Sementes','coe',1),
+(2,'FERTILIZANTES','Fertilizantes','coe',2),
+(3,'DEFENSIVOS','Defensivos (fungicida, inseticida, herbicida)','coe',3),
+(4,'CORRETIVOS','Corretivos (calcário, gesso)','coe',4),
+(5,'OPERACOES','Operações mecanizadas (plantio, tratos, colheita)','coe',5),
+(6,'MAO_OBRA','Mão de obra contratada','coe',6),
+(7,'SECAGEM_FRETE','Secagem e frete','coe',7),
+(8,'SEGURO','Seguro da lavoura','coe',8),
+(9,'JUROS_CUSTEIO','Juros de custeio','coe',9),
+(10,'DEPRECIACAO','Depreciação de máquinas e benfeitorias','cot',10),
+(11,'MAO_OBRA_FAMILIAR','Mão de obra familiar (pró-labore)','cot',11),
+(12,'MANUTENCAO','Manutenção periódica','cot',12),
+(13,'OPORTUNIDADE_TERRA','Custo de oportunidade da terra (arrendamento)','ct',13),
+(14,'OPORTUNIDADE_CAPITAL','Custo de oportunidade do capital próprio','ct',14);
+
+INSERT INTO custo_preset (cultura, cat_item_id, valor_ha) VALUES
+-- Soja (COE 5040)
+('Soja',1,480.00),('Soja',2,1350.00),('Soja',3,1520.00),('Soja',4,190.00),
+('Soja',5,780.00),('Soja',6,180.00),('Soja',7,260.00),('Soja',8,130.00),('Soja',9,150.00),
+-- Soja (COT +1140)
+('Soja',10,640.00),('Soja',11,260.00),('Soja',12,240.00),
+-- Soja (CT +1180)
+('Soja',13,900.00),('Soja',14,280.00),
+-- Milho (COE 6090)
+('Milho',1,900.00),('Milho',2,2100.00),('Milho',3,980.00),('Milho',4,200.00),
+('Milho',5,890.00),('Milho',6,190.00),('Milho',7,480.00),('Milho',8,160.00),('Milho',9,190.00),
+-- Milho (COT +1240)
+('Milho',10,700.00),('Milho',11,280.00),('Milho',12,260.00),
+-- Milho (CT +1220)
+('Milho',13,920.00),('Milho',14,300.00);

@@ -671,6 +671,81 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '34'"
             );
         }
+
+        if ($versao < 35) {
+            // Custo da Lavoura PR3: presets por cultura + seed do catálogo CONAB.
+            // Somas dos presets reproduzem os golden tests da spec §4
+            // (Soja COE=5040/COT=6180/CT=7360; Milho COE=6090/COT=7330/CT=8550).
+            if (!self::temTabela('custo_preset')) {
+                Database::executar(
+                    'CREATE TABLE custo_preset (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        cultura VARCHAR(40) NOT NULL,
+                        cat_item_id INT NOT NULL,
+                        valor_ha DECIMAL(12,2) NOT NULL,
+                        UNIQUE KEY uk_preset (cultura, cat_item_id),
+                        FOREIGN KEY (cat_item_id) REFERENCES cat_item_custo(id) ON DELETE CASCADE
+                     ) ENGINE=InnoDB'
+                );
+            }
+            // Seed do catálogo só se vazio (não sobrescreve itens já personalizados)
+            if ((int) Database::valor('SELECT COUNT(*) FROM cat_item_custo') === 0) {
+                $itens = [
+                    ['SEMENTES', 'Sementes', 'coe', 1],
+                    ['FERTILIZANTES', 'Fertilizantes', 'coe', 2],
+                    ['DEFENSIVOS', 'Defensivos (fungicida, inseticida, herbicida)', 'coe', 3],
+                    ['CORRETIVOS', 'Corretivos (calcário, gesso)', 'coe', 4],
+                    ['OPERACOES', 'Operações mecanizadas (plantio, tratos, colheita)', 'coe', 5],
+                    ['MAO_OBRA', 'Mão de obra contratada', 'coe', 6],
+                    ['SECAGEM_FRETE', 'Secagem e frete', 'coe', 7],
+                    ['SEGURO', 'Seguro da lavoura', 'coe', 8],
+                    ['JUROS_CUSTEIO', 'Juros de custeio', 'coe', 9],
+                    ['DEPRECIACAO', 'Depreciação de máquinas e benfeitorias', 'cot', 10],
+                    ['MAO_OBRA_FAMILIAR', 'Mão de obra familiar (pró-labore)', 'cot', 11],
+                    ['MANUTENCAO', 'Manutenção periódica', 'cot', 12],
+                    ['OPORTUNIDADE_TERRA', 'Custo de oportunidade da terra (arrendamento)', 'ct', 13],
+                    ['OPORTUNIDADE_CAPITAL', 'Custo de oportunidade do capital próprio', 'ct', 14],
+                ];
+                foreach ($itens as $i) {
+                    Database::executar(
+                        'INSERT INTO cat_item_custo (codigo, descricao, grupo, ordem) VALUES (?,?,?,?)', $i
+                    );
+                }
+            }
+            // Seed dos presets só se vazio, resolvendo o item pelo CÓDIGO (robusto a
+            // ids diferentes em bancos que já tinham catálogo próprio)
+            if ((int) Database::valor('SELECT COUNT(*) FROM custo_preset') === 0) {
+                $presets = [
+                    'Soja' => [
+                        'SEMENTES' => 480, 'FERTILIZANTES' => 1350, 'DEFENSIVOS' => 1520,
+                        'CORRETIVOS' => 190, 'OPERACOES' => 780, 'MAO_OBRA' => 180,
+                        'SECAGEM_FRETE' => 260, 'SEGURO' => 130, 'JUROS_CUSTEIO' => 150,
+                        'DEPRECIACAO' => 640, 'MAO_OBRA_FAMILIAR' => 260, 'MANUTENCAO' => 240,
+                        'OPORTUNIDADE_TERRA' => 900, 'OPORTUNIDADE_CAPITAL' => 280,
+                    ],
+                    'Milho' => [
+                        'SEMENTES' => 900, 'FERTILIZANTES' => 2100, 'DEFENSIVOS' => 980,
+                        'CORRETIVOS' => 200, 'OPERACOES' => 890, 'MAO_OBRA' => 190,
+                        'SECAGEM_FRETE' => 480, 'SEGURO' => 160, 'JUROS_CUSTEIO' => 190,
+                        'DEPRECIACAO' => 700, 'MAO_OBRA_FAMILIAR' => 280, 'MANUTENCAO' => 260,
+                        'OPORTUNIDADE_TERRA' => 920, 'OPORTUNIDADE_CAPITAL' => 300,
+                    ],
+                ];
+                foreach ($presets as $cultura => $porCodigo) {
+                    foreach ($porCodigo as $codigo => $valor) {
+                        Database::executar(
+                            'INSERT INTO custo_preset (cultura, cat_item_id, valor_ha)
+                             SELECT ?, id, ? FROM cat_item_custo WHERE codigo = ?',
+                            [$cultura, $valor, $codigo]
+                        );
+                    }
+                }
+            }
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '35')
+                 ON DUPLICATE KEY UPDATE valor = '35'"
+            );
+        }
     }
 
     /** Fase 6E (refinamento): características fisiológicas por estágio (cartão ilustrado). */
