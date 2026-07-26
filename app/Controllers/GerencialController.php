@@ -155,6 +155,42 @@ class GerencialController
     }
 
     /**
+     * Custo individual do cooperado (nf-ingestao §8/§9 — decisão de governança):
+     * SÓ Diretoria/Controladoria/Gestor Comercial (PODE_CUSTO_INDIVIDUAL — nunca
+     * GESTORES: Gestor Técnico é campo). Consultar um produtor EXIGE motivo e
+     * TODA leitura é auditada (aceite §11.8).
+     */
+    public function custoIndividual(): void
+    {
+        Permissoes::exigirCustoIndividual();
+        $produtorId = (int) ($_GET['produtor'] ?? 0);
+        $safra = trim($_GET['safra'] ?? '');
+        $motivo = trim($_GET['motivo'] ?? '');
+        $visao = null;
+        $erroMotivo = false;
+        if ($produtorId > 0) {
+            if (mb_strlen($motivo) < 5) {
+                $erroMotivo = true; // sem motivo não há consulta (§10.2)
+                $produtorId = 0;
+            } else {
+                // §10.2/§11.8: usuário, timestamp (da auditoria), produtor e motivo
+                auditar('ler', 'custo_individual', $produtorId, 'gestão: ' . mb_substr($motivo, 0, 200));
+                $visao = \App\Services\CustoGestaoService::visao($produtorId, $safra);
+            }
+        }
+        render('custo_individual', [
+            'produtores' => \App\Services\CustoGestaoService::produtoresComCusto(),
+            'safras' => \App\Services\CustoGestaoService::safras(),
+            'visao' => $visao,
+            'produtorId' => $produtorId,
+            'safra' => $safra,
+            'motivo' => $motivo,
+            'erroMotivo' => $erroMotivo,
+            'titulo' => 'Custo Individual (governança)',
+        ]);
+    }
+
+    /**
      * Auditoria de campo (antifraude): visitas lançadas fora da propriedade
      * cadastrada do produtor. Restrita ao Administrador.
      */

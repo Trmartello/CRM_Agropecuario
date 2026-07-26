@@ -12,6 +12,9 @@ $rotGrupo = ['coe' => 'COE — Custo Operacional Efetivo', 'cot' => 'Complemento
   <li class="nav-item"><a class="nav-link" href="<?= url('gerencial') ?>"><i class="bi bi-speedometer2 me-1"></i>Painel</a></li>
   <li class="nav-item"><a class="nav-link" href="<?= url('gerencial/desempenho') ?>"><i class="bi bi-trophy me-1"></i>Desempenho</a></li>
   <li class="nav-item"><a class="nav-link active"><i class="bi bi-bar-chart-steps me-1"></i>Custo regional</a></li>
+  <?php if (\App\Core\Permissoes::podeCustoIndividual()): ?>
+  <li class="nav-item"><a class="nav-link" href="<?= url('gerencial/custo-individual') ?>"><i class="bi bi-person-lock me-1"></i>Custo individual</a></li>
+  <?php endif; ?>
   <?php if (\App\Core\Auth::perfil() === 'Administrador'): ?>
     <li class="nav-item"><a class="nav-link" href="<?= url('gerencial/auditoria-campo') ?>"><i class="bi bi-shield-exclamation me-1"></i>Auditoria de campo</a></li>
   <?php endif; ?>

@@ -269,6 +269,7 @@ $router->registrar('notificacoes/ler-todas', \App\Controllers\NotificacoesContro
 $router->registrar('gerencial', \App\Controllers\GerencialController::class, 'index');
 $router->registrar('gerencial/desempenho', \App\Controllers\GerencialController::class, 'desempenho');
 $router->registrar('gerencial/custo-regional', \App\Controllers\GerencialController::class, 'custoRegional');
+$router->registrar('gerencial/custo-individual', \App\Controllers\GerencialController::class, 'custoIndividual');
 $router->registrar('gerencial/auditoria-campo', \App\Controllers\GerencialController::class, 'auditoriaCampo');
 $router->registrar('auditoria', \App\Controllers\AuditoriaController::class, 'index');
 $router->registrar('backup/baixar', \App\Controllers\BackupController::class, 'baixar');
