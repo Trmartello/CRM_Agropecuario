@@ -80,6 +80,26 @@
         </div>
       </div>
 
+      <!-- Referências públicas de mercado (§8: oferta Copérdia nunca sem CEPEA+B3) -->
+      <div class="row g-2 mt-2 d-none" id="clMercado">
+        <div class="col-6 col-md-3 d-none" data-mk="cepea">
+          <div class="border rounded p-2 h-100"><div class="small text-muted">Indicador CEPEA/ESALQ</div>
+            <div class="fw-bold fs-5" data-preco></div><div class="small text-muted" data-data></div></div>
+        </div>
+        <div class="col-6 col-md-3 d-none" data-mk="b3">
+          <div class="border rounded p-2 h-100"><div class="small text-muted">Futuro B3 <span data-venc></span></div>
+            <div class="fw-bold fs-5" data-preco></div><div class="small text-muted" data-data></div></div>
+        </div>
+        <div class="col-6 col-md-3 d-none" data-mk="coperdia">
+          <div class="border rounded p-2 h-100"><div class="small text-muted">Oferta Copérdia hoje</div>
+            <div class="fw-bold fs-5" data-preco></div><div class="small text-muted" data-data></div></div>
+        </div>
+        <div class="col-12 col-md-3">
+          <div class="border rounded p-2 h-100 bg-light"><div class="small text-muted">Atenção</div>
+            <div class="small">A Copérdia é <strong>uma</strong> das compradoras possíveis. Compare sempre com o mercado antes de fechar.</div></div>
+        </div>
+      </div>
+
       <!-- 2. Formação do custo -->
       <h6 class="text-success mt-4">2. Formação do custo <small class="text-muted fw-normal">valores por hectare</small></h6>
       <div class="table-responsive">
@@ -313,6 +333,30 @@ const CustoLavoura = {
     pt.value = cen ? Math.round(parseFloat(cen.preco_travado)) : Math.round(ref);
 
     this.trocarBase(this.base, true);
+    this._mercado(d.lavoura.cultura);
+  },
+
+  /** Faixa de referências públicas (§8): renderiza SÓ o que o servidor mandou —
+   *  a oferta Copérdia já vem omitida sem CEPEA+B3 (regra imposta no servidor). */
+  async _mercado(cultura) {
+    const wrap = document.getElementById('clMercado');
+    wrap.classList.add('d-none');
+    wrap.querySelectorAll('[data-mk]').forEach(x => x.classList.add('d-none'));
+    try {
+      const d = await App.json('index.php?r=portal/mercado&cultura=' + encodeURIComponent(cultura));
+      const c = d.cotacoes || {};
+      let alguma = false;
+      ['cepea', 'b3', 'coperdia'].forEach(f => {
+        if (!c[f]) return;
+        alguma = true;
+        const box = wrap.querySelector('[data-mk="' + f + '"]');
+        box.classList.remove('d-none');
+        box.querySelector('[data-preco]').textContent = this.brl(c[f].preco);
+        box.querySelector('[data-data]').textContent = 'cotação de ' + c[f].data.split('-').reverse().join('/');
+        if (f === 'b3') box.querySelector('[data-venc]').textContent = c[f].vencimento ? '· ' + c[f].vencimento : '';
+      });
+      if (alguma) wrap.classList.remove('d-none');
+    } catch (e) { /* sem cotações: a faixa fica oculta */ }
   },
 
   /** Somas acumuladas por base a partir dos INPUTS (estado atual da tela). */

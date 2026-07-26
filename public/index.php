@@ -176,6 +176,7 @@ $router->registrar('clientes/localizar-area', ClientesController::class, 'locali
 $router->registrar('integracao/importar-car-municipio', \App\Controllers\IntegracaoController::class, 'importarCarMunicipio');
 $router->registrar('integracao/vincular-car-propriedades', \App\Controllers\IntegracaoController::class, 'vincularCarPropriedades');
 $router->registrar('integracao/gerar-territorio', \App\Controllers\IntegracaoController::class, 'gerarTerritorio');
+$router->registrar('integracao/salvar-cotacoes', \App\Controllers\IntegracaoController::class, 'salvarCotacoes');
 $router->registrar('territorio', \App\Controllers\TerritorioController::class, 'index');
 $router->registrar('territorio/imoveis', \App\Controllers\TerritorioController::class, 'imoveis');
 $router->registrar('territorio/imovel', \App\Controllers\TerritorioController::class, 'imovel');
@@ -275,6 +276,7 @@ $router->registrar('portal/lavoura', \App\Controllers\PortalController::class, '
 $router->registrar('portal/lavoura-criar', \App\Controllers\PortalController::class, 'lavouraCriar');
 $router->registrar('portal/lavoura-atualizar', \App\Controllers\PortalController::class, 'lavouraAtualizar');
 $router->registrar('portal/lavoura-custos', \App\Controllers\PortalController::class, 'lavouraCustos');
+$router->registrar('portal/mercado', \App\Controllers\PortalController::class, 'mercado');
 
 // Integração ERP/CAPE (Fase 5)
 $router->registrar('integracao', \App\Controllers\IntegracaoController::class, 'index');

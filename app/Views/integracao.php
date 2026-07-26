@@ -105,6 +105,47 @@
         <div id="territorioResumo" class="small mt-2"></div>
       </div>
     </div>
+
+    <!-- Cotações de mercado do Portal do Produtor (ref_mercado — spec custo-lavoura PR8) -->
+    <div class="card mt-3">
+      <div class="card-header"><i class="bi bi-graph-up-arrow me-2 text-success"></i><strong>Cotações de mercado (Portal do Produtor)</strong></div>
+      <div class="card-body">
+        <p class="small text-muted mb-2">
+          Referências públicas exibidas ao produtor no Custo da Lavoura (R$/sc).
+          A <strong>oferta Copérdia só aparece no Portal se CEPEA e B3 estiverem preenchidos</strong>
+          (regra da spec — a oferta nunca sai sem as referências públicas ao lado).
+        </p>
+        <div class="row g-2 align-items-end mb-2">
+          <div class="col-6 col-md-4"><label class="form-label small mb-1">Data da cotação</label>
+            <input type="date" id="cotData" class="form-control form-control-sm" value="<?= e(date('Y-m-d')) ?>"></div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-2">
+            <thead class="table-light"><tr>
+              <th>Cultura</th><th>CEPEA/ESALQ</th><th>Futuro B3</th><th>Venc. B3</th><th>Oferta Copérdia</th>
+            </tr></thead>
+            <tbody id="cotLinhas">
+              <?php foreach (($cotacaoCulturas ?: ['Soja', 'Milho']) as $cc): ?>
+              <tr data-cultura="<?= e($cc) ?>">
+                <th class="fw-semibold"><?= e($cc) ?></th>
+                <?php foreach (['cepea', 'b3'] as $f): $v = $cotacoes[$cc . '|' . $f]['preco'] ?? ''; ?>
+                <td><input type="number" step="any" min="0" class="form-control form-control-sm" style="max-width:7rem"
+                           data-fonte="<?= $f ?>" value="<?= e((string) $v) ?>"></td>
+                <?php endforeach; ?>
+                <td><input class="form-control form-control-sm" style="max-width:7rem" maxlength="20"
+                           data-venc="1" placeholder="maio/26" value="<?= e((string) ($cotacoes[$cc . '|b3']['vencimento'] ?? '')) ?>"></td>
+                <td><input type="number" step="any" min="0" class="form-control form-control-sm" style="max-width:7rem"
+                           data-fonte="coperdia" value="<?= e((string) ($cotacoes[$cc . '|coperdia']['preco'] ?? '')) ?>"></td>
+              </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+        <button class="btn btn-outline-success btn-sm" onclick="Integracao.salvarCotacoes(event)">
+          <i class="bi bi-check-lg me-1"></i>Salvar cotações do dia</button>
+        <div id="cotResumo" class="small mt-2"></div>
+      </div>
+    </div>
   </div>
 
   <div class="col-lg-7">
@@ -208,6 +249,28 @@ const Integracao = {
         + (r.sem_car ? ` <span class="text-muted d-block">${r.sem_car} com sede, mas fora de qualquer imóvel do CAR (ajuste a sede ou desenhe no croqui).</span>` : '')
         + (r.sem_sede ? ` <span class="text-muted d-block">${r.sem_sede} sem coordenada de sede (cadastre a localização para vincular).</span>` : '')
         + '</div>';
+    } catch (e) { alvo.innerHTML = ''; App.alerta(e.message, 'danger'); }
+    btn.disabled = false;
+  },
+  async salvarCotacoes(ev) {
+    const btn = ev.currentTarget, alvo = document.getElementById('cotResumo');
+    const itens = [];
+    document.querySelectorAll('#cotLinhas tr[data-cultura]').forEach(tr => {
+      const cultura = tr.dataset.cultura;
+      const venc = (tr.querySelector('[data-venc]').value || '').trim();
+      tr.querySelectorAll('input[data-fonte]').forEach(inp => {
+        const preco = parseFloat(inp.value);
+        if (preco > 0) itens.push({ cultura, fonte: inp.dataset.fonte, preco, vencimento: inp.dataset.fonte === 'b3' ? venc : '' });
+      });
+    });
+    if (!itens.length) { App.alerta('Preencha ao menos uma cotação.', 'warning'); return; }
+    btn.disabled = true;
+    try {
+      const fd = new FormData();
+      fd.append('itens', JSON.stringify(itens));
+      fd.append('data', document.getElementById('cotData').value || '');
+      const r = await App.json('index.php?r=integracao/salvar-cotacoes', { method: 'POST', body: fd });
+      alvo.innerHTML = `<div class="alert alert-success py-2 mb-1"><strong>${r.gravadas}</strong> cotação(ões) gravadas.</div>`;
     } catch (e) { alvo.innerHTML = ''; App.alerta(e.message, 'danger'); }
     btn.disabled = false;
   },

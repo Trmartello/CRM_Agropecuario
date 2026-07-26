@@ -21,7 +21,43 @@ class IntegracaoController
             'historico' => IntegracaoService::historico(),
             'entidades' => IntegracaoService::ENTIDADES,
             'carMunicipios' => \App\Services\CarService::municipios(),
+            'cotacoes' => \App\Services\MercadoService::vigentes(),
+            'cotacaoCulturas' => \App\Services\MercadoService::culturas(),
         ]);
+    }
+
+    /**
+     * Cotações de mercado do Portal (ref_mercado) — spec custo-lavoura PR8.
+     * Recebe a lista do dia em JSON: [{cultura, fonte, preco, vencimento?}].
+     */
+    public function salvarCotacoes(): void
+    {
+        Permissoes::exigir(['Administrador']);
+        $itens = json_decode((string) ($_POST['itens'] ?? '[]'), true);
+        $dt = trim((string) ($_POST['data'] ?? ''));
+        if (!is_array($itens) || !$itens) {
+            json_erro('Nenhuma cotação informada.');
+        }
+        if (count($itens) > 60) {
+            json_erro('Cotações demais em um só envio.');
+        }
+        $n = 0;
+        try {
+            foreach ($itens as $i) {
+                \App\Services\MercadoService::salvar(
+                    (string) ($i['cultura'] ?? ''),
+                    (string) ($i['fonte'] ?? ''),
+                    (float) ($i['preco'] ?? 0),
+                    (string) ($i['vencimento'] ?? ''),
+                    $dt !== '' ? $dt : null
+                );
+                $n++;
+            }
+        } catch (\RuntimeException $e) {
+            json_erro($e->getMessage() . ($n ? " ({$n} já gravadas antes do erro.)" : ''));
+        }
+        auditar('salvar', 'ref_mercado', 0, "{$n} cotações" . ($dt !== '' ? " de {$dt}" : ' de hoje'));
+        json_ok(['gravadas' => $n]);
     }
 
     /** Importa a base do CAR de um município (shapefile do SICAR) para uso offline. */

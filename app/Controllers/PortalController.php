@@ -128,6 +128,17 @@ class PortalController
         json_ok($d);
     }
 
+    /** GET portal/mercado?cultura= — referências públicas (§8: oferta nunca sem CEPEA+B3). */
+    public function mercado(): void
+    {
+        $this->produtorId(); // só autenticação/perfil: cotação é referência pública, não dado de produtor
+        $cultura = trim((string) ($_GET['cultura'] ?? ''));
+        if ($cultura === '') {
+            json_erro('Informe a cultura.');
+        }
+        json_ok(\App\Services\MercadoService::paraPortal($cultura));
+    }
+
     /** POST portal/lavoura-atualizar — setup (área/produtividade/preço/base). */
     public function lavouraAtualizar(): void
     {
