@@ -287,6 +287,169 @@ class NotaFiscalService
         return ['chave' => $nf['chave'], 'novo' => true, 'itens' => count($nf['itens'])];
     }
 
+    /* ---------- mapeamento e revisão (§7 — PR 5) ---------- */
+
+    /** Palavra-chave na descrição → código do item (fallback quando o NCM não casa). */
+    private const PALAVRAS_ITEM = [
+        'FERTIL' => 'FERTILIZANTES', 'ADUBO' => 'FERTILIZANTES',
+        'HERBICIDA' => 'DEFENSIVOS', 'FUNGICIDA' => 'DEFENSIVOS',
+        'INSETICIDA' => 'DEFENSIVOS', 'DEFENSIV' => 'DEFENSIVOS',
+        'SEMENTE' => 'SEMENTES',
+        'CALCARIO' => 'CORRETIVOS', 'CALCÁRIO' => 'CORRETIVOS', 'GESSO' => 'CORRETIVOS',
+        'FRETE' => 'SECAGEM_FRETE', 'TRANSPORTE' => 'SECAGEM_FRETE', 'SECAGEM' => 'SECAGEM_FRETE',
+        'SEGURO' => 'SEGURO', 'DIESEL' => 'OPERACOES',
+    ];
+
+    /**
+     * Sugere o item de custo para os itens ainda sem mapeamento: maior prefixo
+     * de NCM em map_ncm_item; na falta, palavra-chave da descrição. Mantém
+     * status_map='sugerido' — NADA entra no custo sem confirmação (§7).
+     */
+    public static function sugerirMapeamento(int $nfeId): int
+    {
+        $mapa = Database::todos('SELECT ncm_prefix, cat_item_id FROM map_ncm_item ORDER BY LENGTH(ncm_prefix) DESC');
+        $porCodigo = [];
+        foreach (Database::todos('SELECT id, codigo FROM cat_item_custo WHERE ativo = 1') as $c) {
+            $porCodigo[$c['codigo']] = (int) $c['id'];
+        }
+        $itens = self::cExec(
+            "SELECT id, ncm, descricao FROM nfe_item
+              WHERE nfe_id = ? AND cat_item_id IS NULL AND status_map = 'sugerido'",
+            [$nfeId]
+        )->fetchAll();
+        $n = 0;
+        foreach ($itens as $i) {
+            $catId = null;
+            $ncm = (string) ($i['ncm'] ?? '');
+            foreach ($mapa as $m) { // ordenado do prefixo mais longo p/ o mais curto
+                if ($ncm !== '' && str_starts_with($ncm, $m['ncm_prefix'])) {
+                    $catId = (int) $m['cat_item_id'];
+                    break;
+                }
+            }
+            if ($catId === null) {
+                $desc = mb_strtoupper((string) $i['descricao']);
+                foreach (self::PALAVRAS_ITEM as $palavra => $codigo) {
+                    if (str_contains($desc, $palavra) && isset($porCodigo[$codigo])) {
+                        $catId = $porCodigo[$codigo];
+                        break;
+                    }
+                }
+            }
+            if ($catId !== null) {
+                self::cExec('UPDATE nfe_item SET cat_item_id = ? WHERE id = ?', [$catId, (int) $i['id']]);
+                $n++;
+            }
+        }
+        return $n;
+    }
+
+    /** Notas do produtor com contagens de itens (lista do card do Portal). */
+    public static function notasDoProdutor(int $produtorId): array
+    {
+        return array_map(static fn ($n) => [
+            'id' => (int) $n['id'],
+            'chave' => $n['chave_acesso'],
+            'emitente' => $n['emit_nome'],
+            'numero' => $n['numero'],
+            'dtEmissao' => $n['dt_emissao'],
+            'valorTotal' => $n['valor_total'] !== null ? (float) $n['valor_total'] : null,
+            'fonte' => $n['fonte'],
+            'itens' => (int) $n['qtd_itens'],
+            'pendentes' => (int) $n['qtd_pendentes'],
+            'confirmados' => (int) $n['qtd_confirmados'],
+        ], self::cExec(
+            "SELECT d.id, d.chave_acesso, d.emit_nome, d.numero, d.dt_emissao, d.valor_total, d.fonte,
+                    COUNT(i.id) AS qtd_itens,
+                    SUM(i.status_map = 'sugerido') AS qtd_pendentes,
+                    SUM(i.status_map = 'confirmado') AS qtd_confirmados
+               FROM nfe_documento d LEFT JOIN nfe_item i ON i.nfe_id = d.id
+              WHERE d.produtor_id = ?
+              GROUP BY d.id
+              ORDER BY d.dt_emissao DESC, d.id DESC",
+            [$produtorId]
+        )->fetchAll());
+    }
+
+    /** Nota + itens (com sugestões preenchidas) — posse verificada. */
+    public static function notaDetalhe(int $produtorId, int $nfeId): ?array
+    {
+        $nota = self::cUm(
+            'SELECT id, chave_acesso, emit_nome, emit_cnpj, numero, serie, dt_emissao,
+                    valor_total, natureza_op, fonte
+               FROM nfe_documento WHERE id = ? AND produtor_id = ?',
+            [$nfeId, $produtorId]
+        );
+        if ($nota === null) {
+            return null;
+        }
+        self::sugerirMapeamento($nfeId);
+        $itens = self::cExec(
+            'SELECT id, n_item, descricao, ncm, cfop, unidade, quantidade,
+                    valor_unit, valor_total, cat_item_id, status_map
+               FROM nfe_item WHERE nfe_id = ? ORDER BY n_item',
+            [$nfeId]
+        )->fetchAll();
+        return [
+            'nota' => [
+                'id' => (int) $nota['id'],
+                'chave' => $nota['chave_acesso'],
+                'emitente' => $nota['emit_nome'],
+                'numero' => $nota['numero'],
+                'dtEmissao' => $nota['dt_emissao'],
+                'valorTotal' => $nota['valor_total'] !== null ? (float) $nota['valor_total'] : null,
+                'naturezaOp' => $nota['natureza_op'],
+                'fonte' => $nota['fonte'],
+            ],
+            'itens' => array_map(static fn ($i) => [
+                'id' => (int) $i['id'],
+                'nItem' => (int) $i['n_item'],
+                'descricao' => $i['descricao'],
+                'ncm' => $i['ncm'],
+                'unidade' => $i['unidade'],
+                'quantidade' => $i['quantidade'] !== null ? (float) $i['quantidade'] : null,
+                'valorTotal' => $i['valor_total'] !== null ? (float) $i['valor_total'] : null,
+                'catItemId' => $i['cat_item_id'] !== null ? (int) $i['cat_item_id'] : null,
+                'status' => $i['status_map'],
+            ], $itens),
+        ];
+    }
+
+    /**
+     * Revisão do produtor (§7): confirma/ajusta/ignora o mapeamento de cada
+     * item. Confirmado exige um item de custo válido.
+     */
+    public static function salvarMapeamento(int $produtorId, int $nfeId, array $itens): int
+    {
+        if (self::cUm('SELECT id FROM nfe_documento WHERE id = ? AND produtor_id = ?', [$nfeId, $produtorId]) === null) {
+            throw new \RuntimeException('Nota não encontrada.');
+        }
+        $validos = array_map('intval', array_column(
+            Database::todos('SELECT id FROM cat_item_custo WHERE ativo = 1'), 'id'
+        ));
+        $n = 0;
+        foreach ($itens as $i) {
+            $itemId = (int) ($i['id'] ?? 0);
+            $status = (string) ($i['status'] ?? '');
+            $catId = isset($i['catItemId']) && $i['catItemId'] !== null && $i['catItemId'] !== '' ? (int) $i['catItemId'] : null;
+            if (!in_array($status, ['confirmado', 'ignorado', 'sugerido'], true)) {
+                throw new \RuntimeException('Situação inválida para o item ' . $itemId . '.');
+            }
+            if ($status === 'confirmado' && ($catId === null || !in_array($catId, $validos, true))) {
+                throw new \RuntimeException('Escolha o item de custo antes de confirmar (item ' . $itemId . ').');
+            }
+            $ok = self::cExec(
+                'UPDATE nfe_item SET cat_item_id = ?, status_map = ? WHERE id = ? AND nfe_id = ?',
+                [$catId, $status, $itemId, $nfeId]
+            )->rowCount();
+            if ($ok === 0 && self::cUm('SELECT id FROM nfe_item WHERE id = ? AND nfe_id = ?', [$itemId, $nfeId]) === null) {
+                throw new \RuntimeException('Item ' . $itemId . ' não pertence a esta nota.');
+            }
+            $n++;
+        }
+        return $n;
+    }
+
     /* ---------------- parse do XML (modelo 55) ---------------- */
 
     /**

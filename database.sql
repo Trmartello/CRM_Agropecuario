@@ -1635,8 +1635,8 @@ CREATE TABLE sync_processados (
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','36')
-  ON DUPLICATE KEY UPDATE valor = '36';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','37')
+  ON DUPLICATE KEY UPDATE valor = '37';
 
 -- ============================================================================
 -- SEED — Mapa Territorial: 5 imóveis fictícios (Concórdia/SC), vínculos e talhões
@@ -1699,3 +1699,11 @@ INSERT INTO custo_preset (cultura, cat_item_id, valor_ha) VALUES
 ('Milho',10,700.00),('Milho',11,280.00),('Milho',12,260.00),
 -- Milho (CT +1220)
 ('Milho',13,920.00),('Milho',14,300.00);
+
+-- Heurística NCM -> item de custo (nf-ingestao §7; melhora com o piloto)
+INSERT INTO map_ncm_item (ncm_prefix, cat_item_id, confianca) VALUES
+('3101',2,'alta'),('3102',2,'alta'),('3103',2,'alta'),('3104',2,'alta'),('3105',2,'alta'), -- fertilizantes
+('3808',3,'alta'),                                                                          -- defensivos
+('1209',1,'alta'),('1201',1,'media'),('1005',1,'media'),                                    -- sementes
+('2521',4,'alta'),('2520',4,'media'),                                                       -- corretivos (calcário/gesso)
+('2710',5,'media');                                                                         -- diesel/lubrif. -> operações

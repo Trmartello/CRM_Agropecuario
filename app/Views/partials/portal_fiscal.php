@@ -63,6 +63,33 @@
   </div>
 </div>
 
+<!-- Modal: revisão dos itens da nota (mapeamento item -> custo, §7) -->
+<div class="modal fade" id="modalNfe" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-fullscreen-md-down">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-receipt me-2 text-success"></i><span id="nfeTitulo">Nota fiscal</span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="small text-muted mb-2" id="nfeInfo"></div>
+        <p class="small mb-2">Confira a que item do custo cada compra pertence. <strong>Nada entra no
+          seu custo sem a sua confirmação</strong> — o que não fizer sentido, marque "Ignorar".</p>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle" id="nfeItens"></table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" style="min-height:44px" data-bs-dismiss="modal">Fechar</button>
+        <button type="button" class="btn btn-success px-4" style="min-height:44px" id="nfeBtnSalvar"
+                onclick="PortalFiscal.salvarItens()">
+          <i class="bi bi-check-lg me-1"></i>Confirmar itens escolhidos
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 const PortalFiscal = {
   async carregar() {
@@ -143,6 +170,80 @@ const PortalFiscal = {
       this.render(d.autorizacao);
       App.alerta('Autorização registrada. Suas notas serão capturadas automaticamente.');
     } catch (e) { App.alerta(e.message, 'danger'); btn.disabled = false; }
+  },
+
+  /* ---- lista de notas + revisão do mapeamento (§7 — PR5) ---- */
+  notaAberta: null,
+
+  brl(v) { return (v === null || v === undefined || isNaN(v)) ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); },
+  dataBr(v) { return v ? v.slice(0, 10).split('-').reverse().join('/') : '—'; },
+
+  async listarNotas() {
+    const box = document.getElementById('pfNotas');
+    try {
+      const d = await App.json('index.php?r=portal/fiscal-notas');
+      const notas = d.notas || [];
+      if (!notas.length) { box.classList.add('d-none'); return; }
+      box.classList.remove('d-none');
+      box.innerHTML = '<div class="list-group">' + notas.map(n => {
+        const badge = n.pendentes > 0
+          ? `<span class="badge text-bg-warning">${n.pendentes} a revisar</span>`
+          : (n.confirmados > 0 ? `<span class="badge text-bg-success">${n.confirmados} confirmado(s)</span>`
+            : '<span class="badge text-bg-light border">revisada</span>');
+        return `<button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-2"
+                        style="min-height:44px" onclick="PortalFiscal.abrirNota(${n.id})">
+          <span class="text-start"><strong>${App.escapeHtml(n.emitente || 'Fornecedor')}</strong>
+            <span class="small text-muted d-block">NF ${App.escapeHtml(n.numero || '—')} · ${this.dataBr(n.dtEmissao)} · ${this.brl(n.valorTotal)}</span></span>
+          ${badge}</button>`;
+      }).join('') + '</div>';
+    } catch (e) { box.classList.add('d-none'); }
+  },
+
+  async abrirNota(id) {
+    try {
+      const d = await App.json('index.php?r=portal/fiscal-nota&id=' + id);
+      this.notaAberta = d;
+      document.getElementById('nfeTitulo').textContent =
+        (d.nota.emitente || 'Nota fiscal') + ' · NF ' + (d.nota.numero || '—');
+      document.getElementById('nfeInfo').textContent =
+        'Emitida em ' + this.dataBr(d.nota.dtEmissao) + ' · total ' + this.brl(d.nota.valorTotal)
+        + (d.nota.naturezaOp ? ' · ' + d.nota.naturezaOp : '');
+      const opts = c => d.catalogo.map(x =>
+        `<option value="${x.id}" ${c === x.id ? 'selected' : ''}>${App.escapeHtml(x.descricao)}</option>`).join('');
+      document.getElementById('nfeItens').innerHTML =
+        '<thead class="table-light"><tr><th>Compra</th><th class="text-end">Valor</th><th style="min-width:14rem">Item do custo</th></tr></thead><tbody>'
+        + d.itens.map(i => `<tr data-item="${i.id}">
+            <td>${App.escapeHtml(i.descricao)}<span class="small text-muted d-block">NCM ${App.escapeHtml(i.ncm || '—')}${i.quantidade ? ' · ' + i.quantidade + ' ' + App.escapeHtml(i.unidade || '') : ''}</span></td>
+            <td class="text-end">${this.brl(i.valorTotal)}</td>
+            <td><select class="form-select form-select-sm" style="min-height:44px" data-status="${i.status}">
+              <option value="">— escolher depois —</option>${opts(i.catItemId)}
+              <option value="ig" ${i.status === 'ignorado' ? 'selected' : ''}>Ignorar este item</option>
+            </select>${i.status === 'confirmado' ? '<span class="small text-success"><i class="bi bi-check-circle me-1"></i>confirmado</span>' : ''}</td>
+          </tr>`).join('') + '</tbody>';
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('modalNfe')).show();
+    } catch (e) { App.alerta(e.message, 'danger'); }
+  },
+
+  async salvarItens() {
+    if (!this.notaAberta) return;
+    const btn = document.getElementById('nfeBtnSalvar');
+    btn.disabled = true;
+    try {
+      const itens = [];
+      document.querySelectorAll('#nfeItens tr[data-item]').forEach(tr => {
+        const v = tr.querySelector('select').value;
+        if (v === 'ig') itens.push({ id: parseInt(tr.dataset.item, 10), catItemId: null, status: 'ignorado' });
+        else if (v !== '') itens.push({ id: parseInt(tr.dataset.item, 10), catItemId: parseInt(v, 10), status: 'confirmado' });
+      });
+      if (!itens.length) { App.alerta('Escolha o item do custo (ou "Ignorar") em pelo menos uma linha.', 'warning'); btn.disabled = false; return; }
+      const fd = new FormData();
+      fd.append('id', this.notaAberta.nota.id);
+      fd.append('itens', JSON.stringify(itens));
+      await App.json('index.php?r=portal/fiscal-nota-itens', { method: 'POST', body: fd });
+      bootstrap.Modal.getInstance(document.getElementById('modalNfe')).hide();
+      App.alerta('Itens revisados. Você pode aplicá-los ao custo da sua lavoura.');
+      this.listarNotas();
+    } catch (e) { App.alerta(e.message, 'danger'); } finally { btn.disabled = false; }
   },
 
   async revogar() {

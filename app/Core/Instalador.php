@@ -851,6 +851,33 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '36'"
             );
         }
+
+        if ($versao < 37) {
+            // NF PR5: seed da heurística NCM -> item de custo (só se vazio; itens
+            // resolvidos por CÓDIGO — robusto a catálogos com ids diferentes).
+            if ((int) Database::valor('SELECT COUNT(*) FROM map_ncm_item') === 0) {
+                $mapa = [
+                    ['3101', 'FERTILIZANTES', 'alta'], ['3102', 'FERTILIZANTES', 'alta'],
+                    ['3103', 'FERTILIZANTES', 'alta'], ['3104', 'FERTILIZANTES', 'alta'],
+                    ['3105', 'FERTILIZANTES', 'alta'],
+                    ['3808', 'DEFENSIVOS', 'alta'],
+                    ['1209', 'SEMENTES', 'alta'], ['1201', 'SEMENTES', 'media'], ['1005', 'SEMENTES', 'media'],
+                    ['2521', 'CORRETIVOS', 'alta'], ['2520', 'CORRETIVOS', 'media'],
+                    ['2710', 'OPERACOES', 'media'],
+                ];
+                foreach ($mapa as [$ncm, $codigo, $conf]) {
+                    Database::executar(
+                        'INSERT INTO map_ncm_item (ncm_prefix, cat_item_id, confianca)
+                         SELECT ?, id, ? FROM cat_item_custo WHERE codigo = ?',
+                        [$ncm, $conf, $codigo]
+                    );
+                }
+            }
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '37')
+                 ON DUPLICATE KEY UPDATE valor = '37'"
+            );
+        }
     }
 
     /** Fase 6E (refinamento): características fisiológicas por estágio (cartão ilustrado). */

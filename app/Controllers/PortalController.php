@@ -210,6 +210,43 @@ class PortalController
         json_ok(['autorizacao' => $aut]);
     }
 
+    /** GET portal/fiscal-notas — notas capturadas do produtor (lista). */
+    public function fiscalNotas(): void
+    {
+        $clienteId = $this->produtorId();
+        json_ok(['notas' => \App\Services\NotaFiscalService::notasDoProdutor($clienteId)]);
+    }
+
+    /** GET portal/fiscal-nota?id= — nota + itens com sugestões + catálogo. */
+    public function fiscalNota(): void
+    {
+        $clienteId = $this->produtorId();
+        $d = \App\Services\NotaFiscalService::notaDetalhe($clienteId, (int) ($_GET['id'] ?? 0));
+        if ($d === null) {
+            json_erro('Nota não encontrada.', 404);
+        }
+        auditar('ler', 'nfe_documento', $d['nota']['id'], 'portal: leitura pelo próprio produtor');
+        json_ok($d + ['catalogo' => \App\Services\CustoLavouraService::catalogo()]);
+    }
+
+    /** POST portal/fiscal-nota-itens — revisão do mapeamento item→custo (§7). */
+    public function fiscalNotaItens(): void
+    {
+        $clienteId = $this->produtorId();
+        $id = (int) ($_POST['id'] ?? 0);
+        $itens = json_decode((string) ($_POST['itens'] ?? '[]'), true);
+        if (!is_array($itens) || !$itens) {
+            json_erro('Nenhum item enviado.');
+        }
+        try {
+            $n = \App\Services\NotaFiscalService::salvarMapeamento($clienteId, $id, $itens);
+        } catch (\RuntimeException $e) {
+            json_erro($e->getMessage());
+        }
+        auditar('mapear', 'nfe_item', $id, "portal: revisão de {$n} item(ns) da nota");
+        json_ok(['gravados' => $n, 'detalhe' => \App\Services\NotaFiscalService::notaDetalhe($clienteId, $id)]);
+    }
+
     /** GET portal/mercado?cultura= — referências públicas (§8: oferta nunca sem CEPEA+B3). */
     public function mercado(): void
     {
