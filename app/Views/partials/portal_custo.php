@@ -20,6 +20,22 @@
   #cardCustoLavoura .cl-sub td { border-top: 2px solid var(--bs-gray-400); font-weight: 700; }
   #cardCustoLavoura input.cl-valor { max-width: 8.5rem; text-align: right; min-height: 44px; }
   #cardCustoLavoura .cl-chip[aria-pressed="true"] { background: var(--bs-success); color: #fff; }
+  /* Barra de cobertura (spec §10 — elemento central do módulo) */
+  #cardCustoLavoura .cl-covbar { position: relative; display: flex; height: 36px; border-radius: 6px;
+    overflow: visible; background: var(--bs-light); margin: 22px 0 10px; }
+  #cardCustoLavoura .cl-covbar i { display: block; height: 100%; transition: width .3s; }
+  #cardCustoLavoura .cl-cov { background: #2e7d32; border-radius: 6px 0 0 6px; }
+  #cardCustoLavoura .cl-risk { background: #c62828; }
+  #cardCustoLavoura .cl-free { background: #e9c46a; }
+  #cardCustoLavoura .cl-eqline { position: absolute; top: -7px; bottom: -7px; width: 2px; background: #141e17; z-index: 3; transition: left .3s; }
+  #cardCustoLavoura .cl-eqline::after { content: "equilíbrio"; position: absolute; top: -15px; left: 50%;
+    transform: translateX(-50%); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; color: #141e17; }
+  #cardCustoLavoura .cl-leg i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+  #cardCustoLavoura .cl-verdict { margin-top: 14px; padding: 12px 14px; border-radius: 4px; font-size: .9rem; border-left: 3px solid; }
+  #cardCustoLavoura .cl-verdict.ok { background: #e8f3ea; border-color: #2e7d32; }
+  #cardCustoLavoura .cl-verdict.warn { background: #fbf3e2; border-color: #e9c46a; }
+  #cardCustoLavoura .cl-verdict.bad { background: #f8e9e6; border-color: #c62828; }
+  #cardCustoLavoura input[type="range"] { width: 100%; height: 44px; }
 </style>
 
 <div class="card mt-3" id="cardCustoLavoura">
@@ -87,6 +103,48 @@
             <div class="small text-muted mt-1">Quanto você precisa colher por hectare, ao preço de referência, para apenas empatar.</div>
           </div>
         </div>
+      </div>
+
+      <!-- 4. Simulação de venda antecipada (SimuladorTravamento + BarraCobertura) -->
+      <h6 class="text-success mt-4">4. Simulação de venda antecipada <small class="text-muted fw-normal">quanto travar, e a que preço</small></h6>
+      <div class="row g-3">
+        <div class="col-12 col-md-6">
+          <div class="d-flex justify-content-between align-items-center">
+            <span class="small text-muted">Percentual da produção travada</span>
+            <strong id="clTravPct">0%</strong>
+          </div>
+          <input type="range" id="clTrav" min="0" max="100" step="5" value="0"
+                 oninput="CustoLavoura.recalc()" aria-label="Percentual da produção travada">
+          <div class="small text-muted" id="clTravHint"></div>
+        </div>
+        <div class="col-12 col-md-6">
+          <div class="d-flex justify-content-between align-items-center">
+            <span class="small text-muted">Preço travado (R$/sc)</span>
+            <strong id="clPtVal">—</strong>
+          </div>
+          <input type="range" id="clPt" min="1" max="200" step="1" value="100"
+                 oninput="CustoLavoura.recalc()" aria-label="Preço travado em reais por saca">
+          <div class="small text-muted">Preço que você consegue fechar hoje em contrato a termo ou troca-troca.</div>
+        </div>
+      </div>
+
+      <div class="mt-3">
+        <div class="small text-muted">Sua produção esperada, saca por saca</div>
+        <div class="cl-covbar">
+          <i class="cl-cov" id="clBarCov" style="width:0"></i>
+          <i class="cl-risk" id="clBarRisk" style="width:0"></i>
+          <i class="cl-free" id="clBarFree" style="width:0"></i>
+          <div class="cl-eqline" id="clEqLine" style="left:0"></div>
+        </div>
+        <div class="row g-2 small cl-leg">
+          <div class="col-12 col-md-4"><i style="background:#2e7d32"></i>Já vendido
+            <strong id="clLegCov">—</strong> <span class="text-muted" id="clLegCovP"></span></div>
+          <div class="col-12 col-md-4"><i style="background:#e9c46a"></i>Produção livre
+            <strong id="clLegFree">—</strong> <span class="text-muted">exposta ao preço da colheita</span></div>
+          <div class="col-12 col-md-4"><i style="background:#141e17"></i>Sacas só para pagar a conta
+            <strong id="clLegEq">—</strong> <span class="text-muted" id="clLegEqP"></span></div>
+        </div>
+        <div class="cl-verdict d-none" id="clVerdict"></div>
       </div>
 
       <div class="d-flex flex-wrap gap-2 mt-3">
@@ -170,6 +228,8 @@ const CustoLavoura = {
   },
 
   brl(v) { return (v === null || isNaN(v)) ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); },
+  sc(v) { return (v === null || isNaN(v)) ? '—' : Math.round(v).toLocaleString('pt-BR') + ' sc'; },
+  pc(v) { return (v * 100).toFixed(0) + '%'; },
 
   async carregar() {
     if (!document.getElementById('cardCustoLavoura')) return;
@@ -226,6 +286,18 @@ const CustoLavoura = {
       linhas.push(`<tr class="cl-sub"><td>${subRot[g]}</td><td class="text-end" id="clSub-${g}">—</td></tr>`);
     });
     document.getElementById('clTabela').innerHTML = linhas.join('');
+
+    // Simulador (seção 4): parte do último cenário salvo; sem cenário, começa
+    // NEUTRO (0% travado, preço travado = referência) — a ferramenta descreve,
+    // não sugere quanto travar (invariante 6).
+    const ref = parseFloat(d.lavoura.precoReferencia) || 1;
+    const pt = document.getElementById('clPt');
+    pt.min = Math.max(1, Math.round(ref * 0.5));
+    pt.max = Math.round(ref * 1.6);
+    const cen = d.ultimo_cenario;
+    document.getElementById('clTrav').value = cen ? Math.round(parseFloat(cen.pct_travado) * 100) : 0;
+    pt.value = cen ? Math.round(parseFloat(cen.preco_travado)) : Math.round(ref);
+
     this.trocarBase(this.base, true);
   },
 
@@ -253,12 +325,70 @@ const CustoLavoura = {
     ['coe', 'cot', 'ct'].forEach(g => {
       document.getElementById('clSub-' + g).textContent = this.brl(t[g]);
     });
-    const r = CustoMotor.calcular(area, prod, preco, t[this.base]);
+    const pct = (parseInt(document.getElementById('clTrav').value, 10) || 0) / 100;
+    const pt = parseFloat(document.getElementById('clPt').value) || 0;
+    const r = CustoMotor.calcular(area, prod, preco, t[this.base], pct, pt);
     document.getElementById('clEqPreco').textContent =
       r.preco_equilibrio === null ? '—' : this.brl(r.preco_equilibrio) + '/sc';
     document.getElementById('clEqProd').textContent =
       r.produtividade_equilibrio === null ? '—'
         : r.produtividade_equilibrio.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' sc/ha';
+    this.renderSimulador(r, pct, pt);
+  },
+
+  /** Seção 4: barra de cobertura + veredito (textos do protótipo — §8). */
+  renderSimulador(r, pct, pt) {
+    const CONS = CustoMotor.FRACAO_CONSERVADORA; // 0.80
+    document.getElementById('clTravPct').textContent = this.pc(pct);
+    document.getElementById('clPtVal').textContent = this.brl(pt);
+
+    // barra: coberto (travado), faixa de risco acima do conservador, e livre
+    const pctRisco = Math.max(0, pct - CONS);
+    document.getElementById('clBarCov').style.width = (Math.min(pct, CONS) * 100) + '%';
+    document.getElementById('clBarRisk').style.width = (pctRisco * 100) + '%';
+    document.getElementById('clBarFree').style.width = ((1 - pct) * 100) + '%';
+    const eqline = document.getElementById('clEqLine');
+    if (r.pct_equilibrio === null) {
+      eqline.classList.add('d-none');
+    } else {
+      eqline.classList.remove('d-none');
+      eqline.style.left = Math.min(r.pct_equilibrio * 100, 100) + '%';
+    }
+
+    document.getElementById('clLegCov').textContent = this.sc(r.sacas_travadas);
+    document.getElementById('clLegCovP').textContent =
+      r.sacas_travadas > 0 ? this.brl(r.receita_travada) + ' já garantidos' : '';
+    document.getElementById('clLegFree').textContent = this.sc(r.sacas_livres);
+    document.getElementById('clLegEq').textContent = this.sc(r.sacas_equilibrio);
+    document.getElementById('clLegEqP').textContent =
+      r.pct_equilibrio === null ? '' : this.pc(r.pct_equilibrio) + ' da produção esperada';
+
+    document.getElementById('clTravHint').textContent = pct > CONS
+      ? 'Acima de 80% da produção esperada. Se a safra frustrar, você pode ter que comprar saca no mercado para entregar.'
+      : 'Produção conservadora de referência: 80% do esperado (' + this.sc(r.producao_conservadora) + ').';
+
+    // veredito (3 classes do protótipo; só números computados no innerHTML)
+    const v = document.getElementById('clVerdict');
+    const baseUp = this.base.toUpperCase();
+    const cob = r.cobertura_custo === null ? 0 : r.cobertura_custo;
+    if (pct === 0 || r.preco_equilibrio === null) {
+      v.className = 'cl-verdict d-none';
+      v.innerHTML = '';
+    } else if (pt < r.preco_equilibrio) {
+      v.className = 'cl-verdict bad';
+      v.innerHTML = 'O preço de <b>' + this.brl(pt) + '</b> por saca está <b>abaixo</b> do seu ponto de equilíbrio de <b>'
+        + this.brl(r.preco_equilibrio) + '</b>. Cada saca travada neste preço entra no prejuízo pela base ' + baseUp + '.';
+    } else if (pct > CONS) {
+      v.className = 'cl-verdict warn';
+      v.innerHTML = 'Você travou <b>' + this.pc(pct) + '</b> da produção esperada — acima da margem de segurança. Cobre <b>'
+        + this.pc(cob) + '</b> do custo, mas assume risco de entrega se a lavoura frustrar.';
+    } else {
+      v.className = 'cl-verdict ok';
+      v.innerHTML = 'Ao preço de <b>' + this.brl(pt) + '</b>, você precisa entregar <b>' + this.sc(r.sacas_equilibrio)
+        + '</b> — <b>' + (r.pct_equilibrio === null ? '—' : this.pc(r.pct_equilibrio)) + '</b> da sua produção esperada — só para cobrir o custo '
+        + baseUp + '. Com <b>' + this.pc(pct) + '</b> travado, <b>' + this.pc(cob)
+        + '</b> do custo já está garantido. O que passar disso é seu.';
+    }
   },
 
   trocarBase(b, semRender) {
