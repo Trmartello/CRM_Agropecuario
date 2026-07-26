@@ -450,6 +450,84 @@ class NotaFiscalService
         return $n;
     }
 
+    /* ---------- aplicar no custo da lavoura (§7 — PR 6) ---------- */
+
+    /**
+     * Aplica itens CONFIRMADOS de NF no custo da lavoura: soma o valor total
+     * por item de custo e converte para R$/ha pela área da lavoura — cálculo do
+     * SERVIDOR, nunca do navegador (§7). Upsert em lavoura_custo com
+     * fonte='dfe'/'upload' (a origem do documento). Idempotente: re-aplicar a
+     * mesma seleção grava os mesmos valores.
+     *
+     * @param int[] $nfeItemIds itens (já confirmados pelo produtor) a aplicar
+     * @return array{aplicados:int,por_item:array<int,array{catItemId:int,valorTotal:float,valorHa:float}>}
+     */
+    public static function aplicarEmLavoura(int $produtorId, int $lavouraSafraId, array $nfeItemIds): array
+    {
+        $lav = self::cUm(
+            'SELECT id, area_ha FROM lavoura_safra WHERE id = ? AND produtor_id = ?',
+            [$lavouraSafraId, $produtorId]
+        );
+        if ($lav === null) {
+            throw new \RuntimeException('Lavoura não encontrada.');
+        }
+        $area = (float) $lav['area_ha'];
+        if ($area <= 0) {
+            throw new \RuntimeException('A lavoura está sem área — corrija antes de aplicar.');
+        }
+        $ids = array_values(array_unique(array_map('intval', $nfeItemIds)));
+        if (!$ids || count($ids) > 500) {
+            throw new \RuntimeException('Nenhum item de nota para aplicar.');
+        }
+
+        // Só itens CONFIRMADOS, com item de custo, de notas DESTE produtor (§7:
+        // nada entra sem confirmação; posse verificada no dado, não no path)
+        $marks = implode(',', array_fill(0, count($ids), '?'));
+        $itens = self::cExec(
+            "SELECT i.id, i.cat_item_id, i.valor_total, d.fonte
+               FROM nfe_item i JOIN nfe_documento d ON d.id = i.nfe_id
+              WHERE i.id IN ($marks) AND d.produtor_id = ?
+                AND i.status_map = 'confirmado' AND i.cat_item_id IS NOT NULL",
+            array_merge($ids, [$produtorId])
+        )->fetchAll();
+        if (count($itens) !== count($ids)) {
+            throw new \RuntimeException(
+                'Só itens confirmados (e das suas notas) podem entrar no custo — revise a nota antes de aplicar.'
+            );
+        }
+
+        // Soma por item de custo; fonte 'dfe' prevalece se qualquer item veio do pull
+        $porCat = [];
+        foreach ($itens as $i) {
+            $cat = (int) $i['cat_item_id'];
+            $porCat[$cat]['total'] = ($porCat[$cat]['total'] ?? 0) + (float) $i['valor_total'];
+            $porCat[$cat]['fonte'] = (($porCat[$cat]['fonte'] ?? '') === 'dfe' || $i['fonte'] === 'dfe') ? 'dfe' : 'upload';
+        }
+
+        $pdo = Database::conexaoCusto();
+        $pdo->beginTransaction();
+        try {
+            $up = $pdo->prepare(
+                'INSERT INTO lavoura_custo (lavoura_safra_id, cat_item_id, valor_ha, fonte)
+                 VALUES (?,?,?,?)
+                 ON DUPLICATE KEY UPDATE valor_ha = VALUES(valor_ha), fonte = VALUES(fonte)'
+            );
+            $resumo = [];
+            foreach ($porCat as $cat => $v) {
+                $valorHa = round($v['total'] / $area, 2);
+                $up->execute([$lavouraSafraId, $cat, $valorHa, $v['fonte']]);
+                $resumo[] = ['catItemId' => $cat, 'valorTotal' => round($v['total'], 2), 'valorHa' => $valorHa];
+            }
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+        return ['aplicados' => count($itens), 'por_item' => $resumo];
+    }
+
     /* ---------------- parse do XML (modelo 55) ---------------- */
 
     /**

@@ -79,7 +79,15 @@
           <table class="table table-sm align-middle" id="nfeItens"></table>
         </div>
       </div>
-      <div class="modal-footer">
+      <div class="modal-footer flex-wrap">
+        <div class="d-flex flex-wrap gap-2 align-items-center me-auto d-none" id="nfeAplicarBox">
+          <select class="form-select form-select-sm" style="min-height:44px;max-width:16rem" id="nfeLavoura"
+                  aria-label="Lavoura que recebe o custo"></select>
+          <button type="button" class="btn btn-outline-success" style="min-height:44px" id="nfeBtnAplicar"
+                  onclick="PortalFiscal.aplicar()">
+            <i class="bi bi-box-arrow-in-down me-1"></i>Aplicar no custo da lavoura
+          </button>
+        </div>
         <button type="button" class="btn btn-outline-secondary" style="min-height:44px" data-bs-dismiss="modal">Fechar</button>
         <button type="button" class="btn btn-success px-4" style="min-height:44px" id="nfeBtnSalvar"
                 onclick="PortalFiscal.salvarItens()">
@@ -220,11 +228,49 @@ const PortalFiscal = {
               <option value="ig" ${i.status === 'ignorado' ? 'selected' : ''}>Ignorar este item</option>
             </select>${i.status === 'confirmado' ? '<span class="small text-success"><i class="bi bi-check-circle me-1"></i>confirmado</span>' : ''}</td>
           </tr>`).join('') + '</tbody>';
+      // lavouras do produtor p/ o "Aplicar no custo" (aparece se houver alguma)
+      try {
+        const lv = await App.json('index.php?r=portal/lavouras');
+        const box = document.getElementById('nfeAplicarBox');
+        const sel = document.getElementById('nfeLavoura');
+        const lavs = lv.lavouras || [];
+        box.classList.toggle('d-none', !lavs.length);
+        sel.innerHTML = lavs.map(l =>
+          `<option value="${l.id}">${App.escapeHtml(l.cultura)} · ${App.escapeHtml(l.safra)} · ${l.areaHa} ha</option>`).join('');
+      } catch (e) { document.getElementById('nfeAplicarBox').classList.add('d-none'); }
       bootstrap.Modal.getOrCreateInstance(document.getElementById('modalNfe')).show();
     } catch (e) { App.alerta(e.message, 'danger'); }
   },
 
-  async salvarItens() {
+  /** Aplica os itens confirmados da nota no custo da lavoura escolhida (PR6). */
+  async aplicar() {
+    if (!this.notaAberta) return;
+    const btn = document.getElementById('nfeBtnAplicar');
+    btn.disabled = true;
+    try {
+      // garante que as escolhas atuais estão salvas antes de aplicar
+      await this.salvarItens(true);
+      const d = await App.json('index.php?r=portal/fiscal-nota&id=' + this.notaAberta.nota.id);
+      const confirmados = d.itens.filter(i => i.status === 'confirmado').map(i => i.id);
+      if (!confirmados.length) { App.alerta('Confirme ao menos um item antes de aplicar.', 'warning'); return; }
+      const fd = new FormData();
+      fd.append('id', document.getElementById('nfeLavoura').value);
+      fd.append('itens', JSON.stringify(confirmados));
+      const r = await App.json('index.php?r=portal/lavoura-aplicar-nfe', { method: 'POST', body: fd });
+      bootstrap.Modal.getInstance(document.getElementById('modalNfe')).hide();
+      App.alerta(r.aplicados + ' item(ns) aplicados ao custo. O valor por hectare foi recalculado pelo servidor.');
+      // atualiza o card do custo se a lavoura aplicada estiver aberta
+      if (typeof CustoLavoura !== 'undefined' && r.detalhe) {
+        CustoLavoura.det = r.detalhe;
+        CustoLavoura.base = r.detalhe.lavoura.baseCustoPadrao || 'ct';
+        CustoLavoura.renderDetalhe();
+        CustoLavoura.renderLista && CustoLavoura.carregar();
+      }
+      this.listarNotas();
+    } catch (e) { App.alerta(e.message, 'danger'); } finally { btn.disabled = false; }
+  },
+
+  async salvarItens(silencioso) {
     if (!this.notaAberta) return;
     const btn = document.getElementById('nfeBtnSalvar');
     btn.disabled = true;
@@ -235,15 +281,20 @@ const PortalFiscal = {
         if (v === 'ig') itens.push({ id: parseInt(tr.dataset.item, 10), catItemId: null, status: 'ignorado' });
         else if (v !== '') itens.push({ id: parseInt(tr.dataset.item, 10), catItemId: parseInt(v, 10), status: 'confirmado' });
       });
-      if (!itens.length) { App.alerta('Escolha o item do custo (ou "Ignorar") em pelo menos uma linha.', 'warning'); btn.disabled = false; return; }
+      if (!itens.length) {
+        if (!silencioso) App.alerta('Escolha o item do custo (ou "Ignorar") em pelo menos uma linha.', 'warning');
+        return;
+      }
       const fd = new FormData();
       fd.append('id', this.notaAberta.nota.id);
       fd.append('itens', JSON.stringify(itens));
       await App.json('index.php?r=portal/fiscal-nota-itens', { method: 'POST', body: fd });
-      bootstrap.Modal.getInstance(document.getElementById('modalNfe')).hide();
-      App.alerta('Itens revisados. Você pode aplicá-los ao custo da sua lavoura.');
+      if (!silencioso) {
+        bootstrap.Modal.getInstance(document.getElementById('modalNfe')).hide();
+        App.alerta('Itens revisados. Você pode aplicá-los ao custo da sua lavoura.');
+      }
       this.listarNotas();
-    } catch (e) { App.alerta(e.message, 'danger'); } finally { btn.disabled = false; }
+    } catch (e) { App.alerta(e.message, 'danger'); throw e; } finally { btn.disabled = false; }
   },
 
   async revogar() {

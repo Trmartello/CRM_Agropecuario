@@ -247,6 +247,27 @@ class PortalController
         json_ok(['gravados' => $n, 'detalhe' => \App\Services\NotaFiscalService::notaDetalhe($clienteId, $id)]);
     }
 
+    /**
+     * POST portal/lavoura-aplicar-nfe — aplica itens CONFIRMADOS de NF no custo
+     * da lavoura (servidor converte para R$/ha; fonte dfe/upload — §7/PR6).
+     */
+    public function lavouraAplicarNfe(): void
+    {
+        $clienteId = $this->produtorId();
+        $lavouraId = (int) ($_POST['id'] ?? 0);
+        $itens = json_decode((string) ($_POST['itens'] ?? '[]'), true);
+        if (!is_array($itens) || !$itens) {
+            json_erro('Nenhum item de nota para aplicar.');
+        }
+        try {
+            $r = \App\Services\NotaFiscalService::aplicarEmLavoura($clienteId, $lavouraId, $itens);
+        } catch (\RuntimeException $e) {
+            json_erro($e->getMessage());
+        }
+        auditar('aplicar', 'lavoura_custo', $lavouraId, "portal: {$r['aplicados']} item(ns) de NF no custo");
+        json_ok($r + ['detalhe' => \App\Services\CustoLavouraService::detalhe($clienteId, $lavouraId)]);
+    }
+
     /** GET portal/mercado?cultura= — referências públicas (§8: oferta nunca sem CEPEA+B3). */
     public function mercado(): void
     {

@@ -292,6 +292,7 @@ $router->registrar('portal/fiscal-pull', \App\Controllers\PortalController::clas
 $router->registrar('portal/fiscal-notas', \App\Controllers\PortalController::class, 'fiscalNotas');
 $router->registrar('portal/fiscal-nota', \App\Controllers\PortalController::class, 'fiscalNota');
 $router->registrar('portal/fiscal-nota-itens', \App\Controllers\PortalController::class, 'fiscalNotaItens');
+$router->registrar('portal/lavoura-aplicar-nfe', \App\Controllers\PortalController::class, 'lavouraAplicarNfe');
 
 // Integração ERP/CAPE (Fase 5)
 $router->registrar('integracao', \App\Controllers\IntegracaoController::class, 'index');
