@@ -124,6 +124,20 @@ src/core/custo/
 
 O mesmo `motor.js` é importado pelo backend e pelo frontend. Nunca duplicar a fórmula. O número na tela tem de ser bit a bit o número gravado.
 
+> **Decisão de implementação (2026-07-26) — stack PHP.** Esta spec foi escrita
+> assumindo backend Node/React (`motor.js` único importado por FE e BE). O CRM
+> Copérdia real é **PHP 8 puro** (roteador próprio `?r=`, `Database` PDO singleton,
+> front vanilla) e o CLAUDE.md fixa essa stack. Portanto, na implementação:
+> - O motor de custo é escrito em **PHP** (`app/Services/CustoMotorService.php`),
+>   funções puras, sem I/O, versionado por `VERSAO_MOTOR`.
+> - Para o cálculo em tempo real no slider do Portal, uma **cópia enxuta em JS**
+>   (`public/assets/js/custo-motor.js`) espelha as fórmulas; **ambas** rodam os
+>   **mesmos golden vectors** (seção 4) e o teste falha se divergirem — é assim que
+>   se garante "bit a bit igual" sem um runtime Node no projeto.
+> - Sem `apps/portal/` React nem rotas `/portal/*` Node: o Portal segue no mesmo
+>   front controller PHP (`PortalController`), respeitando o firewall (invariante 5)
+>   via `Database::conexaoCusto()` e `Permissoes::PODE_CUSTO_INDIVIDUAL`.
+
 **Versionamento:** todo cenário salvo grava `versao_motor`. Se a fórmula mudar, cenários antigos permanecem reproduzíveis e auditáveis. Mudança de fórmula exige bump de versão e nova rodada de golden tests.
 
 ## 6. Modelo de dados

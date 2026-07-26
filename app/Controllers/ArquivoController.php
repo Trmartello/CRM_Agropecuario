@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Core\Auth;
 use App\Core\Database;
+use App\Core\Permissoes;
 use App\Services\ConfigService;
 
 /**
@@ -53,6 +54,13 @@ class ArquivoController
                 http_response_code(404);
                 exit;
             }
+        } elseif (!Permissoes::ehGestor() && !$this->uploadNaCarteira($f)) {
+            // Perfil interno de campo (Vendedor/Consultor): só serve arquivo do
+            // cliente na SUA carteira ou de sua autoria — mesmo firewall que o
+            // clientes/baixar-documento. Sem isso, arquivo/upload servia qualquer
+            // documento/foto de qualquer produtor a quem soubesse o nome do arquivo.
+            http_response_code(404);
+            exit;
         }
         // &mini=1: serve a miniatura (uploads/miniaturas/<f>) quando existir;
         // fotos antigas não têm miniatura e caem no arquivo original.
@@ -83,6 +91,52 @@ class ArquivoController
         }
         http_response_code(404);
         exit;
+    }
+
+    /**
+     * True se o arquivo pedido pertence à carteira do usuário logado (ou é de sua
+     * autoria). Aplica o mesmo firewall de carteira do clientes/baixar-documento,
+     * resolvendo o dono a partir do PREFIXO do nome (todos únicos por hash):
+     *   doc_<id>_        → documentos           (cliente ou autor)
+     *   visita_<id>_     → visita_fotos→visitas (cliente da visita ou autor)
+     *   reclamacao_<id>_ → reclamacao_fotos     (cliente da reclamação ou autor)
+     *   ref_<uid>_       → refeicoes            (só o próprio autor)
+     * Origem desconhecida: nega (fail-closed) para perfil de campo.
+     */
+    private function uploadNaCarteira(string $f): bool
+    {
+        $base = basename($f); // ignora subpasta (documentos/, comprovantes/, miniaturas/)
+        $uid = (int) Auth::id();
+        if (str_starts_with($base, 'doc_')) {
+            return (bool) Database::valor(
+                'SELECT 1 FROM documentos d JOIN clientes c ON c.id = d.cliente_id
+                  WHERE d.arquivo = ? AND (c.responsavel_id = ? OR d.usuario_id = ?) LIMIT 1',
+                [$base, $uid, $uid]
+            );
+        }
+        if (str_starts_with($base, 'visita_')) {
+            return (bool) Database::valor(
+                'SELECT 1 FROM visita_fotos vf JOIN visitas v ON v.id = vf.visita_id
+                   JOIN clientes c ON c.id = v.cliente_id
+                  WHERE vf.arquivo = ? AND (c.responsavel_id = ? OR v.usuario_id = ?) LIMIT 1',
+                [$base, $uid, $uid]
+            );
+        }
+        if (str_starts_with($base, 'reclamacao_')) {
+            return (bool) Database::valor(
+                'SELECT 1 FROM reclamacao_fotos rf JOIN reclamacoes r ON r.id = rf.reclamacao_id
+                   JOIN clientes c ON c.id = r.cliente_id
+                  WHERE rf.arquivo = ? AND (c.responsavel_id = ? OR r.usuario_id = ?) LIMIT 1',
+                [$base, $uid, $uid]
+            );
+        }
+        if (str_starts_with($base, 'ref_')) { // comprovante de refeição: só o autor
+            return (bool) Database::valor(
+                'SELECT 1 FROM refeicoes WHERE comprovante = ? AND usuario_id = ? LIMIT 1',
+                ['comprovantes/' . $base, $uid]
+            );
+        }
+        return false;
     }
 
     /** Foto/arte personalizada de um estágio fenológico (guardada no banco). */

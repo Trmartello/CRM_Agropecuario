@@ -77,6 +77,9 @@ try {
 } catch (\PDOException $e) {
     // Banco inacessível (ex.: variáveis DB_* ausentes no deploy): orienta em vez de quebrar
     http_response_code(503);
+    // Detalhe técnico só no log do servidor (a mensagem do driver pode conter
+    // host/usuário do banco — não deve chegar ao navegador).
+    error_log('[CRM] Banco indisponível: ' . $e->getMessage());
     header('Content-Type: text/html; charset=utf-8');
     echo '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Configuração pendente</title>',
         '<meta name="viewport" content="width=device-width, initial-scale=1"></head>',
@@ -85,7 +88,7 @@ try {
         '<p>Não foi possível conectar ao banco de dados. Verifique:</p><ul>',
         '<li>O serviço <strong>MySQL</strong> foi criado no projeto?</li>',
         '<li>As variáveis <code>DB_HOST</code>, <code>DB_PORT</code>, <code>DB_NAME</code>, <code>DB_USER</code> e <code>DB_PASS</code> estão definidas no serviço da aplicação?</li>',
-        '</ul><p style="color:#666">Detalhe técnico: ', e($e->getMessage()), '</p>',
+        '</ul><p style="color:#666">O detalhe técnico foi registrado no log do servidor.</p>',
         '<p>Após ajustar, recarregue esta página — o banco será instalado automaticamente.</p></body></html>';
     exit;
 }
@@ -296,11 +299,13 @@ try {
 } catch (\Throwable $e) {
     // Erro legível em vez de "resposta inválida" nas chamadas AJAX
     error_log('[CRM] ' . $e->getMessage() . ' em ' . $e->getFile() . ':' . $e->getLine());
+    // Nunca devolver a mensagem bruta ao cliente: uma PDOException carrega SQL,
+    // nomes de tabelas/colunas e caminhos. O detalhe fica só no error_log acima.
     if (Auth::ehAjax()) {
-        json_erro('Erro interno do servidor: ' . $e->getMessage(), 500);
+        json_erro('Erro interno do servidor.', 500);
     }
     http_response_code(500);
     echo '<div style="font-family:sans-serif;max-width:640px;margin:3rem auto">',
-        '<h1 style="color:#c62828">Erro interno</h1><p>', e($e->getMessage()), '</p>',
+        '<h1 style="color:#c62828">Erro interno</h1><p>Ocorreu um erro ao processar a solicitação. Tente novamente.</p>',
         '<p><a href="index.php?r=dashboard">Voltar ao Dashboard</a></p></div>';
 }
