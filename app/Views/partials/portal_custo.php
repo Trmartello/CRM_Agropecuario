@@ -185,7 +185,11 @@
         <button type="button" class="btn btn-success cl-toque px-4" id="clBtnSalvar" onclick="CustoLavoura.salvar()">
           <i class="bi bi-check-lg me-1"></i>Salvar alterações
         </button>
+        <button type="button" class="btn btn-outline-success cl-toque px-4" id="clBtnCenario" onclick="CustoLavoura.salvarCenario()">
+          <i class="bi bi-bookmark-check me-1"></i>Salvar cenário
+        </button>
       </div>
+      <div class="small text-muted mt-2" id="clCenarioInfo"></div>
     </div>
 
     <div class="alert alert-light border small mt-4 mb-0">
@@ -334,6 +338,55 @@ const CustoLavoura = {
 
     this.trocarBase(this.base, true);
     this._mercado(d.lavoura.cultura);
+    this._cenarioInfo();
+  },
+
+  _cenarioInfo() {
+    const el = document.getElementById('clCenarioInfo');
+    const c = this.det && this.det.ultimo_cenario;
+    el.textContent = c
+      ? 'Último cenário salvo: ' + c.nome + ' (motor v' + c.versao_motor + '). Ao reabrir, a simulação volta exatamente assim.'
+      : '';
+  },
+
+  /**
+   * Salva o cenário (PR9): primeiro persiste custos/setup (o número na tela =
+   * número gravado), depois manda pct/preço/base + o CÁLCULO DO CLIENTE — o
+   * servidor recalcula com o motor e recusa com 409 se divergir (§9).
+   */
+  async salvarCenario() {
+    if (!this.det) return;
+    const btn = document.getElementById('clBtnCenario');
+    btn.disabled = true;
+    try {
+      // captura a simulação ANTES (salvar() re-renderiza e reposiciona os sliders)
+      const pct = (parseInt(document.getElementById('clTrav').value, 10) || 0) / 100;
+      const pt = parseFloat(document.getElementById('clPt').value) || 0;
+      const base = this.base;
+      await this.salvar();
+      // restaura a simulação escolhida e recalcula com os custos GRAVADOS
+      document.getElementById('clTrav').value = Math.round(pct * 100);
+      document.getElementById('clPt').value = pt;
+      this.base = base;
+      this.recalc();
+      const area = parseFloat(document.getElementById('clArea').value) || 0;
+      const prod = parseFloat(document.getElementById('clProd').value) || 0;
+      const preco = parseFloat(document.getElementById('clPreco').value) || 0;
+      const calc = CustoMotor.calcular(area, prod, preco, this.somas()[base], pct, pt);
+      const agora = new Date();
+      const fd = new FormData();
+      fd.append('id', this.det.lavoura.id);
+      fd.append('nome', 'Cenário de ' + agora.toLocaleDateString('pt-BR') + ' '
+        + agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
+      fd.append('pct_travado', pct);
+      fd.append('preco_travado', pt);
+      fd.append('base_custo', base);
+      fd.append('calculo_cliente', JSON.stringify(calc));
+      const r = await App.json('index.php?r=portal/lavoura-cenario', { method: 'POST', body: fd });
+      this.det.ultimo_cenario = r.cenario;
+      this._cenarioInfo();
+      App.alerta('Cenário salvo. Ao reabrir, a simulação volta exatamente assim.');
+    } catch (e) { App.alerta(e.message, 'danger'); } finally { btn.disabled = false; }
   },
 
   /** Faixa de referências públicas (§8): renderiza SÓ o que o servidor mandou —

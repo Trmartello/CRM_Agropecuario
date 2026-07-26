@@ -334,7 +334,148 @@ class CustoLavouraService
         return count($validos);
     }
 
+    /**
+     * Salva um cenário de travamento (spec §9 — PR 9). O SERVIDOR recalcula com
+     * o motor e grava versao_motor + resultado_json (snapshot completo); nunca
+     * confia no número do navegador. Se o cliente mandar o próprio cálculo e
+     * ele divergir do servidor, é DivergenciaCalculoException (→ HTTP 409) e
+     * vai para o log (§9).
+     *
+     * @return array o cenário salvo (com o resultado do SERVIDOR).
+     */
+    public static function salvarCenario(int $clienteId, int $id, array $d): array
+    {
+        $l = self::lavouraDoProdutor($clienteId, $id);
+        if ($l === null) {
+            throw new \RuntimeException('Lavoura não encontrada.');
+        }
+        $nome = mb_substr(trim((string) ($d['nome'] ?? '')), 0, 80);
+        if ($nome === '') {
+            $nome = 'Cenário de ' . date('d/m/Y H:i');
+        }
+        $pct = (float) ($d['pct_travado'] ?? -1);
+        $pt = (float) ($d['preco_travado'] ?? -1);
+        $base = strtolower(trim((string) ($d['base_custo'] ?? $l['base_custo_padrao'])));
+        if ($pct < 0 || $pct > 1) {
+            throw new \RuntimeException('Percentual travado inválido (0 a 100%).');
+        }
+        if ($pt < 0 || $pt > self::MAX_VALOR_HA) {
+            throw new \RuntimeException('Preço travado inválido.');
+        }
+        if (!in_array($base, self::BASES, true)) {
+            $base = 'ct';
+        }
+
+        // Recalcula NO SERVIDOR a partir do que está GRAVADO (custos + setup)
+        $somas = self::somasDaLavoura($id);
+        $area = (float) $l['area_ha'];
+        $prod = (float) $l['produtividade_esperada'];
+        $preco = (float) $l['preco_referencia'];
+        $calc = CustoMotorService::calcular($area, $prod, $preco, $somas[$base], $pct, $pt);
+        $matriz = CustoMotorService::matriz($area, $prod, $preco, $somas[$base], $pct, $pt);
+
+        // §9: divergência cliente × servidor → 409 + log
+        $cli = $d['calculo_cliente'] ?? null;
+        if (is_string($cli) && $cli !== '') {
+            $cli = json_decode($cli, true);
+        }
+        if (is_array($cli)) {
+            $div = self::divergencia($calc, $cli);
+            if ($div !== null) {
+                error_log("[CRM][custo] divergência cliente×servidor ao salvar cenário (lavoura {$id}, produtor {$clienteId}): {$div}");
+                throw new DivergenciaCalculoException(
+                    'O cálculo do aplicativo não confere com o do servidor. Recarregue a página e tente de novo.'
+                );
+            }
+        }
+
+        $resultado = [
+            'entrada' => [
+                'area_ha' => $area,
+                'produtividade_esperada' => $prod,
+                'preco_referencia' => $preco,
+                'base_custo' => $base,
+                'custo_ha' => $somas[$base],
+                'somas' => $somas,
+            ],
+            'calculo' => $calc,
+            'matriz' => $matriz,
+        ];
+        self::cExec(
+            'INSERT INTO lavoura_cenario
+                (lavoura_safra_id, nome, pct_travado, preco_travado, base_custo, versao_motor, resultado_json)
+             VALUES (?,?,?,?,?,?,?)',
+            [$id, $nome, round($pct, 4), round($pt, 2), $base,
+                CustoMotorService::VERSAO, json_encode($resultado, JSON_UNESCAPED_UNICODE)]
+        );
+        return [
+            'id' => (int) Database::conexaoCusto()->lastInsertId(),
+            'nome' => $nome,
+            'pct_travado' => round($pct, 4),
+            'preco_travado' => round($pt, 2),
+            'base_custo' => $base,
+            'versao_motor' => CustoMotorService::VERSAO,
+            'resultado_json' => $resultado,
+            'dt_criacao' => date('Y-m-d H:i:s'),
+        ];
+    }
+
     /* ---------------------------- internos ---------------------------- */
+
+    /** Somas acumuladas COE/COT/CT dos custos GRAVADOS da lavoura. */
+    private static function somasDaLavoura(int $id): array
+    {
+        $somas = ['coe' => 0.0, 'cot' => 0.0, 'ct' => 0.0];
+        $rows = self::cTodos(
+            'SELECT c.grupo, lc.valor_ha FROM lavoura_custo lc
+               JOIN cat_item_custo c ON c.id = lc.cat_item_id
+              WHERE lc.lavoura_safra_id = ? AND c.ativo = 1',
+            [$id]
+        );
+        foreach ($rows as $r) {
+            $v = (float) $r['valor_ha'];
+            if ($r['grupo'] === 'coe') {
+                $somas['coe'] += $v;
+                $somas['cot'] += $v;
+                $somas['ct'] += $v;
+            } elseif ($r['grupo'] === 'cot') {
+                $somas['cot'] += $v;
+                $somas['ct'] += $v;
+            } else {
+                $somas['ct'] += $v;
+            }
+        }
+        return $somas;
+    }
+
+    /**
+     * Compara o cálculo do cliente com o do servidor (§9). Tolerância 0,01 — a
+     * mesma dos golden tests. Retorna a descrição da 1ª divergência ou null.
+     */
+    private static function divergencia(array $servidor, array $cliente): ?string
+    {
+        $campos = ['producao_total', 'custo_total', 'preco_equilibrio', 'produtividade_equilibrio',
+            'sacas_equilibrio', 'pct_equilibrio', 'sacas_travadas', 'receita_travada',
+            'cobertura_custo', 'sacas_livres'];
+        foreach ($campos as $c) {
+            if (!array_key_exists($c, $cliente)) {
+                continue; // cliente antigo/parcial: compara só o que veio
+            }
+            $s = $servidor[$c];
+            $v = $cliente[$c];
+            if ($s === null || $v === null) {
+                if ($s !== $v) {
+                    return "{$c}: cliente=" . var_export($v, true) . ' servidor=' . var_export($s, true);
+                }
+                continue;
+            }
+            if (!is_numeric($v) || abs((float) $v - (float) $s) > 0.01) {
+                return "{$c}: cliente=" . (is_numeric($v) ? round((float) $v, 4) : var_export($v, true))
+                    . ' servidor=' . round((float) $s, 4);
+            }
+        }
+        return null;
+    }
 
     /** Carrega a lavoura SOMENTE se pertencer ao produtor (posse verificada). */
     private static function lavouraDoProdutor(int $clienteId, int $id): ?array

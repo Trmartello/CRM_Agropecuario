@@ -128,6 +128,26 @@ class PortalController
         json_ok($d);
     }
 
+    /**
+     * POST portal/lavoura-cenario — salva um cenário de travamento. O servidor
+     * RECALCULA com o motor (§9); divergência com o cálculo do cliente = 409.
+     */
+    public function lavouraCenario(): void
+    {
+        $clienteId = $this->produtorId();
+        $id = (int) ($_POST['id'] ?? 0);
+        try {
+            $cen = \App\Services\CustoLavouraService::salvarCenario($clienteId, $id, $_POST);
+        } catch (\App\Services\DivergenciaCalculoException $e) {
+            auditar('divergencia', 'lavoura_cenario', $id, 'portal: cálculo cliente≠servidor (409)');
+            json_erro($e->getMessage(), 409);
+        } catch (\RuntimeException $e) {
+            json_erro($e->getMessage());
+        }
+        auditar('salvar', 'lavoura_cenario', (int) $cen['id'], 'portal: cenário do próprio produtor');
+        json_ok(['cenario' => $cen]);
+    }
+
     /** GET portal/mercado?cultura= — referências públicas (§8: oferta nunca sem CEPEA+B3). */
     public function mercado(): void
     {
