@@ -18,6 +18,8 @@
   </div>
 </div>
 
+<?php require __DIR__ . '/partials/portal_custo.php'; // Custo da lavoura (spec custo-lavoura §10) ?>
+
 <div class="row g-3">
   <div class="col-lg-6">
     <div class="card h-100">

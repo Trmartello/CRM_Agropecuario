@@ -128,6 +128,20 @@ class PortalController
         json_ok($d);
     }
 
+    /** POST portal/lavoura-atualizar — setup (área/produtividade/preço/base). */
+    public function lavouraAtualizar(): void
+    {
+        $clienteId = $this->produtorId();
+        $id = (int) ($_POST['id'] ?? 0);
+        try {
+            CustoLavouraService::atualizarSetup($clienteId, $id, $_POST);
+        } catch (\RuntimeException $e) {
+            json_erro($e->getMessage());
+        }
+        auditar('salvar', 'lavoura_safra', $id, 'portal: setup da lavoura do próprio produtor');
+        json_ok(['detalhe' => CustoLavouraService::detalhe($clienteId, $id)]);
+    }
+
     /** POST portal/lavoura-custos — upsert dos itens digitados (fonte=manual). */
     public function lavouraCustos(): void
     {

@@ -248,6 +248,38 @@ class CustoLavouraService
     }
 
     /**
+     * Atualiza o setup da lavoura (área/produtividade/preço/base). Cultura e
+     * safra são imutáveis no v1 (mudar a cultura mudaria o preset aplicado).
+     */
+    public static function atualizarSetup(int $clienteId, int $id, array $d): void
+    {
+        if (self::lavouraDoProdutor($clienteId, $id) === null) {
+            throw new \RuntimeException('Lavoura não encontrada.');
+        }
+        $area = (float) ($d['area_ha'] ?? 0);
+        $prod = (float) ($d['produtividade_esperada'] ?? 0);
+        $preco = (float) ($d['preco_referencia'] ?? 0);
+        $base = strtolower(trim((string) ($d['base_custo_padrao'] ?? 'ct')));
+        if ($area <= 0 || $area > 99999) {
+            throw new \RuntimeException('Informe a área em hectares (maior que zero).');
+        }
+        if ($prod <= 0 || $prod > 99999) {
+            throw new \RuntimeException('Informe a produtividade esperada em sc/ha (maior que zero).');
+        }
+        if ($preco <= 0 || $preco > self::MAX_VALOR_HA) {
+            throw new \RuntimeException('Informe o preço de referência em R$/sc (maior que zero).');
+        }
+        if (!in_array($base, self::BASES, true)) {
+            $base = 'ct';
+        }
+        self::cExec(
+            'UPDATE lavoura_safra SET area_ha = ?, produtividade_esperada = ?,
+                    preco_referencia = ?, base_custo_padrao = ? WHERE id = ? AND produtor_id = ?',
+            [round($area, 3), round($prod, 3), round($preco, 2), $base, $id, $clienteId]
+        );
+    }
+
+    /**
      * Upsert dos itens de custo digitados pelo produtor (fonte='manual').
      *
      * @param array $itens lista de ['catItemId' => int, 'valorHa' => float]

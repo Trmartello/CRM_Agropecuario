@@ -273,6 +273,7 @@ $router->registrar('portal', \App\Controllers\PortalController::class, 'index');
 $router->registrar('portal/lavouras', \App\Controllers\PortalController::class, 'lavouras');
 $router->registrar('portal/lavoura', \App\Controllers\PortalController::class, 'lavoura');
 $router->registrar('portal/lavoura-criar', \App\Controllers\PortalController::class, 'lavouraCriar');
+$router->registrar('portal/lavoura-atualizar', \App\Controllers\PortalController::class, 'lavouraAtualizar');
 $router->registrar('portal/lavoura-custos', \App\Controllers\PortalController::class, 'lavouraCustos');
 
 // Integração ERP/CAPE (Fase 5)
