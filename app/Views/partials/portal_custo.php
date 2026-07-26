@@ -36,6 +36,13 @@
   #cardCustoLavoura .cl-verdict.warn { background: #fbf3e2; border-color: #e9c46a; }
   #cardCustoLavoura .cl-verdict.bad { background: #f8e9e6; border-color: #c62828; }
   #cardCustoLavoura input[type="range"] { width: 100%; height: 44px; }
+  /* Matriz de cenários (seção 5) */
+  #cardCustoLavoura .cl-mtx { font-variant-numeric: tabular-nums; }
+  #cardCustoLavoura .cl-mtx th { font-size: .78rem; font-weight: 600; color: var(--bs-secondary-color); white-space: nowrap; }
+  #cardCustoLavoura .cl-mtx td { text-align: right; font-size: .85rem; white-space: nowrap; }
+  #cardCustoLavoura .cl-mtx td.pos { color: #1b5e20; background: #e8f3ea; }
+  #cardCustoLavoura .cl-mtx td.neg { color: #b71c1c; background: #f8e9e6; }
+  #cardCustoLavoura .cl-mtx td.mark { outline: 2px solid #141e17; outline-offset: -2px; font-weight: 700; }
 </style>
 
 <div class="card mt-3" id="cardCustoLavoura">
@@ -146,6 +153,13 @@
         </div>
         <div class="cl-verdict d-none" id="clVerdict"></div>
       </div>
+
+      <!-- 5. Matriz de cenários -->
+      <h6 class="text-success mt-4">5. E se a safra não vier como o esperado <small class="text-muted fw-normal">resultado em R$/ha</small></h6>
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered cl-mtx mb-1" id="clMatriz"></table>
+      </div>
+      <div class="small text-muted mb-2">Linhas: produtividade colhida. Colunas: preço da parte não travada. O quadro destacado é o seu cenário atual.</div>
 
       <div class="d-flex flex-wrap gap-2 mt-3">
         <button type="button" class="btn btn-success cl-toque px-4" id="clBtnSalvar" onclick="CustoLavoura.salvar()">
@@ -334,6 +348,34 @@ const CustoLavoura = {
       r.produtividade_equilibrio === null ? '—'
         : r.produtividade_equilibrio.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' sc/ha';
     this.renderSimulador(r, pct, pt);
+    this.renderMatriz(area, prod, preco, t[this.base], pct, pt);
+  },
+
+  /**
+   * Seção 5: matriz de cenários (CustoMotor.matriz — Caso D do golden). O motor
+   * devolve linhas por PREÇO; o protótipo exibe linhas por COLHEITA — aqui só
+   * se transpõe na renderização (a conta é uma só).
+   */
+  renderMatriz(area, prod, preco, custoHa, pct, pt) {
+    const mz = CustoMotor.matriz(area, prod, preco, custoHa, pct, pt);
+    const dPreco = CustoMotor.PRECO_DELTAS;
+    const dProd = CustoMotor.PRODUTIVIDADE_DELTAS;
+    const num = v => Math.abs(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    let h = '<tr><th>colheita ↓ &nbsp; preço →</th>'
+      + dPreco.map((d, j) => '<th class="text-end">' + this.brl(mz[j].preco) + '</th>').join('') + '</tr>';
+    dProd.forEach((a, i) => {
+      const cel0 = mz[0].celulas[i];
+      h += '<tr><th>' + cel0.produtividade.toFixed(0) + ' sc/ha' + (a === 0 ? ' (esperada)' : '') + '</th>';
+      dPreco.forEach((b, j) => {
+        const c = mz[j].celulas[i];
+        const res = c.resultado_ha === null ? 0 : c.resultado_ha;
+        const mark = (a === 0 && b === 0) ? ' mark' : '';
+        h += '<td class="' + (res >= 0 ? 'pos' : 'neg') + mark + '">'
+          + (res >= 0 ? '' : '−') + num(res) + '</td>';
+      });
+      h += '</tr>';
+    });
+    document.getElementById('clMatriz').innerHTML = h;
   },
 
   /** Seção 4: barra de cobertura + veredito (textos do protótipo — §8). */
