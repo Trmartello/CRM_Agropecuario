@@ -180,6 +180,27 @@ class IntegracaoController
         json_ok($r);
     }
 
+    /**
+     * Job de agregação do custo regional com k-anonimato (custo-lavoura PR10).
+     * Lê as tabelas sob firewall pela conexão privilegiada e publica só os
+     * grupos com 5+ produtores em agg_custo_regional.
+     */
+    public function agregarCusto(): void
+    {
+        Permissoes::exigir(['Administrador']);
+        liberar_sessao(); // lote potencialmente demorado
+        $safra = trim($_POST['safra'] ?? '');
+        try {
+            $r = \App\Services\AgregacaoCustoService::executar($safra !== '' ? $safra : null);
+        } catch (\Throwable $e) {
+            json_erro('Falha ao agregar: verifique se a credencial de custo (DB_USER_CUSTO) está configurada.');
+        }
+        auditar('agregar', 'agg_custo_regional', 0,
+            ($safra !== '' ? "safra {$safra}: " : 'todas as safras: ')
+            . "{$r['publicadas']} publicadas, {$r['suprimidas']} suprimidas (k<" . \App\Services\AgregacaoCustoService::K_MINIMO . ')');
+        json_ok($r);
+    }
+
     public function salvarConfig(): void
     {
         Permissoes::exigir(['Administrador']);

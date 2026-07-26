@@ -146,6 +146,26 @@
         <div id="cotResumo" class="small mt-2"></div>
       </div>
     </div>
+
+    <!-- Agregado regional de custo com k-anonimato (custo-lavoura PR10) -->
+    <div class="card mt-3">
+      <div class="card-header"><i class="bi bi-bar-chart-steps me-2 text-success"></i><strong>Agregado regional de custo (k-anonimato)</strong></div>
+      <div class="card-body">
+        <p class="small text-muted mb-2">
+          Agrega os custos digitados pelos produtores em <strong>medianas</strong> por
+          safra × cultura × município × faixa de área × item — e <strong>só publica grupos com
+          5 ou mais produtores</strong> (abaixo disso a linha inteira é suprimida). É o único
+          recorte de custo visível fora do firewall: ninguém enxerga o número individual.
+        </p>
+        <div class="row g-2 align-items-end">
+          <div class="col-6 col-md-4"><label class="form-label small mb-1">Safra <span class="text-muted">(vazio = todas)</span></label>
+            <input id="aggSafra" class="form-control form-control-sm" placeholder="2025/26" maxlength="9"></div>
+          <div class="col-12 col-md-8"><button class="btn btn-outline-success btn-sm" onclick="Integracao.agregarCusto(event)">
+            <i class="bi bi-arrow-repeat me-1"></i>Recalcular agregado regional</button></div>
+        </div>
+        <div id="aggResumo" class="small mt-2"></div>
+      </div>
+    </div>
   </div>
 
   <div class="col-lg-7">
@@ -248,6 +268,21 @@ const Integracao = {
       alvo.innerHTML = `<div class="alert alert-success py-2 mb-1"><strong>${r.vinculadas}</strong> propriedade(s) receberam a divisa do CAR.`
         + (r.sem_car ? ` <span class="text-muted d-block">${r.sem_car} com sede, mas fora de qualquer imóvel do CAR (ajuste a sede ou desenhe no croqui).</span>` : '')
         + (r.sem_sede ? ` <span class="text-muted d-block">${r.sem_sede} sem coordenada de sede (cadastre a localização para vincular).</span>` : '')
+        + '</div>';
+    } catch (e) { alvo.innerHTML = ''; App.alerta(e.message, 'danger'); }
+    btn.disabled = false;
+  },
+  async agregarCusto(ev) {
+    const btn = ev.currentTarget, alvo = document.getElementById('aggResumo');
+    btn.disabled = true;
+    alvo.innerHTML = '<span class="text-muted"><span class="spinner-border spinner-border-sm me-1"></span>Agregando com k-anonimato…</span>';
+    try {
+      const fd = new FormData();
+      fd.append('safra', (document.getElementById('aggSafra').value || '').trim());
+      const r = await App.json('index.php?r=integracao/agregar-custo', { method: 'POST', body: fd });
+      alvo.innerHTML = `<div class="alert alert-success py-2 mb-1"><strong>${r.publicadas}</strong> linha(s) publicadas `
+        + `(${r.produtores} produtores, ${r.lavouras} lavouras). `
+        + (r.suprimidas ? `<span class="text-muted d-block">${r.suprimidas} grupo(s) suprimidos por terem menos de 5 produtores.</span>` : '')
         + '</div>';
     } catch (e) { alvo.innerHTML = ''; App.alerta(e.message, 'danger'); }
     btn.disabled = false;

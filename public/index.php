@@ -177,6 +177,7 @@ $router->registrar('integracao/importar-car-municipio', \App\Controllers\Integra
 $router->registrar('integracao/vincular-car-propriedades', \App\Controllers\IntegracaoController::class, 'vincularCarPropriedades');
 $router->registrar('integracao/gerar-territorio', \App\Controllers\IntegracaoController::class, 'gerarTerritorio');
 $router->registrar('integracao/salvar-cotacoes', \App\Controllers\IntegracaoController::class, 'salvarCotacoes');
+$router->registrar('integracao/agregar-custo', \App\Controllers\IntegracaoController::class, 'agregarCusto');
 $router->registrar('territorio', \App\Controllers\TerritorioController::class, 'index');
 $router->registrar('territorio/imoveis', \App\Controllers\TerritorioController::class, 'imoveis');
 $router->registrar('territorio/imovel', \App\Controllers\TerritorioController::class, 'imovel');
