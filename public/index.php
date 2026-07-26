@@ -288,6 +288,7 @@ $router->registrar('portal/mercado', \App\Controllers\PortalController::class, '
 $router->registrar('portal/fiscal-autorizacao', \App\Controllers\PortalController::class, 'fiscalAutorizacao');
 $router->registrar('portal/fiscal-autorizar', \App\Controllers\PortalController::class, 'fiscalAutorizar');
 $router->registrar('portal/fiscal-revogar', \App\Controllers\PortalController::class, 'fiscalRevogar');
+$router->registrar('portal/fiscal-pull', \App\Controllers\PortalController::class, 'fiscalPull');
 
 // Integração ERP/CAPE (Fase 5)
 $router->registrar('integracao', \App\Controllers\IntegracaoController::class, 'index');

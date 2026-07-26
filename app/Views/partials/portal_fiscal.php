@@ -48,12 +48,18 @@
               disabled onclick="PortalFiscal.autorizar()">
         <i class="bi bi-file-earmark-check me-1"></i>Autorizar a captura das minhas notas
       </button>
+      <button type="button" class="btn btn-outline-success d-none" style="min-height:44px" id="pfBtnBuscar"
+              onclick="PortalFiscal.pull(true)">
+        <i class="bi bi-arrow-repeat me-1"></i>Buscar minhas notas agora
+      </button>
       <button type="button" class="btn btn-outline-danger d-none" style="min-height:44px" id="pfBtnRevogar"
               onclick="PortalFiscal.revogar()">
         <i class="bi bi-x-circle me-1"></i>Revogar autorização
       </button>
     </div>
-    <div class="small text-muted mt-2" id="pfNota"></div>
+    <div class="small text-muted mt-2" id="pfResumo"></div>
+    <div class="small text-muted mt-1" id="pfNota"></div>
+    <div class="mt-3 d-none" id="pfNotas"></div>
   </div>
 </div>
 
@@ -97,9 +103,34 @@ const PortalFiscal = {
     termo.classList.toggle('d-none', ativa);
     bAut.classList.toggle('d-none', ativa);
     bRev.classList.toggle('d-none', !ativa);
+    document.getElementById('pfBtnBuscar').classList.toggle('d-none', status !== 'ativa');
     nota.textContent = ativa
       ? 'Suas notas passam a ser capturadas automaticamente e aparecem aqui para você revisar antes de qualquer valor entrar no custo.'
       : (status === 'revogada' ? 'A captura está parada. Você pode autorizar de novo quando quiser.' : '');
+    if (status === 'ativa') this.pull(false); // pull oportunista (1x/24h no servidor)
+    else { document.getElementById('pfResumo').textContent = ''; document.getElementById('pfNotas').classList.add('d-none'); }
+  },
+
+  /** Pull em segundo plano (auto = 1x/24h; forçado pelo botão). */
+  async pull(forcar) {
+    const btn = document.getElementById('pfBtnBuscar');
+    if (forcar) btn.disabled = true;
+    try {
+      const fd = new FormData();
+      if (forcar) fd.append('forcar', '1');
+      const d = await App.json('index.php?r=portal/fiscal-pull', { method: 'POST', body: fd });
+      const dt = d.ultima_busca ? d.ultima_busca.slice(0, 16).replace('T', ' ').split('-').length === 3
+        ? d.ultima_busca.slice(0, 10).split('-').reverse().join('/') + d.ultima_busca.slice(10, 16) : d.ultima_busca : null;
+      document.getElementById('pfResumo').textContent =
+        'Notas capturadas: ' + d.total_notas + (dt ? ' · última busca ' + dt : '');
+      if (forcar) {
+        App.alerta(d.captura && d.captura.novos > 0
+          ? d.captura.novos + ' nota(s) nova(s) capturada(s).'
+          : 'Nenhuma nota nova por enquanto.');
+      }
+      if (typeof this.listarNotas === 'function') this.listarNotas();
+    } catch (e) { if (forcar) App.alerta(e.message, 'danger'); }
+    finally { if (forcar) btn.disabled = false; }
   },
 
   async autorizar() {

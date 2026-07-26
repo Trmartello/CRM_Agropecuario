@@ -177,6 +177,26 @@ class PortalController
         json_ok(['autorizacao' => $aut]);
     }
 
+    /**
+     * POST portal/fiscal-pull — dispara o pull (1x/24h automático; forcar=1 no
+     * botão "Buscar minhas notas agora"). Libera o lock da sessão: com provedor
+     * SaaS real a busca pode demorar e não pode travar a navegação.
+     */
+    public function fiscalPull(): void
+    {
+        $clienteId = $this->produtorId();
+        liberar_sessao();
+        $r = \App\Services\NotaFiscalService::pullSeNecessario($clienteId, (string) ($_POST['forcar'] ?? '') === '1');
+        if ($r === null) {
+            json_erro('A captura não está autorizada.', 409);
+        }
+        if ($r['executado']) {
+            auditar('capturar', 'nfe_documento', $clienteId,
+                'portal: pull — ' . ($r['captura']['novos'] ?? 0) . ' nota(s) nova(s)');
+        }
+        json_ok($r);
+    }
+
     /** POST portal/fiscal-revogar — revogação (para os pulls imediatamente). */
     public function fiscalRevogar(): void
     {

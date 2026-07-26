@@ -122,7 +122,57 @@ class NotaFiscalService
         return self::autorizacao($produtorId);
     }
 
-    /* ---------------- captura (job do PR4 chama isto) ---------------- */
+    /* ---------------- pull diário (PR 4 — gatilho oportunista) ---------------- */
+
+    /** Intervalo mínimo entre pulls automáticos do mesmo produtor. */
+    public const INTERVALO_PULL_H = 24;
+
+    /**
+     * "Job" diário sem cron (padrão do repo, como a poda de auditoria): o Portal
+     * dispara isto em segundo plano ao abrir; roda no máximo 1x/24h por produtor
+     * — a menos que $forcar (botão "Buscar minhas notas agora").
+     *
+     * Sem autorização ATIVA devolve null SILENCIOSAMENTE (não polui o log com
+     * sem_autorizacao todo dia — esse status é para o job explícito).
+     *
+     * @return array{executado:bool,captura?:array,total_notas:int,ultima_busca:?string}|null
+     */
+    public static function pullSeNecessario(int $produtorId, bool $forcar = false): ?array
+    {
+        $aut = self::autorizacao($produtorId);
+        if ($aut === null || $aut['status'] !== 'ativa') {
+            return null;
+        }
+        if (!$forcar) {
+            $ultima = self::cUm(
+                "SELECT dt_exec FROM nfe_captura_log
+                  WHERE produtor_id = ? AND provedor = ? AND status IN ('ok','erro')
+                  ORDER BY id DESC LIMIT 1",
+                [$produtorId, self::adapter()->nome()]
+            );
+            if ($ultima !== null && strtotime((string) $ultima['dt_exec']) > time() - self::INTERVALO_PULL_H * 3600) {
+                return ['executado' => false] + self::resumoNotas($produtorId);
+            }
+        }
+        $captura = self::capturarPorProdutor($produtorId);
+        return ['executado' => true, 'captura' => $captura] + self::resumoNotas($produtorId);
+    }
+
+    /** Contagem de notas + última busca (linha de status do card do Portal). */
+    public static function resumoNotas(int $produtorId): array
+    {
+        $total = (int) self::cExec(
+            'SELECT COUNT(*) FROM nfe_documento WHERE produtor_id = ?', [$produtorId]
+        )->fetchColumn();
+        $ultima = self::cUm(
+            "SELECT dt_exec FROM nfe_captura_log
+              WHERE produtor_id = ? AND status IN ('ok','erro') ORDER BY id DESC LIMIT 1",
+            [$produtorId]
+        );
+        return ['total_notas' => $total, 'ultima_busca' => $ultima['dt_exec'] ?? null];
+    }
+
+    /* ---------------- captura (o pull acima chama isto) ---------------- */
 
     /**
      * Captura as NF-e do produtor via o provedor. Exige autorização ATIVA em
