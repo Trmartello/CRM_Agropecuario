@@ -878,6 +878,175 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '37'"
             );
         }
+
+        if ($versao < 38) {
+            // Dados de DEMONSTRAÇÃO do módulo de custo/NF para o piloto testar sem
+            // digitar tudo à mão. Só popula se ainda NÃO houver lavoura de custo
+            // (não toca dados reais do piloto). Envolto em try/catch: se falhar
+            // (ex.: firewall já aplicado e credencial de custo sem GRANT), a
+            // versão ainda avança e o boot não quebra.
+            try {
+                self::seedDemoCustoNf();
+            } catch (\Throwable $e) {
+                error_log('[CRM] seed demo custo/NF ignorado: ' . $e->getMessage());
+            }
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '38')
+                 ON DUPLICATE KEY UPDATE valor = '38'"
+            );
+        }
+    }
+
+    /**
+     * Semeia dados fictícios do Custo da Lavoura + NF (só em banco já instalado e
+     * ainda sem lavoura). Escritas nas tabelas SOB FIREWALL vão pela conexão de
+     * custo (funciona com a credencial comercial enquanto o firewall não é
+     * aplicado, e com a privilegiada depois).
+     */
+    private static function seedDemoCustoNf(): void
+    {
+        if (!self::temTabela('lavoura_safra') || !self::temTabela('custo_preset')) {
+            return;
+        }
+        $custo = Database::conexaoCusto();
+        if ((int) $custo->query('SELECT COUNT(*) FROM lavoura_safra')->fetchColumn() > 0) {
+            return; // já há lavoura (piloto real ou re-execução) — não mexe
+        }
+        if ((int) Database::valor('SELECT COUNT(*) FROM custo_preset') === 0) {
+            return; // sem preset não há de onde copiar o custo
+        }
+
+        // 6 cooperados-demo em Concórdia (garante k-anônimo ≥5 no Custo Regional,
+        // somados aos seeds 1/3/6). Idempotente pela marca no e-mail.
+        for ($i = 1; $i <= 6; $i++) {
+            $email = "demo{$i}@cooperado.demo";
+            if ((int) Database::valor('SELECT COUNT(*) FROM clientes WHERE email = ?', [$email]) === 0) {
+                Database::executar(
+                    "INSERT INTO clientes (nome, situacao, cpf_cnpj, email, municipio, estado, filial_id,
+                        nivel_tecnologico, responsavel_id)
+                     VALUES (?, 'Associado', ?, ?, 'Concórdia', 'SC', 1, 'Médio', 5)",
+                    ["Cooperado Demo {$i}", sprintf('900.000.%03d-%02d', $i, $i), $email]
+                );
+            }
+        }
+        $produtores = array_map('intval', array_column(
+            Database::todos("SELECT id FROM clientes WHERE id <= 8 OR email LIKE '%@cooperado.demo' ORDER BY id"),
+            'id'
+        ));
+
+        // Preset da Soja por CÓDIGO (para variar o custo por produtor com um fator)
+        $presetSoja = [];
+        foreach (Database::todos(
+            "SELECT p.cat_item_id, p.valor_ha FROM custo_preset p WHERE p.cultura = 'Soja'"
+        ) as $r) {
+            $presetSoja[(int) $r['cat_item_id']] = (float) $r['valor_ha'];
+        }
+        if (!$presetSoja) {
+            return;
+        }
+
+        $insLav = $custo->prepare(
+            "INSERT INTO lavoura_safra (produtor_id, safra, cultura, area_ha, produtividade_esperada,
+                preco_referencia, base_custo_padrao) VALUES (?, '2025/26', 'Soja', ?, ?, 132, 'ct')"
+        );
+        $insCusto = $custo->prepare(
+            "INSERT INTO lavoura_custo (lavoura_safra_id, cat_item_id, valor_ha, fonte) VALUES (?, ?, ?, 'preset')"
+        );
+        $n = 0;
+        foreach ($produtores as $pid) {
+            // área 22..47 ha (faixa 20_50), produtividade e fator de custo variados
+            $area = 22 + ($pid * 37) % 26;
+            $prod = 55 + ($pid * 13) % 12;
+            $fator = 0.9 + (($pid * 7) % 25) / 100; // 0,90..1,14
+            $insLav->execute([$pid, $area, $prod]);
+            $lavId = (int) $custo->lastInsertId();
+            foreach ($presetSoja as $catId => $valor) {
+                $insCusto->execute([$lavId, $catId, round($valor * $fator, 2)]);
+            }
+            $n++;
+        }
+
+        // Cliente 1 (Pedro Produtor no Portal): 1 cenário salvo + autorização de NF
+        // ativa + 2 notas fiscais para revisar/aplicar.
+        $lav1 = (int) $custo->query(
+            "SELECT id FROM lavoura_safra WHERE produtor_id = 1 ORDER BY id LIMIT 1"
+        )->fetchColumn();
+        if ($lav1 > 0 && class_exists(\App\Services\CustoMotorService::class)) {
+            $l = Database::conexaoCusto()->query(
+                "SELECT area_ha, produtividade_esperada, preco_referencia FROM lavoura_safra WHERE id = {$lav1}"
+            )->fetch();
+            $ctHa = (float) $custo->query(
+                "SELECT COALESCE(SUM(valor_ha),0) FROM lavoura_custo WHERE lavoura_safra_id = {$lav1}"
+            )->fetchColumn();
+            $calc = \App\Services\CustoMotorService::calcular(
+                (float) $l['area_ha'], (float) $l['produtividade_esperada'], (float) $l['preco_referencia'], $ctHa, 0.40, 131
+            );
+            $matriz = \App\Services\CustoMotorService::matriz(
+                (float) $l['area_ha'], (float) $l['produtividade_esperada'], (float) $l['preco_referencia'], $ctHa, 0.40, 131
+            );
+            $custo->prepare(
+                "INSERT INTO lavoura_cenario (lavoura_safra_id, nome, pct_travado, preco_travado, base_custo,
+                    versao_motor, resultado_json) VALUES (?, 'Cenário demonstração', 0.4000, 131, 'ct', ?, ?)"
+            )->execute([$lav1, \App\Services\CustoMotorService::VERSAO,
+                json_encode(['entrada' => ['custo_ha' => $ctHa], 'calculo' => $calc, 'matriz' => $matriz], JSON_UNESCAPED_UNICODE)]);
+        }
+
+        // Autorização fiscal ativa do cliente 1 (Portal mostra a captura ligada)
+        $custo->prepare(
+            "INSERT INTO produtor_autorizacao_fiscal (produtor_id, provedor, status, procuracao_ref, dt_autorizacao)
+             VALUES (1, 'local', 'ativa', 'demo:1', NOW())
+             ON DUPLICATE KEY UPDATE status = 'ativa'"
+        )->execute();
+
+        // 2 NF-e demo (destinatário = cliente 1), com itens p/ revisar/aplicar
+        $doc = $custo->prepare(
+            "INSERT INTO nfe_documento (chave_acesso, produtor_id, emit_cnpj, emit_nome, serie, numero,
+                dt_emissao, valor_total, natureza_op, fonte, situacao)
+             VALUES (?, 1, ?, ?, '1', ?, ?, ?, 'VENDA DE INSUMOS', 'dfe', 'capturada')"
+        );
+        $item = $custo->prepare(
+            "INSERT INTO nfe_item (nfe_id, n_item, descricao, ncm, cfop, unidade, quantidade, valor_unit, valor_total, status_map)
+             VALUES (?,?,?,?,?,?,?,?,?, 'sugerido')"
+        );
+        $catPorCod = [];
+        foreach (Database::todos("SELECT id, codigo FROM cat_item_custo") as $c) {
+            $catPorCod[$c['codigo']] = (int) $c['id'];
+        }
+        $notasDemo = [
+            ['3526071234567800019955001' . '0000000000000000011', '01234567000189', 'Agroinsumos Oeste Ltda', '10231', '2026-06-18 09:20:00', 36952.00, [
+                ['FERTILIZANTE NPK 09-20-15 BIG BAG 1T', '31052000', 'TON', 10, 3250.0, 32500.00],
+                ['HERBICIDA GLIFOSATO 720 WG 5KG', '38089329', 'UN', 24, 185.5, 4452.00],
+            ]],
+            ['3526071234567800019955001' . '0000000000000000022', '77665544000122', 'Sementes do Vale S.A.', '20044', '2026-06-25 14:05:00', 28800.00, [
+                ['SEMENTE DE SOJA 58I60 IPRO SC 40KG', '12099000', 'SC', 320, 90.0, 28800.00],
+            ]],
+        ];
+        foreach ($notasDemo as [$chave, $cnpj, $nome, $numero, $dt, $total, $itens]) {
+            $doc->execute([$chave, $cnpj, $nome, $numero, $dt, $total]);
+            $nfeId = (int) $custo->lastInsertId();
+            $ni = 1;
+            foreach ($itens as [$desc, $ncm, $un, $q, $vu, $vt]) {
+                $item->execute([$nfeId, $ni++, $desc, $ncm, '5102', $un, $q, $vu, $vt]);
+            }
+        }
+
+        // Cotações de mercado do dia (Portal mostra CEPEA/B3/Copérdia; §8)
+        foreach ([
+            ['Soja', 'cepea', '', 130.40], ['Soja', 'b3', 'maio/26', 134.10], ['Soja', 'coperdia', '', 131.00],
+            ['Milho', 'cepea', '', 60.80], ['Milho', 'b3', 'julho/26', 63.50], ['Milho', 'coperdia', '', 61.20],
+        ] as [$cult, $fonte, $venc, $preco]) {
+            Database::executar(
+                "INSERT INTO ref_mercado (cultura, fonte, vencimento, preco, dt_cotacao)
+                 VALUES (?,?,?,?, CURDATE()) ON DUPLICATE KEY UPDATE preco = VALUES(preco)",
+                [$cult, $fonte, $venc, $preco]
+            );
+        }
+
+        // Publica o agregado regional (k-anônimo) já pronto para o Gerencial
+        if (class_exists(\App\Services\AgregacaoCustoService::class)) {
+            \App\Services\AgregacaoCustoService::executar('2025/26');
+        }
+        error_log("[CRM] seed demo custo/NF: {$n} lavouras semeadas");
     }
 
     /** Fase 6E (refinamento): características fisiológicas por estágio (cartão ilustrado). */
