@@ -895,6 +895,43 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '38'"
             );
         }
+
+        if ($versao < 39) {
+            // Vínculo do usuário Produtor seed ao cadastro de cliente: o UPDATE do
+            // database.sql (Fase 4) só roda em instalação nova — bancos migrados
+            // (Railway) ficaram com cliente_id NULL e o Portal mostrava "usuário
+            // não vinculado". Backfill APENAS do usuário seed ainda sem vínculo,
+            // apontando para um produtor que exista (preferindo quem tem lavoura
+            // de custo demo, para o Portal abrir com dados).
+            try {
+                $alvo = null;
+                if (self::temTabela('lavoura_safra')) {
+                    $alvo = Database::conexaoCusto()->query(
+                        'SELECT ls.produtor_id FROM lavoura_safra ls
+                          JOIN clientes c ON c.id = ls.produtor_id
+                         ORDER BY ls.produtor_id LIMIT 1'
+                    )->fetchColumn();
+                }
+                if (!$alvo) {
+                    $alvo = Database::valor('SELECT id FROM clientes WHERE ativo = 1 ORDER BY id LIMIT 1');
+                }
+                if ($alvo) {
+                    Database::executar(
+                        "UPDATE usuarios u SET u.cliente_id = ?
+                          WHERE u.email = 'produtor@coperdia.com.br' AND u.perfil = 'Produtor'
+                            AND (u.cliente_id IS NULL
+                                 OR NOT EXISTS (SELECT 1 FROM clientes c WHERE c.id = u.cliente_id))",
+                        [(int) $alvo]
+                    );
+                }
+            } catch (\Throwable $e) {
+                error_log('[CRM] vínculo do produtor seed ignorado: ' . $e->getMessage());
+            }
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '39')
+                 ON DUPLICATE KEY UPDATE valor = '39'"
+            );
+        }
     }
 
     /**

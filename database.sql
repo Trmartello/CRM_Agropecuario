@@ -1635,8 +1635,8 @@ CREATE TABLE sync_processados (
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','38')
-  ON DUPLICATE KEY UPDATE valor = '38';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','39')
+  ON DUPLICATE KEY UPDATE valor = '39';
 
 -- ============================================================================
 -- SEED — Mapa Territorial: 5 imóveis fictícios (Concórdia/SC), vínculos e talhões
