@@ -11,12 +11,17 @@ body { background: #f4f6f4; }
 .sidebar {
   width: 240px;
   min-height: 100vh;
+  min-height: 100dvh;
   background: linear-gradient(180deg, var(--verde-coperdia), #123d15);
   color: #fff;
   padding: 1rem .75rem;
+  /* respiro extra no rodapé: sem ele, a barra do navegador/sistema do celular
+     cobre o botão Sair (100vh inclui a área atrás das barras dinâmicas) */
+  padding-bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
   position: sticky;
   top: 0;
   height: 100vh;
+  height: 100dvh;                   /* viewport dinâmica: desconta as barras do navegador mobile */
   z-index: 1040;
   overflow-y: auto;                 /* menu longo rola em vez de cortar */
   -webkit-overflow-scrolling: touch;
