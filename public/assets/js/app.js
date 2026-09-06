@@ -1079,6 +1079,7 @@ const Plantios = {
 const Croqui = {
   CORES: ['#2e7d32', '#c05e11', '#00695c', '#9a7d0a', '#5d4037', '#455a64'],
   COR_PROP: '#e6b400',
+  COR_LIMITE: '#ff6d00', // laranja forte: a divisa SALVA do imóvel quando ela é o LIMITE do que se desenha (área de plantio/talhão)
   COR_PLANTIO: '#7cb342', // verde: ÁREA DE PLANTIO do imóvel (o que dá para plantar dentro da divisa) — v40
   COR_EDICAO: '#00e5ff', // ciano: a divisa que VOCÊ desenha/ajusta (contrasta com o amarelo do CAR)
   prop: null,          // propriedade (nome, sede lat/lng, município/UF/linha p/ "Ir para")
@@ -1292,11 +1293,18 @@ const Croqui = {
   },
 
   trocarTalhao() {
-    if (Croqui._dirty && !confirm('Há pontos não salvos — descartar e trocar?')) {
-      document.getElementById('croquiTalhao').value = Croqui.atualId;
-      return;
-    }
     const alvo = Number(document.getElementById('croquiTalhao').value);
+    if (Croqui._dirty) {
+      // Saindo da divisa com alteração não salva: a área de plantio/talhão é limitada
+      // pela divisa SALVA — o que está na tela seria perdido (pedido do teste de campo)
+      const msg = Croqui.atualId === 0 && alvo !== 0
+        ? 'A divisa foi alterada e NÃO foi salva. A área de plantio e os talhões são limitados pela divisa SALVA — toque em "Salvar croqui" antes de trocar. Descartar o ajuste da divisa e trocar mesmo assim?'
+        : 'Há pontos não salvos — descartar e trocar?';
+      if (!confirm(msg)) {
+        document.getElementById('croquiTalhao').value = Croqui.atualId;
+        return;
+      }
+    }
     // REGRA (teste de campo): a área de plantio e os talhões são desenhados DENTRO da
     // área do CAR — sem a divisa não há onde desenhar. Traga o CAR primeiro.
     if (alvo !== 0 && Croqui._contornoDe(0).length < 3) {
@@ -1310,6 +1318,10 @@ const Croqui = {
     Croqui._dirty = false;
     Croqui._carCod = '';
     Croqui._selecionado = null;
+    // O limite da área de plantio/talhão é a divisa SALVA pelo usuário, não o CAR:
+    // ao sair da divisa o overlay do CAR desliga (amarelo quase igual à divisa —
+    // confundia o técnico); volta sozinho ao editar a divisa de novo.
+    Croqui._carLayerNoLimite(alvo === 0);
     const rotulo = document.querySelector('label[for="croquiUsarArea"]');
     if (rotulo) rotulo.textContent = Croqui.atualId === 0
       ? 'Usar a área medida como área oficial do imóvel'
@@ -1565,9 +1577,25 @@ const Croqui = {
       + (im.cod ? '. Nº do CAR gravado no cadastro' : '') + '. Confira e toque em "Salvar croqui".', 'success');
   },
 
+  /**
+   * Overlay do CAR conforme o alvo: editando a divisa → auto-mostra (o técnico
+   * escolhe/adota a área); área de plantio ou talhão → desliga (só a divisa
+   * salva é o limite; o CAR pode ser maior que o ajuste do usuário e confundia).
+   */
+  _carLayerNoLimite(editandoDivisa) {
+    if (editandoDivisa) {
+      Croqui._autoMostrarCar();
+      return;
+    }
+    if (!Croqui.carLayerOn) return;
+    Croqui.carLayerOn = false;
+    const btn = document.getElementById('croquiCarMapaBtn');
+    if (btn) btn.classList.remove('active');
+  },
+
   /** Ao abrir: mostra o overlay do CAR se houver base na região (o técnico escolhe a área). */
   async _autoMostrarCar() {
-    if (Croqui.carLayerOn) return;
+    if (Croqui.carLayerOn || Croqui.atualId !== 0) return;
     await Croqui._carregarCarLayer(true);
     if (Croqui.carLayer.length) {
       Croqui.carLayerOn = true;
@@ -2302,16 +2330,21 @@ const Croqui = {
         for (const anel of aneis) for (const p of anel) { if (p[0] < iMinLat) iMinLat = p[0]; if (p[0] > iMaxLat) iMaxLat = p[0]; if (p[1] < iMinLng) iMinLng = p[1]; if (p[1] > iMaxLng) iMaxLng = p[1]; }
         if (iMaxLat < vMinLat || iMinLat > vMaxLat || iMaxLng < vMinLng || iMinLng > vMaxLng) continue; // fora da tela
         const sel = im.cod && im.cod === Croqui._carCod;
+        // Fora da divisa (plantio/talhão) o CAR é só referência: mais apagado, para não
+        // passar por limite — o limite é a divisa salva (laranja)
+        const soRef = Croqui.atualId !== 0;
         for (const anel of aneis) {
           if (anel.length < 3) continue;
           const tela = anel.map(p => Croqui._paraTela(p, larg, alt));
           svg += `<polygon points="${tela.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ')}"
-                    fill="#ffd400" fill-opacity="${sel ? '.20' : '0'}" stroke="#ffd400" stroke-width="${sel ? 3 : 1.5}"
-                    stroke-dasharray="${sel ? 'none' : '5 4'}" style="pointer-events:none"/>`;
+                    fill="#ffd400" fill-opacity="${sel && !soRef ? '.20' : '0'}" stroke="#ffd400" stroke-opacity="${soRef ? '.45' : '1'}" stroke-width="${sel && !soRef ? 3 : 1.5}"
+                    stroke-dasharray="${sel && !soRef ? 'none' : '5 4'}" style="pointer-events:none"/>`;
         }
         desenhados++;
       }
-      legenda.push('<span><span class="croqui-cor" style="background:#ffd400"></span>Imóveis do CAR (toque p/ adotar)</span>');
+      legenda.push(Croqui.atualId === 0
+        ? '<span><span class="croqui-cor" style="background:#ffd400"></span>Imóveis do CAR (toque p/ adotar)</span>'
+        : '<span><span class="croqui-cor" style="background:#ffd400;opacity:.5"></span>CAR (só referência)</span>');
     }
     // Outros imóveis (CAR) da mesma propriedade — contexto apagado, não editáveis (v40)
     if (Croqui.outros.length) {
@@ -2326,13 +2359,16 @@ const Croqui = {
       });
       legenda.push(`<span><span class="croqui-cor" style="background:${Croqui.COR_PROP};opacity:.45"></span>Outros imóveis</span>`);
     }
-    // Divisa do imóvel (amarela tracejada) — por baixo de tudo que é dele
+    // Divisa SALVA do imóvel — quando se desenha área de plantio/talhão ela é o LIMITE
+    // (a marcação do usuário, não o CAR): laranja forte com halo branco, inconfundível
+    // com o amarelo do CAR. Por baixo de tudo que é do imóvel.
     const divisa = Croqui._contornoAtual(0);
     if (Croqui.atualId !== 0 && divisa.length >= 3) {
       const tela = divisa.map(p => Croqui._paraTela(p, larg, alt));
-      svg += `<polygon points="${tela.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ')}"
-                fill="${Croqui.COR_PROP}" fill-opacity=".06" stroke="${Croqui.COR_PROP}" stroke-width="3" stroke-dasharray="9 6"/>`;
-      legenda.push(`<span><span class="croqui-cor" style="background:${Croqui.COR_PROP}"></span>Divisa do imóvel</span>`);
+      const ptsDiv = tela.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
+      svg += `<polygon points="${ptsDiv}" fill="${Croqui.COR_LIMITE}" fill-opacity=".05" stroke="#fff" stroke-opacity=".9" stroke-width="6"/>
+              <polygon points="${ptsDiv}" fill="none" stroke="${Croqui.COR_LIMITE}" stroke-width="3" stroke-dasharray="12 5"/>`;
+      legenda.push(`<span><span class="croqui-cor" style="background:${Croqui.COR_LIMITE}"></span>Divisa do imóvel (limite — sua marcação)</span>`);
     }
     // Área de plantio (verde tracejado) — entre a divisa e os talhões (v40)
     const plantioPts = Croqui._contornoAtual(Croqui.PLANTIO_ID);
@@ -2383,7 +2419,9 @@ const Croqui = {
                   fill="${invalido ? '#dc3545' : (i === 0 ? '#fff' : corAtual)}"
                   stroke="${invalido ? '#7a121f' : '#0a5b6b'}" stroke-width="3"/>`;
       });
-      legenda.push(`<span><span class="croqui-cor" style="background:${corAtual}"></span>Divisa (seu ajuste)</span>`);
+      const rotuloEdicao = Croqui.atualId === 0 ? 'Divisa (seu ajuste)'
+        : (Croqui.atualId === Croqui.PLANTIO_ID ? 'Área de plantio (desenhando)' : 'Talhão (desenhando)');
+      legenda.push(`<span><span class="croqui-cor" style="background:${corAtual}"></span>${rotuloEdicao}</span>`);
     }
     // Sede como referência
     if (Croqui.prop.latitude !== null) {
