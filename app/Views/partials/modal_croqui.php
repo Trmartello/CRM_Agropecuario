@@ -44,10 +44,11 @@
         </div>
         <div class="d-flex flex-wrap align-items-center gap-1">
           <span class="small text-muted me-1"><i class="bi bi-geo-alt-fill text-danger"></i> Ir para:</span>
-          <input id="croquiIrMun" class="form-control form-control-sm" style="max-width:180px" placeholder="Município"
-                 onkeydown="if(event.key==='Enter'){event.preventDefault();Croqui.irParaArea();}">
-          <input id="croquiIrUf" class="form-control form-control-sm text-uppercase" style="max-width:64px" maxlength="2" placeholder="UF"
-                 onkeydown="if(event.key==='Enter'){event.preventDefault();Croqui.irParaArea();}">
+          <?php /* Município – UF da lista pré-cadastrada com busca digitável (a UF vem da escolha, no hidden) */ ?>
+          <div style="flex:1 1 200px;max-width:280px">
+            <?= select_municipios('ir_municipio', 'croquiIrMun', 'nome', 'form-select form-select-sm select-busca', 'data-placeholder="Município (digite para buscar)" onchange="Croqui.ufDoIrPara()"') ?>
+          </div>
+          <input type="hidden" id="croquiIrUf">
           <input id="croquiIrLinha" class="form-control form-control-sm" style="max-width:200px" placeholder="Linha (localidade rural)"
                  onkeydown="if(event.key==='Enter'){event.preventDefault();Croqui.irParaArea();}">
           <button class="btn btn-sm btn-outline-secondary" onclick="Croqui.irParaArea()" title="Centralizar o mapa nessa região"><i class="bi bi-search me-1"></i>Ir</button>
@@ -72,7 +73,7 @@
           <i class="bi bi-info-circle me-1"></i>No seletor, escolha <strong>Divisa do imóvel (CAR)</strong> para a área total,
           <strong>Área de plantio</strong> para marcar o que dá para plantar dentro dela (verde tracejado), ou um <strong>talhão</strong>
           para a área de cada cultura. <strong>Manual</strong>: toque sobre a imagem de satélite para marcar cada canto (arraste o mapa para navegar,
-          use +/− ou a roda do mouse para o zoom, <strong>⤢ para o mapa ocupar a tela toda</strong>, arraste um ponto para ajustar, dê <strong>dois toques sobre a linha ciano para inserir um ponto</strong> ali e refinar, e <strong>dois toques em um ponto para removê-lo</strong>. A divisa que você desenha/ajusta fica em <strong>ciano</strong>; as linhas do CAR ficam em amarelo (com o <em>CAR no mapa</em> ligado, tocar dentro de um imóvel amarelo adota aquela divisa). <strong>Caminhar a divisa</strong>: ande pelo perímetro —
+          use +/− ou a roda do mouse para o zoom, <strong>⤢ para o mapa ocupar a tela toda</strong>, arraste um ponto para ajustar, dê <strong>dois toques sobre a linha ciano para inserir um ponto</strong> ali e refinar, e <strong>dois toques em um ponto para removê-lo</strong>. A divisa que você desenha/ajusta fica em <strong>ciano</strong>; as linhas do CAR ficam em amarelo (com o <em>CAR no mapa</em> ligado, tocar dentro de um imóvel amarelo adota aquela divisa). Ao desenhar a <strong>área de plantio ou um talhão</strong>, o limite é a <strong>divisa salva</strong> (laranja) — a sua marcação, não o CAR: pontos fora dela são puxados para a borda e o <em>CAR no mapa</em> desliga sozinho (ligue-o de novo só como referência). <strong>Caminhar a divisa</strong>: ande pelo perímetro —
           o app marca um ponto a cada ~10 m pelo GPS, mesmo sem sinal (o salvar entra na fila).
           <strong>Sem sinal na propriedade?</strong> Antes de sair, com wi-fi, enquadre a área e toque em <strong>Baixar mapa</strong>:
           a imagem de satélite fica guardada no aparelho e o mapa abre no campo mesmo sem internet.

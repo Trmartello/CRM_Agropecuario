@@ -89,6 +89,120 @@ const App = {
     el.style.height = Math.max(el.scrollHeight, manual) + 'px';
   },
 
+  /**
+   * Select com busca digitável para listas longas (ex.: os 1.191 municípios —
+   * no celular o seletor nativo vira uma roda impossível de percorrer).
+   * O <select> continua no DOM, escondido, como fonte da verdade (name, value,
+   * options, onchange e data-* intactos); o campo de texto filtra as opções
+   * sem acento/maiúsculas ("conc" → Concórdia – SC) e dispara `change` no
+   * select ao escolher. Mudança programática (sel.value = …, disabled) chama
+   * App.selectBuscaSync(sel) para refletir no campo.
+   */
+  selectBusca(sel) {
+    if (!sel || sel.tagName !== 'SELECT' || sel.dataset.busca === '1') return;
+    sel.dataset.busca = '1';
+    const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    const wrap = document.createElement('div');
+    wrap.className = 'select-busca';
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'form-control' + (sel.classList.contains('form-select-sm') ? ' form-control-sm' : '');
+    inp.autocomplete = 'off';
+    inp.setAttribute('enterkeyhint', 'done');
+    inp.placeholder = sel.dataset.placeholder || 'Digite para buscar…';
+    inp.setAttribute('aria-label', inp.placeholder);
+    const lista = document.createElement('div');
+    lista.className = 'select-busca-lista list-group d-none';
+    sel.parentNode.insertBefore(wrap, sel);
+    wrap.append(inp, lista, sel);
+    sel.classList.add('d-none');
+    sel.tabIndex = -1;
+
+    const opts = [...sel.options].filter(o => o.value !== '').map(o => ({ o, t: o.textContent, n: norm(o.textContent) }));
+    const MAX = 60;
+    let atuais = [];
+    let ativo = -1;
+    const fechar = () => { lista.classList.add('d-none'); lista.innerHTML = ''; };
+    const sync = (forcar = false) => {
+      inp.disabled = sel.disabled;
+      // usuário digitando (ex.: shown.bs.modal chega depois do 1º toque): não interrompe
+      if (!forcar && document.activeElement === inp && !inp.disabled) return;
+      const o = sel.selectedOptions[0];
+      inp.value = o && o.value !== '' ? o.textContent : '';
+      fechar();
+    };
+    sel._buscaSync = () => sync(false);
+    const escolher = o => {
+      if (sel.value !== o.value) {
+        sel.value = o.value;
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      sync(true);
+    };
+    const render = () => {
+      if (inp.disabled) return;
+      const q = norm(inp.value);
+      let cand = q ? opts.filter(x => x.n.includes(q)) : opts;
+      if (q) cand = cand.slice().sort((a, b) => Number(b.n.startsWith(q)) - Number(a.n.startsWith(q)));
+      atuais = cand.slice(0, MAX);
+      ativo = atuais.length ? 0 : -1;
+      const html = atuais.map((x, i) =>
+        `<button type="button" class="list-group-item list-group-item-action${i === ativo ? ' active' : ''}" data-i="${i}">${App.escapeHtml(x.t)}</button>`);
+      if (!atuais.length) html.push('<div class="list-group-item text-muted small">Nenhum resultado. Confira a grafia.</div>');
+      else if (cand.length > MAX) html.push(`<div class="list-group-item text-muted small">Mostrando ${MAX} de ${cand.length} — continue digitando para refinar.</div>`);
+      lista.innerHTML = html.join('');
+      lista.classList.remove('d-none');
+    };
+    const marcar = () => lista.querySelectorAll('.list-group-item-action').forEach((b, i) => b.classList.toggle('active', i === ativo));
+
+    inp.addEventListener('focus', render);
+    inp.addEventListener('input', () => {
+      if (norm(inp.value) === '' && sel.value !== '') {
+        sel.value = '';
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      render();
+    });
+    inp.addEventListener('keydown', ev => {
+      if (lista.classList.contains('d-none')) return;
+      if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+        ev.preventDefault();
+        if (!atuais.length) return;
+        ativo = (ativo + (ev.key === 'ArrowDown' ? 1 : atuais.length - 1)) % atuais.length;
+        marcar();
+        const b = lista.querySelectorAll('.list-group-item-action')[ativo];
+        if (b && b.scrollIntoView) b.scrollIntoView({ block: 'nearest' });
+      } else if (ev.key === 'Enter') {
+        ev.preventDefault();
+        if (ativo >= 0 && atuais[ativo]) escolher(atuais[ativo].o);
+      } else if (ev.key === 'Escape') {
+        ev.preventDefault();
+        sync(true);
+      }
+    });
+    // mousedown prevenido: tocar na lista não tira o foco do campo (o blur fecharia antes do click)
+    lista.addEventListener('mousedown', ev => ev.preventDefault());
+    lista.addEventListener('click', ev => {
+      const b = ev.target.closest('.list-group-item-action');
+      if (b && atuais[Number(b.dataset.i)]) escolher(atuais[Number(b.dataset.i)].o);
+    });
+    inp.addEventListener('blur', () => setTimeout(() => {
+      if (document.activeElement === inp) return;
+      const q = norm(inp.value);
+      if (q === '') { if (sel.value !== '') { sel.value = ''; sel.dispatchEvent(new Event('change', { bubbles: true })); } sync(true); return; }
+      // texto digitado igual a uma opção (ou único resultado) → adota; senão volta ao valor atual
+      const exato = opts.find(x => x.n === q) || (atuais.length === 1 ? atuais[0] : null);
+      if (exato) escolher(exato.o); else sync(true);
+    }, 150));
+    sel.addEventListener('change', () => sync(false));
+    sync(true);
+  },
+
+  /** Reflete no campo de busca uma mudança programática do select (valor/disabled). */
+  selectBuscaSync(sel) {
+    if (sel && typeof sel._buscaSync === 'function') sel._buscaSync();
+  },
+
   /** Escapa texto para inserção segura via innerHTML. */
   escapeHtml(v) {
     return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -351,7 +465,7 @@ const Clientes = {
           || [...selMun.options].find(o => Clientes._semAcento(o.dataset.nome) === alvo);
         if (opt) selMun.value = opt.value;
       }
-      if (selMun) Clientes.ufDoMunicipio(selMun);
+      if (selMun) { Clientes.ufDoMunicipio(selMun); App.selectBuscaSync(selMun); }
     } catch (e) { App.alerta(e.message, 'danger'); }
   },
 
@@ -447,6 +561,7 @@ const Clientes = {
       const opt = [...selMun.options].find(o => Clientes._semAcento(o.value) === alvo);
       if (opt) selMun.value = opt.value;
     }
+    App.selectBuscaSync(selMun);
     Clientes._areasNoModalPropriedade(p.resumo || null);
     document.getElementById('btnExcluirPropriedade').classList.remove('d-none');
     new bootstrap.Modal('#modalPropriedade').show(); // v40: o nº do CAR fica no imóvel, não aqui
@@ -555,6 +670,7 @@ const Clientes = {
         ? 'O código do CAR não bate com a lista (SC/RS/PR) — escolha o município na lista.'
         : 'Preenchido sozinho pelo número do CAR; escolha na lista só se o imóvel ainda não tem CAR.';
     }
+    App.selectBuscaSync(sel);
   },
 
   /**
@@ -963,6 +1079,7 @@ const Plantios = {
 const Croqui = {
   CORES: ['#2e7d32', '#c05e11', '#00695c', '#9a7d0a', '#5d4037', '#455a64'],
   COR_PROP: '#e6b400',
+  COR_LIMITE: '#ff6d00', // laranja forte: a divisa SALVA do imóvel quando ela é o LIMITE do que se desenha (área de plantio/talhão)
   COR_PLANTIO: '#7cb342', // verde: ÁREA DE PLANTIO do imóvel (o que dá para plantar dentro da divisa) — v40
   COR_EDICAO: '#00e5ff', // ciano: a divisa que VOCÊ desenha/ajusta (contrasta com o amarelo do CAR)
   prop: null,          // propriedade (nome, sede lat/lng, município/UF/linha p/ "Ir para")
@@ -1032,8 +1149,7 @@ const Croqui = {
     document.getElementById('croquiPropNome').textContent = dados.propriedade.nome
       + (Croqui.outros.length || dados.imovel.nome ? ' · ' + dados.imovel.rotulo : ''); // só o apelido (o nº do CAR fica na ficha)
     // pré-preenche o "Ir para" com o endereço do produtor (município/UF/linha)
-    { const s = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
-      s('croquiIrMun', dados.imovel.municipio || dados.propriedade.municipio); s('croquiIrUf', dados.propriedade.estado); s('croquiIrLinha', dados.propriedade.linha); }
+    Croqui._setIrPara(dados.imovel.municipio || dados.propriedade.municipio, dados.propriedade.estado, dados.propriedade.linha);
     Croqui._montarSelect();
     Croqui.atualId = 0; // começa pela divisa do imóvel (área total)
     Croqui.pontos = Croqui._contornoDe(0);
@@ -1177,11 +1293,18 @@ const Croqui = {
   },
 
   trocarTalhao() {
-    if (Croqui._dirty && !confirm('Há pontos não salvos — descartar e trocar?')) {
-      document.getElementById('croquiTalhao').value = Croqui.atualId;
-      return;
-    }
     const alvo = Number(document.getElementById('croquiTalhao').value);
+    if (Croqui._dirty) {
+      // Saindo da divisa com alteração não salva: a área de plantio/talhão é limitada
+      // pela divisa SALVA — o que está na tela seria perdido (pedido do teste de campo)
+      const msg = Croqui.atualId === 0 && alvo !== 0
+        ? 'A divisa foi alterada e NÃO foi salva. A área de plantio e os talhões são limitados pela divisa SALVA — toque em "Salvar croqui" antes de trocar. Descartar o ajuste da divisa e trocar mesmo assim?'
+        : 'Há pontos não salvos — descartar e trocar?';
+      if (!confirm(msg)) {
+        document.getElementById('croquiTalhao').value = Croqui.atualId;
+        return;
+      }
+    }
     // REGRA (teste de campo): a área de plantio e os talhões são desenhados DENTRO da
     // área do CAR — sem a divisa não há onde desenhar. Traga o CAR primeiro.
     if (alvo !== 0 && Croqui._contornoDe(0).length < 3) {
@@ -1195,6 +1318,10 @@ const Croqui = {
     Croqui._dirty = false;
     Croqui._carCod = '';
     Croqui._selecionado = null;
+    // O limite da área de plantio/talhão é a divisa SALVA pelo usuário, não o CAR:
+    // ao sair da divisa o overlay do CAR desliga (amarelo quase igual à divisa —
+    // confundia o técnico); volta sozinho ao editar a divisa de novo.
+    Croqui._carLayerNoLimite(alvo === 0);
     const rotulo = document.querySelector('label[for="croquiUsarArea"]');
     if (rotulo) rotulo.textContent = Croqui.atualId === 0
       ? 'Usar a área medida como área oficial do imóvel'
@@ -1349,6 +1476,38 @@ const Croqui = {
   /** Município do filtro (campo "Ir para") — plota só esse município, se preenchido. */
   _carFiltroMun() { return (document.getElementById('croquiIrMun')?.value || '').trim(); },
 
+  /**
+   * "Ir para" usa a lista pré-cadastrada Município – UF (busca digitável): o
+   * select guarda o nome oficial e a UF vai para o hidden #croquiIrUf.
+   * O endereço do produtor (texto do ERP, às vezes sem acento/maiúsculo) é
+   * casado sem acento; fora da lista, o campo fica vazio para o técnico escolher.
+   */
+  _setIrPara(municipio, uf, linha) {
+    const sel = document.getElementById('croquiIrMun');
+    const elLinha = document.getElementById('croquiIrLinha');
+    if (elLinha) elLinha.value = linha || '';
+    if (!sel) return;
+    sel.value = '';
+    if (municipio) {
+      const alvo = Clientes._semAcento(municipio);
+      const opts = [...sel.options];
+      const opt = opts.find(o => Clientes._semAcento(o.dataset.nome) === alvo && (!uf || o.dataset.uf === String(uf).toUpperCase()))
+        || opts.find(o => Clientes._semAcento(o.dataset.nome) === alvo);
+      if (opt) sel.value = opt.value;
+    }
+    App.selectBuscaSync(sel);
+    Croqui.ufDoIrPara();
+  },
+
+  /** UF do "Ir para" acompanha o município escolhido (hidden #croquiIrUf). */
+  ufDoIrPara() {
+    const sel = document.getElementById('croquiIrMun');
+    const hid = document.getElementById('croquiIrUf');
+    if (!sel || !hid) return;
+    const o = sel.selectedOptions[0];
+    hid.value = o && o.value !== '' ? (o.dataset.uf || '') : '';
+  },
+
   /** Carrega os imóveis do CAR na ÁREA VISÍVEL (menos dados) + filtro de município. */
   async _carregarCarLayer(silencioso = false) {
     if (!Croqui.vista) return;
@@ -1418,9 +1577,25 @@ const Croqui = {
       + (im.cod ? '. Nº do CAR gravado no cadastro' : '') + '. Confira e toque em "Salvar croqui".', 'success');
   },
 
+  /**
+   * Overlay do CAR conforme o alvo: editando a divisa → auto-mostra (o técnico
+   * escolhe/adota a área); área de plantio ou talhão → desliga (só a divisa
+   * salva é o limite; o CAR pode ser maior que o ajuste do usuário e confundia).
+   */
+  _carLayerNoLimite(editandoDivisa) {
+    if (editandoDivisa) {
+      Croqui._autoMostrarCar();
+      return;
+    }
+    if (!Croqui.carLayerOn) return;
+    Croqui.carLayerOn = false;
+    const btn = document.getElementById('croquiCarMapaBtn');
+    if (btn) btn.classList.remove('active');
+  },
+
   /** Ao abrir: mostra o overlay do CAR se houver base na região (o técnico escolhe a área). */
   async _autoMostrarCar() {
-    if (Croqui.carLayerOn) return;
+    if (Croqui.carLayerOn || Croqui.atualId !== 0) return;
     await Croqui._carregarCarLayer(true);
     if (Croqui.carLayer.length) {
       Croqui.carLayerOn = true;
@@ -1432,6 +1607,7 @@ const Croqui = {
 
   /** "Ir para": centraliza o mapa num município/UF/linha (dados locais e, se faltar, geocoder). */
   async irParaArea() {
+    Croqui.ufDoIrPara();
     const mun = (document.getElementById('croquiIrMun').value || '').trim();
     const uf = (document.getElementById('croquiIrUf').value || '').trim();
     const linha = (document.getElementById('croquiIrLinha').value || '').trim();
@@ -2154,16 +2330,21 @@ const Croqui = {
         for (const anel of aneis) for (const p of anel) { if (p[0] < iMinLat) iMinLat = p[0]; if (p[0] > iMaxLat) iMaxLat = p[0]; if (p[1] < iMinLng) iMinLng = p[1]; if (p[1] > iMaxLng) iMaxLng = p[1]; }
         if (iMaxLat < vMinLat || iMinLat > vMaxLat || iMaxLng < vMinLng || iMinLng > vMaxLng) continue; // fora da tela
         const sel = im.cod && im.cod === Croqui._carCod;
+        // Fora da divisa (plantio/talhão) o CAR é só referência: mais apagado, para não
+        // passar por limite — o limite é a divisa salva (laranja)
+        const soRef = Croqui.atualId !== 0;
         for (const anel of aneis) {
           if (anel.length < 3) continue;
           const tela = anel.map(p => Croqui._paraTela(p, larg, alt));
           svg += `<polygon points="${tela.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ')}"
-                    fill="#ffd400" fill-opacity="${sel ? '.20' : '0'}" stroke="#ffd400" stroke-width="${sel ? 3 : 1.5}"
-                    stroke-dasharray="${sel ? 'none' : '5 4'}" style="pointer-events:none"/>`;
+                    fill="#ffd400" fill-opacity="${sel && !soRef ? '.20' : '0'}" stroke="#ffd400" stroke-opacity="${soRef ? '.45' : '1'}" stroke-width="${sel && !soRef ? 3 : 1.5}"
+                    stroke-dasharray="${sel && !soRef ? 'none' : '5 4'}" style="pointer-events:none"/>`;
         }
         desenhados++;
       }
-      legenda.push('<span><span class="croqui-cor" style="background:#ffd400"></span>Imóveis do CAR (toque p/ adotar)</span>');
+      legenda.push(Croqui.atualId === 0
+        ? '<span><span class="croqui-cor" style="background:#ffd400"></span>Imóveis do CAR (toque p/ adotar)</span>'
+        : '<span><span class="croqui-cor" style="background:#ffd400;opacity:.5"></span>CAR (só referência)</span>');
     }
     // Outros imóveis (CAR) da mesma propriedade — contexto apagado, não editáveis (v40)
     if (Croqui.outros.length) {
@@ -2178,13 +2359,16 @@ const Croqui = {
       });
       legenda.push(`<span><span class="croqui-cor" style="background:${Croqui.COR_PROP};opacity:.45"></span>Outros imóveis</span>`);
     }
-    // Divisa do imóvel (amarela tracejada) — por baixo de tudo que é dele
+    // Divisa SALVA do imóvel — quando se desenha área de plantio/talhão ela é o LIMITE
+    // (a marcação do usuário, não o CAR): laranja forte com halo branco, inconfundível
+    // com o amarelo do CAR. Por baixo de tudo que é do imóvel.
     const divisa = Croqui._contornoAtual(0);
     if (Croqui.atualId !== 0 && divisa.length >= 3) {
       const tela = divisa.map(p => Croqui._paraTela(p, larg, alt));
-      svg += `<polygon points="${tela.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ')}"
-                fill="${Croqui.COR_PROP}" fill-opacity=".06" stroke="${Croqui.COR_PROP}" stroke-width="3" stroke-dasharray="9 6"/>`;
-      legenda.push(`<span><span class="croqui-cor" style="background:${Croqui.COR_PROP}"></span>Divisa do imóvel</span>`);
+      const ptsDiv = tela.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
+      svg += `<polygon points="${ptsDiv}" fill="${Croqui.COR_LIMITE}" fill-opacity=".05" stroke="#fff" stroke-opacity=".9" stroke-width="6"/>
+              <polygon points="${ptsDiv}" fill="none" stroke="${Croqui.COR_LIMITE}" stroke-width="3" stroke-dasharray="12 5"/>`;
+      legenda.push(`<span><span class="croqui-cor" style="background:${Croqui.COR_LIMITE}"></span>Divisa do imóvel (limite — sua marcação)</span>`);
     }
     // Área de plantio (verde tracejado) — entre a divisa e os talhões (v40)
     const plantioPts = Croqui._contornoAtual(Croqui.PLANTIO_ID);
@@ -2235,7 +2419,9 @@ const Croqui = {
                   fill="${invalido ? '#dc3545' : (i === 0 ? '#fff' : corAtual)}"
                   stroke="${invalido ? '#7a121f' : '#0a5b6b'}" stroke-width="3"/>`;
       });
-      legenda.push(`<span><span class="croqui-cor" style="background:${corAtual}"></span>Divisa (seu ajuste)</span>`);
+      const rotuloEdicao = Croqui.atualId === 0 ? 'Divisa (seu ajuste)'
+        : (Croqui.atualId === Croqui.PLANTIO_ID ? 'Área de plantio (desenhando)' : 'Talhão (desenhando)');
+      legenda.push(`<span><span class="croqui-cor" style="background:${corAtual}"></span>${rotuloEdicao}</span>`);
     }
     // Sede como referência
     if (Croqui.prop.latitude !== null) {
@@ -3751,7 +3937,17 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('textarea.auto-crescer').forEach(t => App.autoCrescer(t));
   document.addEventListener('shown.bs.modal', ev => {
     ev.target.querySelectorAll('textarea.auto-crescer').forEach(t => App.autoCrescer(t));
+    ev.target.querySelectorAll('select.select-busca').forEach(s => App.selectBuscaSync(s));
   });
+
+  // Selects longos (municípios) viram campo de busca digitável; form.reset()
+  // limpa o select antes do campo, então sincroniza no tick seguinte
+  document.querySelectorAll('select.select-busca').forEach(s => App.selectBusca(s));
+  document.addEventListener('reset', ev => {
+    if (ev.target && ev.target.querySelectorAll) {
+      setTimeout(() => ev.target.querySelectorAll('select.select-busca').forEach(s => App.selectBuscaSync(s)), 0);
+    }
+  }, true);
 
   // Recolher/expandir menu lateral (desktop) com preferência lembrada
   if (localStorage.getItem('menuRecolhido') === '1') {

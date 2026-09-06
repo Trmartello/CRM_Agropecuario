@@ -8,6 +8,13 @@ declare(strict_types=1);
 
 require dirname(__DIR__) . '/app/helpers.php';
 
+// Warnings/notices NUNCA vão para a resposta: a imagem php:8.3-cli não tem
+// php.ini e o servidor embutido exibe erros na saída por padrão — um simples
+// "Undefined variable" saía ANTES do JSON e o app mostrava "Resposta inválida
+// do servidor". Tudo vai para o log (stderr → logs do Railway).
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+
 // Rede de segurança para ERROS FATAIS (falta de memória, tempo esgotado): eles
 // NÃO são capturados pelo try/catch do roteador, então sem isto o cliente AJAX
 // recebe uma resposta não-JSON e mostra "Resposta inválida do servidor". Aqui

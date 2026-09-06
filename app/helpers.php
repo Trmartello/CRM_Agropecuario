@@ -226,8 +226,10 @@ function render_parcial(string $view, array $dados = []): void
  * em lista única ordenada por nome (o seletor do celular não mostra grupos bem).
  * $valorPor: 'nome' (value = nome oficial) ou 'ibge' (value = código IBGE).
  * Cada option leva data-nome, data-uf e data-cod para o JS.
+ * A classe `select-busca` faz o app.js trocar o seletor nativo por um campo de
+ * busca digitável (App.selectBusca) — no celular, 1.191 itens numa roda é inviável.
  */
-function select_municipios(string $name, string $id, string $valorPor = 'nome', string $classe = 'form-select', string $extra = ''): string
+function select_municipios(string $name, string $id, string $valorPor = 'nome', string $classe = 'form-select select-busca', string $extra = ''): string
 {
     $itens = [];
     foreach (\App\Services\MunicipiosSul::porUf() as $uf => $muns) {
@@ -239,7 +241,8 @@ function select_municipios(string $name, string $id, string $valorPor = 'nome', 
         iconv('UTF-8', 'ASCII//TRANSLIT', mb_strtolower($a[1])) ?: $a[1],
         iconv('UTF-8', 'ASCII//TRANSLIT', mb_strtolower($b[1])) ?: $b[1]
     ) ?: strcmp($a[2], $b[2]));
-    $html = '<select name="' . e($name) . '" id="' . e($id) . '" class="' . e($classe) . '" ' . $extra . '>'
+    $placeholder = str_contains($extra, 'data-placeholder=') ? '' : 'data-placeholder="Digite o nome do município…" ';
+    $html = '<select name="' . e($name) . '" id="' . e($id) . '" class="' . e($classe) . '" ' . $placeholder . $extra . '>'
         . '<option value="">— selecione —</option>';
     foreach ($itens as [$cod, $nome, $uf]) {
         $valor = $valorPor === 'ibge' ? $cod : $nome;

@@ -342,6 +342,8 @@ class CroquiService
         $proj = self::projetar(array_merge($divisa, $pontos));
         $poligono = array_slice($proj, 0, count($divisa));
         $xy = array_slice($proj, count($divisa));
+        $nd = count($poligono); // vértices da divisa (faltava: warning "Undefined variable" saía
+                                // antes do JSON em produção → "Resposta inválida do servidor")
         $fora = [];
         for ($i = 0; $i < $n; $i++) {
             $a = $xy[$i];
