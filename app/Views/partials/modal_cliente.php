@@ -45,7 +45,7 @@
           <div class="col-md-4">
             <label class="form-label">Município – UF</label>
             <?php /* Lista pré-cadastrada (MunicipiosSul); a UF vai no hidden a partir do data-uf */ ?>
-            <?= select_municipios('municipio', 'clienteMunicipio', 'nome', 'form-select', 'onchange="Clientes.ufDoMunicipio(this)"') ?>
+            <?= select_municipios('municipio', 'clienteMunicipio', 'nome', 'form-select select-busca', 'onchange="Clientes.ufDoMunicipio(this)"') ?>
             <input type="hidden" name="estado" value="SC">
           </div>
           <div class="col-md-3">

@@ -334,3 +334,18 @@ body.voz-suportada .campo-voz .btn-voz { display: inline-flex; }
 .cartao-prior { border-left: 5px solid #2e7d32; border-radius: 12px; }
 .cartao-prior.cp-atencao { border-left-color: #e0a800; }
 .cartao-prior.cp-vencida { border-left-color: #c62828; }
+
+/* ---------- Select com busca digitável (App.selectBusca — municípios) ---------- */
+/* A lista fica NO FLUXO (não absoluta): dentro de modal em tela cheia o corpo
+   rola (overflow-y:auto) e cortaria uma lista posicionada por cima. */
+.select-busca { position: relative; }
+.select-busca-lista {
+  max-height: 40vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-top: .25rem;
+  border-radius: .375rem;
+  box-shadow: 0 .25rem .75rem rgba(0,0,0,.12);
+}
+.select-busca-lista .list-group-item { padding: .65rem .75rem; font-size: 1rem; }
+.select-busca-lista .list-group-item-action.active { background: var(--verde-claro); border-color: var(--verde-claro); }

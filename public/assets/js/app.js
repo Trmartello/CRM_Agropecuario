@@ -89,6 +89,120 @@ const App = {
     el.style.height = Math.max(el.scrollHeight, manual) + 'px';
   },
 
+  /**
+   * Select com busca digitável para listas longas (ex.: os 1.191 municípios —
+   * no celular o seletor nativo vira uma roda impossível de percorrer).
+   * O <select> continua no DOM, escondido, como fonte da verdade (name, value,
+   * options, onchange e data-* intactos); o campo de texto filtra as opções
+   * sem acento/maiúsculas ("conc" → Concórdia – SC) e dispara `change` no
+   * select ao escolher. Mudança programática (sel.value = …, disabled) chama
+   * App.selectBuscaSync(sel) para refletir no campo.
+   */
+  selectBusca(sel) {
+    if (!sel || sel.tagName !== 'SELECT' || sel.dataset.busca === '1') return;
+    sel.dataset.busca = '1';
+    const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    const wrap = document.createElement('div');
+    wrap.className = 'select-busca';
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'form-control';
+    inp.autocomplete = 'off';
+    inp.setAttribute('enterkeyhint', 'done');
+    inp.placeholder = sel.dataset.placeholder || 'Digite para buscar…';
+    inp.setAttribute('aria-label', inp.placeholder);
+    const lista = document.createElement('div');
+    lista.className = 'select-busca-lista list-group d-none';
+    sel.parentNode.insertBefore(wrap, sel);
+    wrap.append(inp, lista, sel);
+    sel.classList.add('d-none');
+    sel.tabIndex = -1;
+
+    const opts = [...sel.options].filter(o => o.value !== '').map(o => ({ o, t: o.textContent, n: norm(o.textContent) }));
+    const MAX = 60;
+    let atuais = [];
+    let ativo = -1;
+    const fechar = () => { lista.classList.add('d-none'); lista.innerHTML = ''; };
+    const sync = (forcar = false) => {
+      inp.disabled = sel.disabled;
+      // usuário digitando (ex.: shown.bs.modal chega depois do 1º toque): não interrompe
+      if (!forcar && document.activeElement === inp && !inp.disabled) return;
+      const o = sel.selectedOptions[0];
+      inp.value = o && o.value !== '' ? o.textContent : '';
+      fechar();
+    };
+    sel._buscaSync = () => sync(false);
+    const escolher = o => {
+      if (sel.value !== o.value) {
+        sel.value = o.value;
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      sync(true);
+    };
+    const render = () => {
+      if (inp.disabled) return;
+      const q = norm(inp.value);
+      let cand = q ? opts.filter(x => x.n.includes(q)) : opts;
+      if (q) cand = cand.slice().sort((a, b) => Number(b.n.startsWith(q)) - Number(a.n.startsWith(q)));
+      atuais = cand.slice(0, MAX);
+      ativo = atuais.length ? 0 : -1;
+      const html = atuais.map((x, i) =>
+        `<button type="button" class="list-group-item list-group-item-action${i === ativo ? ' active' : ''}" data-i="${i}">${App.escapeHtml(x.t)}</button>`);
+      if (!atuais.length) html.push('<div class="list-group-item text-muted small">Nenhum resultado. Confira a grafia.</div>');
+      else if (cand.length > MAX) html.push(`<div class="list-group-item text-muted small">Mostrando ${MAX} de ${cand.length} — continue digitando para refinar.</div>`);
+      lista.innerHTML = html.join('');
+      lista.classList.remove('d-none');
+    };
+    const marcar = () => lista.querySelectorAll('.list-group-item-action').forEach((b, i) => b.classList.toggle('active', i === ativo));
+
+    inp.addEventListener('focus', render);
+    inp.addEventListener('input', () => {
+      if (norm(inp.value) === '' && sel.value !== '') {
+        sel.value = '';
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      render();
+    });
+    inp.addEventListener('keydown', ev => {
+      if (lista.classList.contains('d-none')) return;
+      if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+        ev.preventDefault();
+        if (!atuais.length) return;
+        ativo = (ativo + (ev.key === 'ArrowDown' ? 1 : atuais.length - 1)) % atuais.length;
+        marcar();
+        const b = lista.querySelectorAll('.list-group-item-action')[ativo];
+        if (b && b.scrollIntoView) b.scrollIntoView({ block: 'nearest' });
+      } else if (ev.key === 'Enter') {
+        ev.preventDefault();
+        if (ativo >= 0 && atuais[ativo]) escolher(atuais[ativo].o);
+      } else if (ev.key === 'Escape') {
+        ev.preventDefault();
+        sync(true);
+      }
+    });
+    // mousedown prevenido: tocar na lista não tira o foco do campo (o blur fecharia antes do click)
+    lista.addEventListener('mousedown', ev => ev.preventDefault());
+    lista.addEventListener('click', ev => {
+      const b = ev.target.closest('.list-group-item-action');
+      if (b && atuais[Number(b.dataset.i)]) escolher(atuais[Number(b.dataset.i)].o);
+    });
+    inp.addEventListener('blur', () => setTimeout(() => {
+      if (document.activeElement === inp) return;
+      const q = norm(inp.value);
+      if (q === '') { if (sel.value !== '') { sel.value = ''; sel.dispatchEvent(new Event('change', { bubbles: true })); } sync(true); return; }
+      // texto digitado igual a uma opção (ou único resultado) → adota; senão volta ao valor atual
+      const exato = opts.find(x => x.n === q) || (atuais.length === 1 ? atuais[0] : null);
+      if (exato) escolher(exato.o); else sync(true);
+    }, 150));
+    sel.addEventListener('change', () => sync(false));
+    sync(true);
+  },
+
+  /** Reflete no campo de busca uma mudança programática do select (valor/disabled). */
+  selectBuscaSync(sel) {
+    if (sel && typeof sel._buscaSync === 'function') sel._buscaSync();
+  },
+
   /** Escapa texto para inserção segura via innerHTML. */
   escapeHtml(v) {
     return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -351,7 +465,7 @@ const Clientes = {
           || [...selMun.options].find(o => Clientes._semAcento(o.dataset.nome) === alvo);
         if (opt) selMun.value = opt.value;
       }
-      if (selMun) Clientes.ufDoMunicipio(selMun);
+      if (selMun) { Clientes.ufDoMunicipio(selMun); App.selectBuscaSync(selMun); }
     } catch (e) { App.alerta(e.message, 'danger'); }
   },
 
@@ -447,6 +561,7 @@ const Clientes = {
       const opt = [...selMun.options].find(o => Clientes._semAcento(o.value) === alvo);
       if (opt) selMun.value = opt.value;
     }
+    App.selectBuscaSync(selMun);
     Clientes._areasNoModalPropriedade(p.resumo || null);
     document.getElementById('btnExcluirPropriedade').classList.remove('d-none');
     new bootstrap.Modal('#modalPropriedade').show(); // v40: o nº do CAR fica no imóvel, não aqui
@@ -555,6 +670,7 @@ const Clientes = {
         ? 'O código do CAR não bate com a lista (SC/RS/PR) — escolha o município na lista.'
         : 'Preenchido sozinho pelo número do CAR; escolha na lista só se o imóvel ainda não tem CAR.';
     }
+    App.selectBuscaSync(sel);
   },
 
   /**
@@ -3751,7 +3867,17 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('textarea.auto-crescer').forEach(t => App.autoCrescer(t));
   document.addEventListener('shown.bs.modal', ev => {
     ev.target.querySelectorAll('textarea.auto-crescer').forEach(t => App.autoCrescer(t));
+    ev.target.querySelectorAll('select.select-busca').forEach(s => App.selectBuscaSync(s));
   });
+
+  // Selects longos (municípios) viram campo de busca digitável; form.reset()
+  // limpa o select antes do campo, então sincroniza no tick seguinte
+  document.querySelectorAll('select.select-busca').forEach(s => App.selectBusca(s));
+  document.addEventListener('reset', ev => {
+    if (ev.target && ev.target.querySelectorAll) {
+      setTimeout(() => ev.target.querySelectorAll('select.select-busca').forEach(s => App.selectBuscaSync(s)), 0);
+    }
+  }, true);
 
   // Recolher/expandir menu lateral (desktop) com preferência lembrada
   if (localStorage.getItem('menuRecolhido') === '1') {
