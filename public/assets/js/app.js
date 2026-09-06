@@ -394,7 +394,27 @@ const Clientes = {
     document.getElementById('btnExcluirPropriedade').classList.add('d-none');
     form.querySelector('[name=id]').value = 0;
     form.querySelector('[name=cliente_id]').value = clienteId;
+    Clientes._areasNoModalPropriedade(null);
     new bootstrap.Modal('#modalPropriedade').show();
+  },
+
+  /**
+   * As áreas da propriedade NUNCA são digitadas: total = soma dos CARs (imóveis),
+   * plantio = desenhado nos croquis, talhões = soma dos talhões. Só leitura.
+   */
+  _areasNoModalPropriedade(resumo) {
+    const fmt = v => Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' ha';
+    const r = resumo || {};
+    const total = Number(r.area_total || 0), plantio = Number(r.area_plantio || 0), soma = Number(r.soma || 0);
+    document.getElementById('propAreaTotal').textContent = total > 0 ? fmt(total) : '—';
+    document.getElementById('propAreaTotalNota').textContent = total > 0
+      ? 'Soma dos CARs (imóveis).'
+      : 'Vem dos CARs: abra o croqui do imóvel e traga a divisa.';
+    document.getElementById('propAreaPlantio').textContent = plantio > 0 ? fmt(plantio) + (r.plantio_origem === 'total' ? ' (= total)' : '') : '—';
+    document.getElementById('propAreaTalhoes').textContent = soma > 0 ? fmt(soma) : '—';
+    document.getElementById('propAreaTalhoesNota').textContent = Number(r.excedente || 0) > 0
+      ? `Passam ${fmt(r.excedente)} da área de plantio.`
+      : (Number(r.nao_mapeado || 0) > 0 ? `Sem talhão: ${fmt(r.nao_mapeado)}.` : 'Soma dos talhões.');
   },
 
   editarPropriedade(p) {
@@ -403,8 +423,15 @@ const Clientes = {
     form.querySelector('[name=id]').value = p.id;
     form.querySelector('[name=cliente_id]').value = p.cliente_id;
     form.querySelector('[name=nome]').value = p.nome;
-    form.querySelector('[name=area_ha]').value = p.area_ha;
-    form.querySelector('[name=municipio]').value = p.municipio || '';
+    // Município: lista pré-cadastrada — casa pelo nome sem acento (cadastro antigo em texto)
+    const selMun = form.querySelector('[name=municipio]');
+    selMun.value = p.municipio || '';
+    if (!selMun.value && p.municipio) {
+      const alvo = Clientes._semAcento(p.municipio);
+      const opt = [...selMun.options].find(o => Clientes._semAcento(o.value) === alvo);
+      if (opt) selMun.value = opt.value;
+    }
+    Clientes._areasNoModalPropriedade(p.resumo || null);
     document.getElementById('btnExcluirPropriedade').classList.remove('d-none');
     new bootstrap.Modal('#modalPropriedade').show(); // v40: o nº do CAR fica no imóvel, não aqui
   },

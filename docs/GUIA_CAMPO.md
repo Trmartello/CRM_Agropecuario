@@ -46,4 +46,4 @@ Na aba **Propriedades** da ficha:
 
 **Mapa pequeno no celular?** Toque em **⤢** (ao lado do +/−): o mapa ocupa a tela toda, com Salvar e Sair numa barra embaixo. O app lembra a escolha.
 
-**Regras rápidas:** área total = divisa do CAR (não se digita) · área de plantio e talhões só dentro da área do CAR, nenhuma linha para fora · ponto do talhão fora da divisa é puxado para a borda · talhão fora da **área de plantio** só avisa · a divisa não pode deixar talhão para fora · imóvel com talhões não se apaga (mova os talhões antes) · toque duplo na linha ciano insere um ponto, toque duplo no ponto remove.
+**Regras rápidas:** área total do imóvel = divisa do CAR, e a da propriedade = soma dos CARs (nada se digita) · área de plantio e talhões só dentro da área do CAR, nenhuma linha para fora · ponto do talhão fora da divisa é puxado para a borda · talhão fora da **área de plantio** só avisa · a divisa não pode deixar talhão para fora · imóvel com talhões não se apaga (mova os talhões antes) · toque duplo na linha ciano insere um ponto, toque duplo no ponto remove.

@@ -169,6 +169,9 @@ class IntegracaoController
                     [$mun['nome'], (int) $p['imovel_id']]
                 );
             }
+            // área total da propriedade = soma dos CARs
+            $propId = (int) \App\Core\Database::valor('SELECT propriedade_id FROM imoveis WHERE id = ?', [(int) $p['imovel_id']]);
+            \App\Services\AreaPlantioService::sincronizarPropriedade($propId);
             $vinc++;
         }
         $semSede = (int) \App\Core\Database::valor('SELECT COUNT(*) FROM propriedades WHERE latitude IS NULL OR longitude IS NULL');

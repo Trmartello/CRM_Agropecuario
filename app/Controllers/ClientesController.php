@@ -457,6 +457,10 @@ class ClientesController
                 [mb_substr(trim($_POST['car_numero']), 0, 60), $areaGps, $alvoId]);
             $this->municipioDoCar($alvoId, trim($_POST['car_numero'])); // município vem do nº do CAR
         }
+        if ($tipo === 'imovel') {
+            // área total da propriedade = soma dos CARs
+            \App\Services\AreaPlantioService::sincronizarPropriedade((int) $imovel['propriedade_id']);
+        }
         sync_confirmar($_POST['uuid_offline'] ?? null);
         auditar('salvar', 'croqui', $alvoId, $rotulo . ' · ' . count($pontos) . " pontos · {$areaGps} ha");
         json_ok(['area_gps' => $areaGps, 'talhoes_fora' => $avisos]);
@@ -537,6 +541,7 @@ class ClientesController
                 "UPDATE propriedades SET municipio = ? WHERE id = ? AND (municipio IS NULL OR municipio = '')", [$mun, $propId]
             );
         }
+        \App\Services\AreaPlantioService::sincronizarPropriedade($propId); // área total da propriedade = soma dos CARs
         auditar('importar', 'croqui', $imovelId, 'CAR shapefile · imóvel · ' . count($pontos) . " pontos · {$areaGps} ha");
         json_ok([
             'area_gps' => $areaGps, 'pontos' => count($pontos), 'talhoes_fora' => $fora,
@@ -1045,25 +1050,28 @@ class ClientesController
         }
         // v40: o nº do CAR saiu da propriedade — fica em cada IMÓVEL (uma propriedade
         // pode ter vários CARs). Propriedade nova já nasce com 1 imóvel para cadastrar.
-        $dados = [
-            $nome,
-            (float) str_replace(',', '.', $_POST['area_ha'] ?? 0),
-            trim($_POST['municipio'] ?? '') ?: null,
-        ];
+        // REGRA (teste de campo): a ÁREA da propriedade não é digitada — é a soma dos
+        // CARs (AreaPlantioService::sincronizarPropriedade). Município vem da lista
+        // pré-cadastrada (nome oficial de MunicipiosSul); texto fora da lista é ignorado.
+        $munNome = trim($_POST['municipio'] ?? '');
+        $codMun = \App\Services\MunicipiosSul::codigoPorNome($munNome, trim($_POST['uf'] ?? '') ?: null);
+        $mun = \App\Services\MunicipiosSul::porCodigo($codMun);
+        $dados = [$nome, $mun['nome'] ?? null];
         if ($id > 0) {
-            Database::executar(
-                'UPDATE propriedades SET nome=?, area_ha=?, municipio=? WHERE id=? AND cliente_id=?',
-                array_merge($dados, [$id, $clienteId])
-            );
+            $sql = $mun !== null
+                ? 'UPDATE propriedades SET nome=?, municipio=? WHERE id=? AND cliente_id=?'
+                : 'UPDATE propriedades SET nome=?, municipio=COALESCE(?, municipio) WHERE id=? AND cliente_id=?';
+            Database::executar($sql, array_merge($dados, [$id, $clienteId]));
         } else {
             Database::executar(
-                'INSERT INTO propriedades (nome, area_ha, municipio, cliente_id) VALUES (?,?,?,?)',
+                'INSERT INTO propriedades (nome, municipio, area_ha, cliente_id) VALUES (?,?,0,?)',
                 array_merge($dados, [$clienteId])
             );
             $id = Database::ultimoId();
             $this->primeiroImovel($id); // cria o 1º imóvel (CAR) da propriedade
         }
-        json_ok(['id' => $id]);
+        $area = \App\Services\AreaPlantioService::sincronizarPropriedade($id);
+        json_ok(['id' => $id, 'area_ha' => $area, 'municipio' => $mun['nome'] ?? null]);
     }
 
     /** Salva imóvel rural (CAR) da propriedade — v40 (modal AJAX). */
@@ -1203,6 +1211,7 @@ class ClientesController
             json_erro('A propriedade precisa de ao menos um imóvel. Edite este em vez de excluir.');
         }
         Database::executar('DELETE FROM imoveis WHERE id = ?', [(int) $imovel['id']]);
+        \App\Services\AreaPlantioService::sincronizarPropriedade((int) $imovel['propriedade_id']); // soma dos CARs que ficaram
         auditar('excluir', 'imovel', (int) $imovel['id'], self::rotuloImovel($imovel));
         json_ok();
     }
