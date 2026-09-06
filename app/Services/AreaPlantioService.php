@@ -133,6 +133,28 @@ class AreaPlantioService
     }
 
     /**
+     * REGRA (teste de campo): a área total da propriedade NÃO é digitada — é a SOMA
+     * das áreas dos seus imóveis (CARs), cada um pela divisa medida (area_gps) ou,
+     * na falta, pela cadastrada. Grava em propriedades.area_ha para que ficha,
+     * cartão do produtor, relatório e snapshot offline leiam o mesmo número.
+     * Só sobrescreve quando a soma é > 0 (propriedade antiga sem CAR mantém o valor
+     * que já tinha). Devolve a soma. Chamar sempre que a área de um imóvel mudar.
+     */
+    public static function sincronizarPropriedade(int $propriedadeId): float
+    {
+        $soma = (float) Database::valor(
+            'SELECT COALESCE(SUM(CASE WHEN area_gps IS NOT NULL AND area_gps > 0 THEN area_gps ELSE area_ha END), 0)
+               FROM imoveis WHERE propriedade_id = ?',
+            [$propriedadeId]
+        );
+        $soma = round($soma, 2);
+        if ($soma > 0) {
+            Database::executar('UPDATE propriedades SET area_ha = ? WHERE id = ?', [$soma, $propriedadeId]);
+        }
+        return $soma;
+    }
+
+    /**
      * Carrega os imóveis de uma propriedade com os talhões de cada um (cultura e
      * finalidade já resolvidas) e o resumo por imóvel. Talhão ainda sem imóvel
      * (legado) aparece agrupado no primeiro imóvel, para não sumir da ficha.

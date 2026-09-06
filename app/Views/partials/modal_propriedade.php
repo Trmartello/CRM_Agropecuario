@@ -14,17 +14,31 @@
           <input name="nome" class="form-control" required>
         </div>
         <div class="row g-3">
-          <div class="col-6">
-            <label class="form-label">Área (ha)</label>
-            <input name="area_ha" class="form-control" inputmode="decimal">
+          <?php /* REGRA (teste de campo): a área da propriedade NÃO é digitada — é a SOMA dos CARs
+                   (imóveis), com a área de plantio desenhada e os talhões. Aqui só se mostra. */ ?>
+          <div class="col-4">
+            <label class="form-label">Área total</label>
+            <div class="form-control-plaintext fw-semibold" id="propAreaTotal">—</div>
+            <div class="form-text" id="propAreaTotalNota">Soma dos CARs.</div>
           </div>
-          <div class="col-6">
+          <div class="col-4">
+            <label class="form-label">Área de plantio</label>
+            <div class="form-control-plaintext fw-semibold" id="propAreaPlantio">—</div>
+            <div class="form-text">Desenhada nos croquis.</div>
+          </div>
+          <div class="col-4">
+            <label class="form-label">Talhões</label>
+            <div class="form-control-plaintext fw-semibold" id="propAreaTalhoes">—</div>
+            <div class="form-text" id="propAreaTalhoesNota">Soma dos talhões.</div>
+          </div>
+          <div class="col-12">
             <label class="form-label">Município</label>
-            <input name="municipio" class="form-control">
+            <?= select_municipios('municipio', 'propMunicipio', 'nome') ?>
+            <div class="form-text">Lista pré-cadastrada Município – UF (SC/RS/PR). Ao trazer o CAR de um imóvel, o município entra sozinho se ainda estiver vazio.</div>
           </div>
           <div class="col-12 form-text">
             O <strong>número do CAR</strong> fica em cada <strong>imóvel</strong> da propriedade (uma propriedade pode ter vários CARs).
-            A propriedade nova já nasce com um imóvel: depois de salvar, edite-o para informar o CAR e a área de plantio.
+            A propriedade nova já nasce com um imóvel: depois de salvar, abra o <strong>croqui</strong> dele para trazer a divisa do CAR — a área total é a soma das divisas.
           </div>
         </div>
       </div>

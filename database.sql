@@ -1684,8 +1684,13 @@ CREATE TABLE sync_processados (
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','41')
-  ON DUPLICATE KEY UPDATE valor = '41';
+-- v42: área total da propriedade = soma dos CARs (imóveis) — seed já vem coerente (1 imóvel por propriedade)
+UPDATE propriedades p SET area_ha = (
+  SELECT COALESCE(SUM(CASE WHEN i.area_gps IS NOT NULL AND i.area_gps > 0 THEN i.area_gps ELSE i.area_ha END), 0)
+    FROM imoveis i WHERE i.propriedade_id = p.id)
+ WHERE EXISTS (SELECT 1 FROM imoveis i2 WHERE i2.propriedade_id = p.id AND COALESCE(i2.area_gps, i2.area_ha) > 0);
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','42')
+  ON DUPLICATE KEY UPDATE valor = '42';
 
 -- ============================================================================
 -- SEED — Mapa Territorial: 5 imóveis fictícios (Concórdia/SC), vínculos e talhões

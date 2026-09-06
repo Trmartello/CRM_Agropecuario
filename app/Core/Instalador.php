@@ -1030,6 +1030,18 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '41'"
             );
         }
+        if ($versao < 42) {
+            // Área total da propriedade = SOMA dos CARs (imóveis). Backfill onde já há
+            // imóvel com área; propriedade sem CAR mantém a área que tinha.
+            $ids = Database::todos('SELECT id FROM propriedades');
+            foreach ($ids as $r) {
+                \App\Services\AreaPlantioService::sincronizarPropriedade((int) $r['id']);
+            }
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '42')
+                 ON DUPLICATE KEY UPDATE valor = '42'"
+            );
+        }
     }
 
     /**

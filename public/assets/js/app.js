@@ -343,7 +343,23 @@ const Clientes = {
       }
       const chkProsp = form.querySelector('[name=prospecto]');
       if (chkProsp) chkProsp.checked = Number(cliente.prospecto) === 1;
+      // Município – UF da lista: cadastro antigo em texto é casado sem acento (e pela UF)
+      const selMun = form.querySelector('[name=municipio]');
+      if (selMun && !selMun.value && cliente.municipio) {
+        const alvo = Clientes._semAcento(cliente.municipio);
+        const opt = [...selMun.options].find(o => Clientes._semAcento(o.dataset.nome) === alvo && (!cliente.estado || o.dataset.uf === cliente.estado))
+          || [...selMun.options].find(o => Clientes._semAcento(o.dataset.nome) === alvo);
+        if (opt) selMun.value = opt.value;
+      }
+      if (selMun) Clientes.ufDoMunicipio(selMun);
     } catch (e) { App.alerta(e.message, 'danger'); }
+  },
+
+  /** A UF do produtor vem do município escolhido na lista (hidden `estado`). */
+  ufDoMunicipio(sel) {
+    const uf = sel.selectedOptions[0] && sel.selectedOptions[0].dataset.uf;
+    const hid = sel.form && sel.form.querySelector('[name=estado]');
+    if (hid && uf) hid.value = uf;
   },
 
   async salvar(ev) {
@@ -394,7 +410,27 @@ const Clientes = {
     document.getElementById('btnExcluirPropriedade').classList.add('d-none');
     form.querySelector('[name=id]').value = 0;
     form.querySelector('[name=cliente_id]').value = clienteId;
+    Clientes._areasNoModalPropriedade(null);
     new bootstrap.Modal('#modalPropriedade').show();
+  },
+
+  /**
+   * As áreas da propriedade NUNCA são digitadas: total = soma dos CARs (imóveis),
+   * plantio = desenhado nos croquis, talhões = soma dos talhões. Só leitura.
+   */
+  _areasNoModalPropriedade(resumo) {
+    const fmt = v => Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' ha';
+    const r = resumo || {};
+    const total = Number(r.area_total || 0), plantio = Number(r.area_plantio || 0), soma = Number(r.soma || 0);
+    document.getElementById('propAreaTotal').textContent = total > 0 ? fmt(total) : '—';
+    document.getElementById('propAreaTotalNota').textContent = total > 0
+      ? 'Soma dos CARs (imóveis).'
+      : 'Vem dos CARs: abra o croqui do imóvel e traga a divisa.';
+    document.getElementById('propAreaPlantio').textContent = plantio > 0 ? fmt(plantio) + (r.plantio_origem === 'total' ? ' (= total)' : '') : '—';
+    document.getElementById('propAreaTalhoes').textContent = soma > 0 ? fmt(soma) : '—';
+    document.getElementById('propAreaTalhoesNota').textContent = Number(r.excedente || 0) > 0
+      ? `Passam ${fmt(r.excedente)} da área de plantio.`
+      : (Number(r.nao_mapeado || 0) > 0 ? `Sem talhão: ${fmt(r.nao_mapeado)}.` : 'Soma dos talhões.');
   },
 
   editarPropriedade(p) {
@@ -403,8 +439,15 @@ const Clientes = {
     form.querySelector('[name=id]').value = p.id;
     form.querySelector('[name=cliente_id]').value = p.cliente_id;
     form.querySelector('[name=nome]').value = p.nome;
-    form.querySelector('[name=area_ha]').value = p.area_ha;
-    form.querySelector('[name=municipio]').value = p.municipio || '';
+    // Município: lista pré-cadastrada — casa pelo nome sem acento (cadastro antigo em texto)
+    const selMun = form.querySelector('[name=municipio]');
+    selMun.value = p.municipio || '';
+    if (!selMun.value && p.municipio) {
+      const alvo = Clientes._semAcento(p.municipio);
+      const opt = [...selMun.options].find(o => Clientes._semAcento(o.value) === alvo);
+      if (opt) selMun.value = opt.value;
+    }
+    Clientes._areasNoModalPropriedade(p.resumo || null);
     document.getElementById('btnExcluirPropriedade').classList.remove('d-none');
     new bootstrap.Modal('#modalPropriedade').show(); // v40: o nº do CAR fica no imóvel, não aqui
   },
@@ -503,7 +546,7 @@ const Clientes = {
     if (opt) {
       sel.value = m[2];
       sel.disabled = true;
-      nota.textContent = `Identificado pelo nº do CAR: ${opt.textContent}/${opt.parentElement.label}.`;
+      nota.textContent = `Identificado pelo nº do CAR: ${opt.dataset.nome}/${opt.dataset.uf}.`;
       nota.classList.add('text-success');
     } else {
       sel.disabled = false;
@@ -545,7 +588,7 @@ const Clientes = {
     selMun.value = im.cod_ibge || '';
     if (!selMun.value && im.municipio) {
       const alvo = Clientes._semAcento(im.municipio);
-      const opt = [...selMun.options].find(o => Clientes._semAcento(o.textContent) === alvo && (!im.uf || o.parentElement.label === im.uf));
+      const opt = [...selMun.options].find(o => Clientes._semAcento(o.dataset.nome) === alvo && (!im.uf || o.dataset.uf === im.uf));
       if (opt) selMun.value = opt.value;
     }
     document.getElementById('imovelMunicipioNota').textContent = 'Preenchido sozinho pelo número do CAR; escolha na lista só se o imóvel ainda não tem CAR.';

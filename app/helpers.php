@@ -220,3 +220,31 @@ function render_parcial(string $view, array $dados = []): void
     extract($dados);
     require __DIR__ . '/Views/' . $view . '.php';
 }
+
+/**
+ * Select de MUNICÍPIO – UF a partir da lista pré-cadastrada (MunicipiosSul, SC/RS/PR),
+ * em lista única ordenada por nome (o seletor do celular não mostra grupos bem).
+ * $valorPor: 'nome' (value = nome oficial) ou 'ibge' (value = código IBGE).
+ * Cada option leva data-nome, data-uf e data-cod para o JS.
+ */
+function select_municipios(string $name, string $id, string $valorPor = 'nome', string $classe = 'form-select', string $extra = ''): string
+{
+    $itens = [];
+    foreach (\App\Services\MunicipiosSul::porUf() as $uf => $muns) {
+        foreach ($muns as $cod => $nome) {
+            $itens[] = [(string) $cod, $nome, $uf];
+        }
+    }
+    usort($itens, fn ($a, $b) => strcmp(
+        iconv('UTF-8', 'ASCII//TRANSLIT', mb_strtolower($a[1])) ?: $a[1],
+        iconv('UTF-8', 'ASCII//TRANSLIT', mb_strtolower($b[1])) ?: $b[1]
+    ) ?: strcmp($a[2], $b[2]));
+    $html = '<select name="' . e($name) . '" id="' . e($id) . '" class="' . e($classe) . '" ' . $extra . '>'
+        . '<option value="">— selecione —</option>';
+    foreach ($itens as [$cod, $nome, $uf]) {
+        $valor = $valorPor === 'ibge' ? $cod : $nome;
+        $html .= '<option value="' . e($valor) . '" data-nome="' . e($nome) . '" data-uf="' . e($uf) . '" data-cod="' . e($cod) . '">'
+            . e($nome . ' – ' . $uf) . '</option>';
+    }
+    return $html . '</select>';
+}
