@@ -208,6 +208,45 @@ class CroquiService
         return true;
     }
 
+    /**
+     * REGRA (teste de campo): NENHUMA LINHA fica fora da divisa do CAR. Prender os
+     * pontos na borda não basta em divisa côncava — a aresta entre dois pontos
+     * válidos pode cortar por fora. Devolve os índices i das arestas (i → i+1) que
+     * cruzam a divisa ou passam por fora dela.
+     */
+    public static function linhasFora(array $pontos, array $divisa, float $tolM = self::TOLERANCIA_SOBREPOSICAO_M): array
+    {
+        $n = count($pontos);
+        if ($n < 2 || count($divisa) < 3) {
+            return [];
+        }
+        $proj = self::projetar(array_merge($divisa, $pontos));
+        $poligono = array_slice($proj, 0, count($divisa));
+        $xy = array_slice($proj, count($divisa));
+        $nd = count($poligono);
+        $fora = [];
+        for ($i = 0; $i < $n; $i++) {
+            $a = $xy[$i];
+            $b = $xy[($i + 1) % $n];
+            if ($n === 2 && $i === 1) {
+                break; // duas pontas: só uma linha
+            }
+            $cruza = false;
+            for ($j = 0; $j < $nd && !$cruza; $j++) {
+                $cruza = self::segmentosCruzam($a, $b, $poligono[$j], $poligono[($j + 1) % $nd], $tolM);
+            }
+            if (!$cruza) {
+                // sem cruzamento: a linha está toda dentro ou toda fora — decide pelo meio
+                $meio = [($a[0] + $b[0]) / 2, ($a[1] + $b[1]) / 2];
+                $cruza = !self::dentro($meio, $poligono) && self::distanciaBordaM($meio, $poligono) > $tolM;
+            }
+            if ($cruza) {
+                $fora[] = $i;
+            }
+        }
+        return $fora;
+    }
+
     /** Ponto da borda do polígono mais próximo de [x,y] (tudo em metros). */
     private static function pontoMaisProximoBorda(array $p, array $poligono): array
     {

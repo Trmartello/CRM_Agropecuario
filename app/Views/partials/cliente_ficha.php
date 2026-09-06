@@ -353,7 +353,7 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
         <div class="px-3 pt-2 pb-1 d-flex justify-content-between align-items-start flex-wrap gap-1 bg-light bg-opacity-50">
           <div>
             <i class="bi bi-geo text-success me-1"></i><strong><?= e($rotuloIm) ?></strong>
-            <span class="text-muted small">· total <?= numero($r['area_total'], 1) ?> ha · plantio <?= numero($r['area_plantio'], 1) ?> ha<?= $r['plantio_origem'] === 'total' ? ' (= total)' : '' ?></span>
+            <span class="text-muted small">· total <?= numero($r['area_total'], 1) ?> ha · plantio <?= numero($r['area_plantio'], 1) ?> ha<?= $r['plantio_origem'] === 'total' ? ' (= total)' : '' ?><?= !empty($im['municipio']) ? ' · ' . e($im['municipio']) . (!empty($im['uf']) ? '/' . e($im['uf']) : '') : '' ?></span>
             <?php if (!empty($im['car_numero'])): ?>
               <div class="small text-muted">CAR: <?= e($im['car_numero']) ?>
                 <a href="https://consultapublica.car.gov.br/publico/imoveis/index" target="_blank" rel="noopener" class="ms-1"

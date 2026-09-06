@@ -29,8 +29,8 @@ App: **https://crmagropecuario-production.up.railway.app** · Ajuda: grupo do pi
 
 Na aba **Propriedades** da ficha:
 
-1. **Imóvel (CAR)** — cada inscrição no CAR é um imóvel. Falta um? **+ Imóvel (CAR)**. Toque no lápis para informar o nº do CAR e a **área de plantio** (o que dá para plantar, sem mata/APP/sede).
-2. **Croqui** do imóvel → no seletor escolha **🌱 Área de plantio** → toque nos cantos sobre o satélite → *Salvar croqui*. Marque *usar a área medida* se ela for a oficial.
+1. **Imóvel (CAR)** — cada inscrição no CAR é um imóvel. Falta um? **+ Imóvel (CAR)** → digite o nº do CAR (o **município** entra sozinho pelo número; sem CAR, escolha na lista) → *Salvar*: o **croqui abre na hora** para trazer a divisa (**CAR pela sede** / **CAR no mapa** / importar o .zip). **Nenhuma área é digitada**: a área total é a da divisa do CAR.
+2. **Croqui** do imóvel → no seletor escolha **🌱 Área de plantio** → toque nos cantos sobre o satélite, **dentro da área do CAR** → *Salvar croqui*. Sem a divisa do CAR o app não deixa desenhar. **Nenhuma linha pode sair da área do CAR**: linha vermelha = atravessou a divisa; toque nela para acrescentar um ponto e puxe-o para dentro.
 3. **Talhões:** **+ Talhão** abre o croqui já no modo *Novo talhão* → toque nos cantos sobre o satélite → *Salvar croqui* → dê o **nome, a cultura e a finalidade** (Milho **Silagem** ≠ Milho **Grão**). A área é **medida pelo desenho**, não digitada. **Um talhão não cobre outro**: ponto dentro do vizinho é puxado para a borda dele, e se cruzar fica vermelho e não salva. Foi tudo uma cultura só? Toque em **Área toda**.
 4. Confira com o produtor a **barra por cultura** na ficha. Vermelho = os talhões somam mais que a área de plantio: algum está grande demais.
 
@@ -42,4 +42,4 @@ Na aba **Propriedades** da ficha:
 
 ---
 
-**Regras rápidas:** ponto do talhão fora da divisa é puxado para a borda · talhão fora da **área de plantio** só avisa · a divisa não pode deixar talhão para fora · imóvel com talhões não se apaga (mova os talhões antes) · toque duplo na linha ciano insere um ponto, toque duplo no ponto remove.
+**Regras rápidas:** área total = divisa do CAR (não se digita) · área de plantio e talhões só dentro da área do CAR, nenhuma linha para fora · ponto do talhão fora da divisa é puxado para a borda · talhão fora da **área de plantio** só avisa · a divisa não pode deixar talhão para fora · imóvel com talhões não se apaga (mova os talhões antes) · toque duplo na linha ciano insere um ponto, toque duplo no ponto remove.

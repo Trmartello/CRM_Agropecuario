@@ -1233,4 +1233,96 @@ class MunicipiosSul
     {
         return self::MAPA !== [];
     }
+
+    /** UF pelos 2 primeiros dígitos do código IBGE (41 PR, 42 SC, 43 RS). */
+    public static function uf(?string $codIbge): ?string
+    {
+        $pref = substr((string) $codIbge, 0, 2);
+        return ['41' => 'PR', '42' => 'SC', '43' => 'RS'][$pref] ?? null;
+    }
+
+    /**
+     * Lista completa agrupada por UF, em ordem alfabética — alimenta o select de
+     * município do cadastro do imóvel (lista pré-cadastrada, sem digitação livre).
+     * @return array<string, array<string,string>>  UF => [codIbge => nome]
+     */
+    public static function porUf(): array
+    {
+        $out = ['SC' => [], 'RS' => [], 'PR' => []];
+        foreach (self::MAPA as $cod => $nome) {
+            $uf = self::uf((string) $cod);
+            if ($uf !== null) {
+                $out[$uf][(string) $cod] = $nome;
+            }
+        }
+        foreach ($out as &$lista) {
+            uasort($lista, fn ($a, $b) => strcmp(self::chave($a), self::chave($b))); // ordem sem acento
+        }
+        unset($lista);
+        return $out;
+    }
+
+    /**
+     * Município a partir do nº de inscrição no CAR ("UF-IBGE-hash", ex.:
+     * "SC-4207304-…"): o código IBGE embutido identifica o município com precisão.
+     * Devolve ['ibge' => '4207304', 'nome' => 'Fraiburgo', 'uf' => 'SC'] ou null
+     * (número fora do padrão ou município fora da tabela do Sul).
+     */
+    public static function deCodImovel(?string $codImovel): ?array
+    {
+        if ($codImovel === null || trim($codImovel) === '') {
+            return null;
+        }
+        $ibge = ShapefileService::ibgeDeCodImovel($codImovel);
+        $nome = self::nome($ibge);
+        if ($ibge === null || $nome === null) {
+            return null;
+        }
+        return ['ibge' => $ibge, 'nome' => $nome, 'uf' => self::uf($ibge)];
+    }
+
+    /** Dados completos de um código IBGE da tabela (ou null). */
+    public static function porCodigo(?string $codIbge): ?array
+    {
+        $nome = self::nome($codIbge);
+        return $nome === null ? null : ['ibge' => (string) $codIbge, 'nome' => $nome, 'uf' => self::uf((string) $codIbge)];
+    }
+
+    /**
+     * Código IBGE pelo NOME digitado (tolerante a acento/caixa), opcionalmente
+     * restrito à UF — usado no backfill de cadastros antigos com município em texto.
+     */
+    public static function codigoPorNome(?string $nome, ?string $uf = null): ?string
+    {
+        $alvo = self::chave((string) $nome);
+        if ($alvo === '') {
+            return null;
+        }
+        $achado = null;
+        foreach (self::MAPA as $cod => $n) {
+            if (self::chave($n) !== $alvo) {
+                continue;
+            }
+            if ($uf !== null && $uf !== '' && self::uf((string) $cod) !== strtoupper($uf)) {
+                continue;
+            }
+            if ($achado !== null) {
+                return null; // nome repetido em mais de uma UF sem UF informada: ambíguo
+            }
+            $achado = (string) $cod;
+        }
+        return $achado;
+    }
+
+    /** Normaliza para comparação: sem acento, minúsculas, espaços únicos. */
+    private static function chave(string $s): string
+    {
+        $s = mb_strtolower(trim($s), 'UTF-8');
+        $s = strtr($s, [
+            'á' => 'a', 'à' => 'a', 'â' => 'a', 'ã' => 'a', 'ä' => 'a', 'é' => 'e', 'è' => 'e', 'ê' => 'e', 'ë' => 'e',
+            'í' => 'i', 'ì' => 'i', 'î' => 'i', 'ï' => 'i', 'ó' => 'o', 'ò' => 'o', 'ô' => 'o', 'õ' => 'o', 'ö' => 'o',
+            'ú' => 'u', 'ù' => 'u', 'û' => 'u', 'ü' => 'u', 'ç' => 'c', 'ñ' => 'n',
+        ]);
+        return preg_replace('/\s+/', ' ', $s) ?? $s;
+    }
 }

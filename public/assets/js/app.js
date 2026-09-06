@@ -463,21 +463,57 @@ const Clientes = {
     form.querySelector('[name=propriedade_id]').value = propriedadeId;
     document.getElementById('modalImovelTitulo').textContent = 'Novo imóvel (CAR)';
     document.getElementById('btnExcluirImovel').classList.add('d-none');
-    Clientes._areasNoModalImovel(null, null); // novo: ainda sem desenho → campos digitados
+    Clientes._areasNoModalImovel(null, null, true); // novo: nada medido ainda → o croqui abre ao salvar
+    Clientes.municipioDoCar(''); // lista livre até o nº do CAR identificar o município
     new bootstrap.Modal('#modalImovel').show();
   },
 
-  /** A área vem do desenho: com medida, mostra só leitura; sem medida, o campo digitado. */
-  _areasNoModalImovel(areaMedida, plantioMedido) {
+  _semAcento(s) {
+    return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  },
+
+  /**
+   * O município vem do próprio nº do CAR ("UF-IBGE-hash", ex.: SC-4207304-…): o
+   * código IBGE embutido seleciona o município na lista pré-cadastrada e trava o
+   * select (o servidor faz a mesma leitura e prevalece). Sem CAR, a lista fica livre.
+   */
+  municipioDoCar(car) {
+    const sel = document.getElementById('imovelMunicipio');
+    const nota = document.getElementById('imovelMunicipioNota');
+    if (!sel) return;
+    const m = /^\s*([A-Za-z]{2})[-\s.](\d{7})/.exec(String(car || ''));
+    const opt = m ? sel.querySelector(`option[value="${m[2]}"]`) : null;
+    if (opt) {
+      sel.value = m[2];
+      sel.disabled = true;
+      nota.textContent = `Identificado pelo nº do CAR: ${opt.textContent}/${opt.parentElement.label}.`;
+      nota.classList.add('text-success');
+    } else {
+      sel.disabled = false;
+      nota.classList.remove('text-success');
+      nota.textContent = m
+        ? 'O código do CAR não bate com a lista (SC/RS/PR) — escolha o município na lista.'
+        : 'Preenchido sozinho pelo número do CAR; escolha na lista só se o imóvel ainda não tem CAR.';
+    }
+  },
+
+  /**
+   * As áreas do imóvel NUNCA são digitadas: a total vem da divisa do CAR e a de
+   * plantio do desenho dentro dela. O modal só mostra o que já foi medido.
+   */
+  _areasNoModalImovel(areaMedida, plantioMedido, novo = false) {
     const fmt = v => Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + ' ha';
     const temArea = areaMedida !== null && areaMedida !== undefined && Number(areaMedida) > 0;
-    document.getElementById('imovelAreaWrap').classList.toggle('d-none', temArea);
-    document.getElementById('imovelAreaMedida').classList.toggle('d-none', !temArea);
-    if (temArea) document.getElementById('imovelAreaMedidaValor').textContent = fmt(areaMedida);
+    document.getElementById('imovelAreaMedidaValor').textContent = temArea ? fmt(areaMedida) : '—';
+    document.getElementById('imovelAreaMedidaNota').textContent = temArea
+      ? 'Medida pela divisa do CAR no croqui.'
+      : 'Ainda sem divisa — abra o croqui e traga o CAR.';
     const temPlantio = plantioMedido !== null && plantioMedido !== undefined && Number(plantioMedido) > 0;
-    document.getElementById('imovelPlantioWrap').classList.toggle('d-none', temPlantio);
-    document.getElementById('imovelPlantioMedida').classList.toggle('d-none', !temPlantio);
-    if (temPlantio) document.getElementById('imovelPlantioMedidaValor').textContent = fmt(plantioMedido);
+    document.getElementById('imovelPlantioMedidaValor').textContent = temPlantio ? fmt(plantioMedido) : '—';
+    document.getElementById('imovelPlantioMedidaNota').textContent = temPlantio
+      ? 'Desenhada dentro da área do CAR.'
+      : (temArea ? 'Ainda não desenhada — no croqui, escolha "Área de plantio" e desenhe dentro da divisa.' : 'Desenhada dentro da área do CAR, depois de trazer a divisa.');
+    document.getElementById('imovelNovoAviso').classList.toggle('d-none', !novo);
   },
 
   editarImovel(im) {
@@ -487,9 +523,16 @@ const Clientes = {
     form.querySelector('[name=propriedade_id]').value = im.propriedade_id;
     form.querySelector('[name=nome]').value = im.nome || '';
     form.querySelector('[name=car_numero]').value = im.car_numero || '';
-    form.querySelector('[name=municipio]').value = im.municipio || '';
-    form.querySelector('[name=area_ha]').value = im.area_ha || '';
-    form.querySelector('[name=area_plantio_ha]').value = Number(im.area_plantio_ha) > 0 ? im.area_plantio_ha : '';
+    // Município: lista pré-cadastrada (IBGE). Sem código gravado, tenta pelo nome antigo.
+    const selMun = form.querySelector('[name=cod_ibge]');
+    selMun.value = im.cod_ibge || '';
+    if (!selMun.value && im.municipio) {
+      const alvo = Clientes._semAcento(im.municipio);
+      const opt = [...selMun.options].find(o => Clientes._semAcento(o.textContent) === alvo && (!im.uf || o.parentElement.label === im.uf));
+      if (opt) selMun.value = opt.value;
+    }
+    document.getElementById('imovelMunicipioNota').textContent = 'Preenchido sozinho pelo número do CAR; escolha na lista só se o imóvel ainda não tem CAR.';
+    Clientes.municipioDoCar(im.car_numero || '');
     document.getElementById('modalImovelTitulo').textContent = 'Editar imóvel (CAR)';
     document.getElementById('btnExcluirImovel').classList.remove('d-none');
     Clientes._areasNoModalImovel(im.contorno ? im.area_gps : null, im.contorno_plantio ? im.area_plantio_gps : null);
@@ -498,11 +541,20 @@ const Clientes = {
 
   async salvarImovel(ev) {
     ev.preventDefault();
+    const eraNovo = Number(ev.target.querySelector('[name=id]').value) <= 0;
     try {
-      await App.enviarForm(ev.target, 'index.php?r=clientes/salvar-imovel');
+      const r = await App.enviarForm(ev.target, 'index.php?r=clientes/salvar-imovel');
       bootstrap.Modal.getInstance('#modalImovel').hide();
-      App.alerta('Imóvel salvo.');
-      if (Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId);
+      if (Clientes.fichaClienteId) await Clientes.ficha(Clientes.fichaClienteId);
+      if (eraNovo && r.id && typeof Croqui !== 'undefined') {
+        // Imóvel novo: a área total vem da divisa do CAR — o croqui abre direto para trazê-la
+        // (CAR pela sede/no mapa/aqui ou importar o shapefile); a área de plantio e os
+        // talhões são desenhados dentro dela.
+        App.alerta('Imóvel criado. Agora traga a divisa do CAR — a área total é medida por ela.', 'info');
+        Croqui.abrir(Number(r.id));
+      } else {
+        App.alerta('Imóvel salvo.');
+      }
     } catch (e) { App.alerta(e.message, 'danger'); }
     return false;
   },
@@ -928,8 +980,8 @@ const Croqui = {
       // "+ Talhão" na ficha: já entra no modo "novo talhão" (desenha, depois dá o nome)
       if (opts.novoTalhao) {
         document.getElementById('croquiTalhao').value = String(Croqui.NOVO_ID);
-        Croqui.trocarTalhao();
-        App.alerta('Toque nos cantos do talhão sobre o satélite. Ao salvar, você dá o nome, a cultura e a finalidade.', 'info');
+        Croqui.trocarTalhao(); // sem divisa do CAR, o próprio trocarTalhao avisa e fica na divisa
+        if (Croqui.atualId === Croqui.NOVO_ID) App.alerta('Toque nos cantos do talhão sobre o satélite. Ao salvar, você dá o nome, a cultura e a finalidade.', 'info');
       }
     }, 250);
   },
@@ -1029,7 +1081,15 @@ const Croqui = {
       document.getElementById('croquiTalhao').value = Croqui.atualId;
       return;
     }
-    Croqui.atualId = Number(document.getElementById('croquiTalhao').value);
+    const alvo = Number(document.getElementById('croquiTalhao').value);
+    // REGRA (teste de campo): a área de plantio e os talhões são desenhados DENTRO da
+    // área do CAR — sem a divisa não há onde desenhar. Traga o CAR primeiro.
+    if (alvo !== 0 && Croqui._contornoDe(0).length < 3) {
+      App.alerta('Traga primeiro a divisa do CAR (área total do imóvel). A área de plantio e os talhões são desenhados dentro dela.', 'warning');
+      document.getElementById('croquiTalhao').value = Croqui.atualId;
+      return;
+    }
+    Croqui.atualId = alvo;
     Croqui.pontos = Croqui._contornoDe(Croqui.atualId);
     Croqui._dirty = false;
     Croqui._carCod = '';
@@ -1629,6 +1689,48 @@ const Croqui = {
     return false;
   },
 
+  /**
+   * REGRA (teste de campo): NENHUMA LINHA fica fora da área do CAR. Espelho de
+   * CroquiService::linhasFora — índices i das arestas (i → i+1) que cruzam a
+   * divisa de verdade ou cujo ponto médio cai fora dela (além de tolM). Pega o
+   * caso em que os dois vértices estão dentro mas a linha corta uma reentrância.
+   */
+  _linhasFora(pontos, divisa, tolM = 3) {
+    if (pontos.length < 2 || divisa.length < 3) return [];
+    const { proj } = Croqui._projetor(divisa);
+    const pd = divisa.map(proj), pp = pontos.map(proj);
+    const orient = (o, q, r) => (q[0] - o[0]) * (r[1] - o[1]) - (q[1] - o[1]) * (r[0] - o[0]);
+    const distBorda = xy => {
+      let menor = Infinity;
+      for (let i = 0; i < pd.length; i++) {
+        const [ax, ay] = pd[i], [bx, by] = pd[(i + 1) % pd.length];
+        const abx = bx - ax, aby = by - ay, len2 = abx * abx + aby * aby;
+        const t = len2 > 0 ? Math.max(0, Math.min(1, ((xy[0] - ax) * abx + (xy[1] - ay) * aby) / len2)) : 0;
+        menor = Math.min(menor, Math.hypot(xy[0] - (ax + t * abx), xy[1] - (ay + t * aby)));
+      }
+      return menor;
+    };
+    const n = pontos.length, arestas = n >= 3 ? n : n - 1, out = [];
+    for (let i = 0; i < arestas; i++) {
+      const p1 = pp[i], p2 = pp[(i + 1) % n];
+      let ruim = false;
+      for (let j = 0; j < pd.length && !ruim; j++) {
+        const q1 = pd[j], q2 = pd[(j + 1) % pd.length];
+        const d1 = orient(q1, q2, p1), d2 = orient(q1, q2, p2), d3 = orient(p1, p2, q1), d4 = orient(p1, p2, q2);
+        if (!((d1 > 0) !== (d2 > 0)) || !((d3 > 0) !== (d4 > 0))) continue;
+        const t = d1 / (d1 - d2), x = p1[0] + t * (p2[0] - p1[0]), y = p1[1] + t * (p2[1] - p1[1]);
+        if ([p1, p2, q1, q2].some(pt => Math.hypot(x - pt[0], y - pt[1]) <= tolM)) continue; // só encostou
+        ruim = true;
+      }
+      if (!ruim) {
+        const meio = [(Number(pontos[i][0]) + Number(pontos[(i + 1) % n][0])) / 2, (Number(pontos[i][1]) + Number(pontos[(i + 1) % n][1])) / 2];
+        if (!Croqui._dentroDe(meio, divisa) && distBorda(proj(meio)) > tolM) ruim = true;
+      }
+      if (ruim) out.push(i);
+    }
+    return out;
+  },
+
   /** Índices dos pontos de `pontos` que caem dentro de `outro` (além de tolM da borda). */
   _pontosDentroDe(pontos, outro, tolM = 3) {
     if (outro.length < 3) return [];
@@ -1660,7 +1762,11 @@ const Croqui = {
     const avisos = [];
     const sobrepostos = [];
     if (Croqui.atualId !== 0) {
-      let fora = Croqui._pontosFora(Croqui.pontos, Croqui._contornoDe(0));
+      const divisa = Croqui._contornoDe(0);
+      let fora = Croqui._pontosFora(Croqui.pontos, divisa);
+      // REGRA (teste de campo): nenhuma LINHA sai da área do CAR — mesmo com os dois
+      // pontos dentro, uma aresta que atravessa uma reentrância da divisa fica vermelha
+      const linhasFora = Croqui._linhasFora(Croqui.pontos, divisa);
       if (Croqui.atualId === Croqui.PLANTIO_ID && Croqui.pontos.length >= 3) {
         // desenhando a área de plantio: avisa os talhões que ficariam fora dela
         Croqui.talhoes.forEach(t => {
@@ -1682,7 +1788,7 @@ const Croqui = {
         const plantio = Croqui._contornoDe(Croqui.PLANTIO_ID);
         if (Croqui.pontos.length >= 3 && plantio.length >= 3 && Croqui._pontosFora(Croqui.pontos, plantio).length) avisos.push('fora da área de plantio');
       }
-      return { fora, talhoesFora: [], avisos, sobrepostos };
+      return { fora, talhoesFora: [], avisos, sobrepostos, linhasFora };
     }
     // Editando a divisa: nenhum talhão já desenhado (nem a área de plantio) pode ficar para fora
     const talhoesFora = [];
@@ -1694,7 +1800,7 @@ const Croqui = {
       const plantio = Croqui._contornoDe(Croqui.PLANTIO_ID);
       if (plantio.length >= 3 && Croqui._pontosFora(plantio, Croqui.pontos).length) talhoesFora.push('Área de plantio');
     }
-    return { fora: [], talhoesFora, avisos, sobrepostos };
+    return { fora: [], talhoesFora, avisos, sobrepostos, linhasFora: [] };
   },
 
   /** HTML de uma camada de tiles (satélite OU rótulos) para a vista atual. */
@@ -1931,12 +2037,19 @@ const Croqui = {
     // é a linha que VOCÊ desenha/ajusta (sólida + vértices arrastáveis).
     const corAtual = Croqui.COR_EDICAO;
     if (Croqui.pontos.length) {
-      const foraSet = new Set(Croqui._validarRegra().fora);
+      const regraR = Croqui._validarRegra();
+      const foraSet = new Set(regraR.fora);
       const tela = Croqui.pontos.map(p => Croqui._paraTela(p, larg, alt));
       const pts = tela.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
       svg += Croqui.pontos.length >= 3
         ? `<polygon points="${pts}" fill="${corAtual}" fill-opacity=".18" stroke="${corAtual}" stroke-width="3"/>`
         : `<polyline points="${pts}" fill="none" stroke="${corAtual}" stroke-width="3"/>`;
+      // Linhas que saem da área do CAR ficam VERMELHAS (regra: nenhuma linha fora da divisa)
+      (regraR.linhasFora || []).forEach(i => {
+        const a = tela[i], b = tela[(i + 1) % tela.length];
+        if (!a || !b) return;
+        svg += `<line x1="${a[0].toFixed(1)}" y1="${a[1].toFixed(1)}" x2="${b[0].toFixed(1)}" y2="${b[1].toFixed(1)}" stroke="#dc3545" stroke-width="4" stroke-dasharray="8 5"/>`;
+      });
       // Realce (anel branco) do ponto tocado uma vez — feedback do "toque de novo para remover".
       const sel = Croqui._selecionado !== null && Croqui._selecionado < tela.length ? Croqui._selecionado : null;
       tela.forEach((p, i) => {
@@ -2001,6 +2114,8 @@ const Croqui = {
       alerta = ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> cobre outro talhão: ${App.escapeHtml(regra.sobrepostos.join(', '))} — talhões não se sobrepõem</span>`;
     } else if (regra.fora.length) {
       alerta = ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> ${regra.fora.length} ponto(s) ${Croqui._ehTalhao(Croqui.atualId) ? 'fora da divisa ou dentro de outro talhão' : 'fora da divisa do imóvel'}</span>`;
+    } else if (regra.linhasFora && regra.linhasFora.length) {
+      alerta = ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> ${regra.linhasFora.length} linha(s) fora da área do CAR — toque na linha vermelha para acrescentar um ponto e puxe-o para dentro</span>`;
     } else if (regra.talhoesFora.length) {
       alerta = ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> divisa deixa fora: ${App.escapeHtml(regra.talhoesFora.join(', '))}</span>`;
     } else if (regra.avisos.length) {
@@ -2253,6 +2368,10 @@ const Croqui = {
       App.alerta(Croqui.atualId === Croqui.PLANTIO_ID
         ? `A área de plantio deve ficar DENTRO da divisa do imóvel — ajuste os ${regra.fora.length} ponto(s) em vermelho.`
         : `O talhão deve ficar dentro da divisa e fora dos outros talhões — ajuste os ${regra.fora.length} ponto(s) em vermelho.`, 'danger');
+      return;
+    }
+    if (regra.linhasFora && regra.linhasFora.length) {
+      App.alerta(`Nenhuma linha pode sair da área do CAR — ${regra.linhasFora.length} linha(s) em vermelho atravessam a divisa. Toque na linha vermelha para acrescentar um ponto e puxe-o para dentro.`, 'danger');
       return;
     }
     if (regra.talhoesFora.length) {

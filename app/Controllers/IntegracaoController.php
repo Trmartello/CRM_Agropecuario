@@ -158,6 +158,17 @@ class IntegracaoController
                 [json_encode($divisa), round((float) $area, 2), round((float) $area, 2),
                     mb_substr((string) ($im['cod'] ?? ''), 0, 60) ?: null, (int) $p['imovel_id']]
             );
+            // Município do imóvel vem do nº do CAR (IBGE embutido → lista pré-cadastrada)
+            $mun = \App\Services\MunicipiosSul::deCodImovel((string) ($im['cod'] ?? ''));
+            if ($mun !== null) {
+                \App\Core\Database::executar('UPDATE imoveis SET municipio = ?, cod_ibge = ?, uf = ? WHERE id = ?',
+                    [$mun['nome'], $mun['ibge'], $mun['uf'], (int) $p['imovel_id']]);
+                \App\Core\Database::executar(
+                    "UPDATE propriedades p JOIN imoveis i ON i.propriedade_id = p.id SET p.municipio = ?
+                      WHERE i.id = ? AND (p.municipio IS NULL OR p.municipio = '')",
+                    [$mun['nome'], (int) $p['imovel_id']]
+                );
+            }
             $vinc++;
         }
         $semSede = (int) \App\Core\Database::valor('SELECT COUNT(*) FROM propriedades WHERE latitude IS NULL OR longitude IS NULL');
