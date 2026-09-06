@@ -1135,6 +1135,60 @@ class ClientesController
         );
     }
 
+    /**
+     * Exclui um talhão (pedido do teste de campo: cadastros duplicados no piloto).
+     * Talhão com HISTÓRICO (visitas ou lavoura de custo) não se apaga — o histórico
+     * aponta para ele; edite/renomeie. Plantios do talhão vão junto (cascata).
+     */
+    public function excluirTalhao(): void
+    {
+        Permissoes::exigirInterno();
+        [$filtro, $params] = Permissoes::filtroCarteira();
+        $id = (int) ($_POST['id'] ?? 0);
+        $talhao = Database::um(
+            "SELECT t.* FROM talhoes t JOIN propriedades p ON p.id = t.propriedade_id
+               JOIN clientes c ON c.id = p.cliente_id WHERE t.id = ? AND {$filtro}",
+            array_merge([$id], $params)
+        );
+        if (!$talhao) {
+            json_erro('Talhão não encontrado na sua carteira.', 404);
+        }
+        $visitas = (int) Database::valor('SELECT COUNT(*) FROM visitas WHERE talhao_id = ?', [$id]);
+        $lavouras = (int) Database::valor('SELECT COUNT(*) FROM lavoura_safra WHERE talhao_id = ?', [$id]);
+        if ($visitas > 0 || $lavouras > 0) {
+            $partes = [];
+            if ($visitas > 0) { $partes[] = "{$visitas} visita(s)"; }
+            if ($lavouras > 0) { $partes[] = "{$lavouras} lavoura(s) de custo"; }
+            json_erro('Este talhão tem histórico (' . implode(' e ', $partes) . ') e não pode ser excluído. Edite o nome, a cultura ou o desenho em vez de excluir.');
+        }
+        Database::executar('DELETE FROM talhoes WHERE id = ?', [$id]); // plantios vão em cascata
+        auditar('excluir', 'talhao', $id, (string) $talhao['nome'] . ' · propriedade #' . (int) $talhao['propriedade_id']);
+        json_ok();
+    }
+
+    /**
+     * Exclui uma propriedade SEM talhões e SEM visitas (os imóveis/CARs vão em cascata).
+     * Com talhões ou visitas, o histórico manda: exclua/mova os talhões antes.
+     */
+    public function excluirPropriedade(): void
+    {
+        Permissoes::exigirInterno();
+        $prop = $this->propriedadeDaCarteira((int) ($_POST['id'] ?? 0));
+        $id = (int) $prop['id'];
+        $talhoes = (int) Database::valor('SELECT COUNT(*) FROM talhoes WHERE propriedade_id = ?', [$id]);
+        $visitas = (int) Database::valor('SELECT COUNT(*) FROM visitas WHERE propriedade_id = ?', [$id]);
+        if ($talhoes > 0) {
+            json_erro("Esta propriedade tem {$talhoes} talhão(ões). Exclua ou mova os talhões antes de excluir a propriedade.");
+        }
+        if ($visitas > 0) {
+            json_erro("Esta propriedade tem {$visitas} visita(s) registrada(s) e não pode ser excluída (o histórico aponta para ela).");
+        }
+        Database::executar('UPDATE planos_safra SET propriedade_id = NULL WHERE propriedade_id = ?', [$id]);
+        Database::executar('DELETE FROM propriedades WHERE id = ?', [$id]); // imóveis (CAR) vão em cascata
+        auditar('excluir', 'propriedade', $id, (string) $prop['nome']);
+        json_ok();
+    }
+
     /** Exclui imóvel sem talhões (com talhões, mova-os antes) — v40. */
     public function excluirImovel(): void
     {
