@@ -37,7 +37,19 @@ class AreaPlantioService
     public static function resumoImovel(array $imovel, array $talhoes): array
     {
         $areaTotal = self::areaValida($imovel, 'area_gps', 'area_ha');
-        $areaPlantio = self::areaValida($imovel, 'area_plantio_gps', 'area_plantio_ha');
+        // v44: VÁRIAS áreas de plantio desenhadas (areas_plantio) — soma; sem nenhuma,
+        // cai no legado (área de plantio única/digitada) e, por fim, no imóvel inteiro
+        $areas = $imovel['areas_plantio'] ?? null;
+        if ($areas === null) {
+            $areas = isset($imovel['id']) ? self::areasDoImovel((int) $imovel['id']) : [];
+        }
+        $areaPlantio = 0.0;
+        foreach ($areas as $a) {
+            $areaPlantio += (float) ($a['area_gps'] ?? 0);
+        }
+        if ($areaPlantio <= 0) {
+            $areaPlantio = self::areaValida($imovel, 'area_plantio_gps', 'area_plantio_ha');
+        }
         $origem = 'plantio';
         if ($areaPlantio <= 0) {
             $areaPlantio = $areaTotal; // sem área de plantio informada: assume o imóvel inteiro
@@ -74,12 +86,50 @@ class AreaPlantioService
             'area_total' => round($areaTotal, 2),
             'area_plantio' => round($areaPlantio, 2),
             'plantio_origem' => $origem,
+            'areas' => array_map(fn ($a) => ['id' => (int) ($a['id'] ?? 0), 'nome' => (string) ($a['nome'] ?? ''), 'area_gps' => round((float) ($a['area_gps'] ?? 0), 2)], $areas),
             'grupos' => array_values($grupos),
             'soma' => round($soma, 2),
             'nao_mapeado' => round(max(0.0, $areaPlantio - $soma), 2),
             'excedente' => round(max(0.0, $soma - $areaPlantio), 2),
             'qtd_talhoes' => count($talhoes),
         ];
+    }
+
+    /** Áreas de plantio desenhadas de um imóvel (v44), na ordem. */
+    public static function areasDoImovel(int $imovelId): array
+    {
+        return Database::todos(
+            'SELECT id, imovel_id, nome, contorno, area_gps, ordem FROM areas_plantio WHERE imovel_id = ? ORDER BY ordem, id',
+            [$imovelId]
+        );
+    }
+
+    /**
+     * Pontos de $pontos que ficam FORA de TODAS as áreas de plantio ([[lat,lng],...][]):
+     * um talhão está "dentro da área de plantio" quando cada vértice cai em alguma
+     * das áreas. Sem área nenhuma, nada fica fora (a área de plantio é o imóvel inteiro).
+     */
+    public static function pontosForaDasAreas(array $pontos, array $areas): array
+    {
+        $poligonos = array_values(array_filter($areas, fn ($a) => count($a) >= 3));
+        if (!$poligonos) {
+            return [];
+        }
+        $fora = [];
+        foreach ($pontos as $i => $p) {
+            $dentroDeAlguma = false;
+            foreach ($poligonos as $pol) {
+                // tolerância curta (3 m, a das sobreposições): 15 m "engoliria" faixas estreitas entre áreas
+                if (!CroquiService::pontosFora([$p], $pol, CroquiService::TOLERANCIA_SOBREPOSICAO_M)) {
+                    $dentroDeAlguma = true;
+                    break;
+                }
+            }
+            if (!$dentroDeAlguma) {
+                $fora[] = $i;
+            }
+        }
+        return $fora;
     }
 
     /**
@@ -183,11 +233,25 @@ class AreaPlantioService
                 $semImovel[] = $t;
             }
         }
+        // v44: áreas de plantio de todos os imóveis da propriedade numa consulta
+        $areasPorImovel = [];
+        if ($imoveis) {
+            $ids = array_map(fn ($im) => (int) $im['id'], $imoveis);
+            $rows = Database::todos(
+                'SELECT id, imovel_id, nome, contorno, area_gps, ordem FROM areas_plantio
+                  WHERE imovel_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') ORDER BY ordem, id',
+                $ids
+            );
+            foreach ($rows as $a) {
+                $areasPorImovel[(int) $a['imovel_id']][] = $a;
+            }
+        }
         foreach ($imoveis as $i => &$im) {
             $im['talhoes'] = $porImovel[(int) $im['id']] ?? [];
             if ($i === 0 && $semImovel) {
                 $im['talhoes'] = array_merge($im['talhoes'], $semImovel);
             }
+            $im['areas_plantio'] = $areasPorImovel[(int) $im['id']] ?? [];
             $im['resumo'] = self::resumoImovel($im, $im['talhoes']);
         }
         unset($im);

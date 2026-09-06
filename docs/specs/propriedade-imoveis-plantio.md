@@ -27,12 +27,13 @@ Produtor (clientes)
 - `talhoes.propriedade_id` **continua existindo** (tudo que já consulta talhão por propriedade segue igual); `talhoes.imovel_id` é o vínculo novo. Regra: o imóvel do talhão pertence à mesma propriedade.
 - `propriedades.car_numero / contorno / area_gps` viram **legado**: a migração copia para o primeiro imóvel e o código passa a ler/gravar em `imoveis`. As colunas ficam no schema por segurança, sem uso.
 
-## 3. Área de plantio
+## 3. Áreas de plantio (v44: várias por imóvel)
 
-- Por imóvel: `area_plantio_ha` (digitada) e `contorno_plantio` + `area_plantio_gps` (desenhada no croqui, alvo **"Área de plantio"**, verde tracejado).
-- Regra: a área de plantio fica **dentro da divisa** do imóvel (ponto fora é preso na borda, como o talhão).
-- Talhão fora da área de plantio é **aviso**, não bloqueio (a área de plantio pode ser desenhada grosseiramente). Talhão fora da **divisa** continua bloqueado.
-- **"Plantar a área toda"**: cria um talhão único com o contorno e a área da área de plantio, na cultura/finalidade escolhidas. Só quando o imóvel ainda não tem talhões.
+- **Várias por imóvel** (pedido do teste de campo, 06/09/2026): tabela `areas_plantio` (`imovel_id`, `nome`, `contorno`, `area_gps`, `ordem`) — cada área é um polígono com nome (Campo, Morro…) desenhado no croqui (alvo **"Nova área de plantio"**; cada área gravada vira um alvo próprio no seletor; verde tracejado com o nome quando há mais de uma). `imoveis.contorno_plantio`/`area_plantio_gps` são **legado** (a migração v44 copia a área única para a 1ª linha e zera as colunas); `area_plantio_ha` digitada só vale para imóvel sem área desenhada.
+- Regras: cada área fica **dentro da divisa** (ponto fora é preso na borda; nenhuma linha fora do CAR) e **uma área não cobre outra** (mesma regra dos talhões: ponto dentro da vizinha é puxado para a borda; cruzamento recusa; desenho igual recusa). A divisa nova não deixa nenhuma área para fora (bloqueio).
+- **Área de plantio do imóvel = soma das áreas** (`AreaPlantioService`). Talhão fora de **todas** as áreas é **aviso**, não bloqueio (tolerância curta, 3 m). Talhão fora da **divisa** continua bloqueado.
+- Renomear pelo croqui ("Renomear"); excluir = Limpar + Salvar na área. **Talhão cadastrado errado → "Virar área de plantio"** cria uma área nova com o nome do talhão (não substitui as outras); **"Copiar de talhão"** carrega o desenho de um talhão numa área nova para ajustar.
+- **"Plantar a área toda"**: cria **um talhão por área de plantio** (com o nome da área quando há mais de uma), na cultura/finalidade escolhidas. Só quando o imóvel ainda não tem talhões.
 
 ## 4. Finalidades
 
@@ -46,7 +47,7 @@ Por imóvel → por propriedade → por produtor:
 | Medida | Origem |
 |---|---|
 | Área total | `area_gps` (divisa) ou `area_ha` |
-| Área de plantio | `area_plantio_gps` ou `area_plantio_ha`; se zero, cai na área total |
+| Área de plantio | soma das `areas_plantio.area_gps` (v44); sem área desenhada, `area_plantio_gps`/`area_plantio_ha` legado; se zero, cai na área total |
 | Por cultura × finalidade | soma dos talhões (`area_gps` ou `area_ha`) |
 | Não mapeado | área de plantio − soma dos talhões (quando > 0) |
 | Excedente | soma dos talhões − área de plantio (quando > 0) → alerta |

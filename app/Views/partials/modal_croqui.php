@@ -40,6 +40,8 @@
             <?php /* Alvo = talhão: o desenho pode virar a ÁREA DE PLANTIO (cadastro errado). Alvo = área de plantio: copiar o desenho de um talhão. */ ?>
             <button type="button" class="btn btn-sm btn-outline-success d-none" id="croquiVirarPlantioBtn" onclick="Croqui.talhaoParaPlantio()"
                     title="Este desenho é a área de plantio do imóvel, não um talhão"><i class="bi bi-arrow-right-circle"></i> Virar área de plantio</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="croquiRenomearBtn" onclick="Croqui.renomearAreaPlantio()"
+                    title="Renomear esta área de plantio"><i class="bi bi-pencil"></i> Renomear</button>
             <div class="btn-group btn-group-sm d-none" id="croquiCopiarTalhaoWrap">
               <button type="button" class="btn btn-outline-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"
                       title="Carregar o desenho de um talhão como área de plantio (ajuste e salve)"><i class="bi bi-copy"></i> Copiar de talhão</button>
@@ -79,7 +81,7 @@
         </div>
         <div class="small text-muted">
           <i class="bi bi-info-circle me-1"></i>No seletor, escolha <strong>Divisa do imóvel (CAR)</strong> para a área total,
-          <strong>Área de plantio</strong> para marcar o que dá para plantar dentro dela (verde tracejado), ou um <strong>talhão</strong>
+          <strong>Nova área de plantio</strong> para marcar cada pedaço que dá para plantar dentro dela (verde tracejado — pode haver várias: Campo, Morro…), ou um <strong>talhão</strong>
           para a área de cada cultura. <strong>Manual</strong>: toque sobre a imagem de satélite para marcar cada canto (arraste o mapa para navegar,
           use +/− ou a roda do mouse para o zoom, <strong>⤢ para o mapa ocupar a tela toda</strong>, arraste um ponto para ajustar, dê <strong>dois toques sobre a linha ciano para inserir um ponto</strong> ali e refinar, e <strong>dois toques em um ponto para removê-lo</strong>. A divisa que você desenha/ajusta fica em <strong>ciano</strong>; as linhas do CAR ficam em amarelo (com o <em>CAR no mapa</em> ligado, tocar dentro de um imóvel amarelo adota aquela divisa). Ao desenhar a <strong>área de plantio ou um talhão</strong>, o limite é a <strong>divisa salva</strong> (laranja) — a sua marcação, não o CAR: pontos fora dela são puxados para a borda e o <em>CAR no mapa</em> desliga sozinho (ligue-o de novo só como referência). <strong>Caminhar a divisa</strong>: ande pelo perímetro —
           o app marca um ponto a cada ~10 m pelo GPS, mesmo sem sinal (o salvar entra na fila).

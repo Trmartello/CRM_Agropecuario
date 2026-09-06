@@ -186,6 +186,22 @@ CREATE TABLE imoveis (
   FOREIGN KEY (propriedade_id) REFERENCES propriedades(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+-- Áreas de plantio do imóvel (schema v44): VÁRIAS por imóvel, cada uma um polígono dentro da
+-- divisa demarcada pelo usuário (Campo, Morro...). imoveis.contorno_plantio/area_plantio_gps
+-- viraram legado (migração v44 copia para cá); area_plantio_ha só vale sem área desenhada.
+DROP TABLE IF EXISTS areas_plantio;
+CREATE TABLE areas_plantio (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  imovel_id INT NOT NULL,
+  nome VARCHAR(120) NOT NULL DEFAULT 'Área de plantio',
+  contorno TEXT NOT NULL COMMENT 'polígono [[lat,lng],...] dentro da divisa do imóvel',
+  area_gps DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT 'área (ha) medida pelo contorno',
+  ordem INT NOT NULL DEFAULT 0,
+  criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_areas_plantio_imovel (imovel_id),
+  FOREIGN KEY (imovel_id) REFERENCES imoveis(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 -- Finalidade da cultura no talhão/plantio (Grão, Silagem, Pastagem...). Editável em Configurações.
 CREATE TABLE finalidades (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -1689,8 +1705,8 @@ UPDATE propriedades p SET area_ha = (
   SELECT COALESCE(SUM(CASE WHEN i.area_gps IS NOT NULL AND i.area_gps > 0 THEN i.area_gps ELSE i.area_ha END), 0)
     FROM imoveis i WHERE i.propriedade_id = p.id)
  WHERE EXISTS (SELECT 1 FROM imoveis i2 WHERE i2.propriedade_id = p.id AND COALESCE(i2.area_gps, i2.area_ha) > 0);
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','43')
-  ON DUPLICATE KEY UPDATE valor = '42';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','44')
+  ON DUPLICATE KEY UPDATE valor = '44';
 
 -- ============================================================================
 -- SEED — Mapa Territorial: 5 imóveis fictícios (Concórdia/SC), vínculos e talhões

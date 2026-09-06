@@ -1057,6 +1057,47 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '43'"
             );
         }
+        if ($versao < 44) {
+            // VÁRIAS áreas de plantio por imóvel (pedido do teste de campo): tabela própria.
+            // A área de plantio única (imoveis.contorno_plantio) vira a 1ª linha e a coluna
+            // legada é zerada (não conta duas vezes). Idempotente: só converte imóvel sem linha.
+            Database::executar(
+                'CREATE TABLE IF NOT EXISTS areas_plantio (
+                   id INT AUTO_INCREMENT PRIMARY KEY,
+                   imovel_id INT NOT NULL,
+                   nome VARCHAR(120) NOT NULL DEFAULT \'Área de plantio\',
+                   contorno TEXT NOT NULL,
+                   area_gps DECIMAL(10,2) NOT NULL DEFAULT 0,
+                   ordem INT NOT NULL DEFAULT 0,
+                   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                   INDEX idx_areas_plantio_imovel (imovel_id),
+                   FOREIGN KEY (imovel_id) REFERENCES imoveis(id) ON DELETE CASCADE
+                 ) ENGINE=InnoDB'
+            );
+            $legados = Database::todos(
+                'SELECT i.id, i.contorno_plantio, i.area_plantio_gps FROM imoveis i
+                  WHERE i.contorno_plantio IS NOT NULL AND i.contorno_plantio <> \'\'
+                    AND NOT EXISTS (SELECT 1 FROM areas_plantio a WHERE a.imovel_id = i.id)'
+            );
+            foreach ($legados as $l) {
+                $pts = json_decode((string) $l['contorno_plantio'], true);
+                if (!is_array($pts) || count($pts) < 3) {
+                    continue;
+                }
+                $area = $l['area_plantio_gps'] !== null && (float) $l['area_plantio_gps'] > 0
+                    ? (float) $l['area_plantio_gps']
+                    : \App\Services\CroquiService::areaHa($pts);
+                Database::executar(
+                    'INSERT INTO areas_plantio (imovel_id, nome, contorno, area_gps, ordem) VALUES (?, ?, ?, ?, 1)',
+                    [(int) $l['id'], 'Área de plantio', json_encode($pts), round($area, 2)]
+                );
+                Database::executar('UPDATE imoveis SET contorno_plantio = NULL, area_plantio_gps = NULL WHERE id = ?', [(int) $l['id']]);
+            }
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '44')
+                 ON DUPLICATE KEY UPDATE valor = '44'"
+            );
+        }
     }
 
     /** Apaga cópias idênticas de talhão (mantém a de menor id), poupando as que têm histórico. */
