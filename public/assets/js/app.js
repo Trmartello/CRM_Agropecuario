@@ -1404,6 +1404,102 @@ const Croqui = {
     return html;
   },
 
+  // ---- Mapa offline ------------------------------------------------------
+  // Mesmo nome de cache do sw.js (CACHE_MAPA) — os dois lados gravam/leem aqui.
+  CACHE_MAPA: 'crm-mapa-v1',
+  NIVEIS_OFFLINE: 3,      // zoom atual + 2 níveis mais próximos
+  MAX_TILES_OFFLINE: 900, // teto para não encher o aparelho de uma vez
+
+  // URLs dos tiles que cobrem o retângulo VISÍVEL, do zoom atual para baixo.
+  // Mesma matemática do _tilesHtml, só que por nível de zoom inteiro.
+  _urlsDaArea(url, larg, alt, niveis) {
+    const e = Croqui._escala();
+    const meiaL = larg / (2 * e), meiaA = alt / (2 * e); // metade da tela em unidades de mundo (0..1)
+    const wx0 = Croqui.vista.cx - meiaL, wx1 = Croqui.vista.cx + meiaL;
+    const wy0 = Croqui.vista.cy - meiaA, wy1 = Croqui.vista.cy + meiaA;
+    const zBase = Math.max(3, Math.min(19, Math.round(Croqui.vista.z)));
+    const porNivel = [];
+    for (let dz = 0; dz < niveis && zBase + dz <= 19; dz++) {
+      const z = zBase + dz, n = Math.pow(2, z), urls = [];
+      const ty0 = Math.max(0, Math.floor(wy0 * n)), ty1 = Math.min(n - 1, Math.floor(wy1 * n));
+      for (let tx = Math.floor(wx0 * n); tx <= Math.floor(wx1 * n); tx++) {
+        const txn = ((tx % n) + n) % n; // dá a volta no antimeridiano
+        for (let ty = ty0; ty <= ty1; ty++) {
+          urls.push(url.replace('{z}', z).replace('{x}', txn).replace('{y}', ty));
+        }
+      }
+      porNivel.push(urls);
+    }
+    return porNivel;
+  },
+
+  // Guarda a imagem de satélite da área visível no aparelho, para o mapa abrir
+  // sem sinal no campo (e sem esperar a rede a cada arrastar).
+  async baixarMapa() {
+    const botao = document.getElementById('croquiBaixarMapaBtn');
+    if (!Croqui.tiles || !Croqui.tiles.url) { App.alerta('Nenhum provedor de mapa configurado.', 'warning'); return; }
+    if (!Croqui.vista) { App.alerta('Enquadre o mapa na área desejada antes de baixar.', 'warning'); return; }
+    if (!('caches' in window)) { App.alerta('Este navegador não guarda mapas offline.', 'warning'); return; }
+    if (!navigator.onLine) { App.alerta('Sem conexão. Conecte-se ao wi-fi para baixar o mapa.', 'warning'); return; }
+
+    const palco = document.getElementById('croquiPalco');
+    const larg = Math.max(300, palco.clientWidth), alt = Math.max(260, palco.clientHeight);
+
+    // Monta nível a nível e para quando estourar o teto — o nível mais AFASTADO
+    // é o que mais importa (cobre toda a área), os mais próximos são o detalhe.
+    const niveis = Croqui._urlsDaArea(Croqui.tiles.url, larg, alt, Croqui.NIVEIS_OFFLINE);
+    const rotulos = Croqui.tiles.labels ? Croqui._urlsDaArea(Croqui.tiles.labels, larg, alt, Croqui.NIVEIS_OFFLINE) : [];
+    let urls = [], zoomsOk = 0;
+    for (let i = 0; i < niveis.length; i++) {
+      const lote = niveis[i].concat(rotulos[i] || []);
+      if (urls.length + lote.length > Croqui.MAX_TILES_OFFLINE) break;
+      urls = urls.concat(lote);
+      zoomsOk++;
+    }
+    if (!zoomsOk) { App.alerta('Área grande demais para baixar. Aproxime o mapa e tente de novo.', 'warning'); return; }
+
+    const rotuloOriginal = botao ? botao.innerHTML : '';
+    if (botao) botao.disabled = true;
+    const cache = await caches.open(Croqui.CACHE_MAPA);
+    let prontos = 0, falhas = 0, semEspaco = false;
+
+    // Um tile por vez seria lento demais; 900 de uma vez o 3G do campo não aguenta.
+    for (let i = 0; i < urls.length && !semEspaco; i += 6) {
+      await Promise.all(urls.slice(i, i + 6).map(async u => {
+        if (semEspaco) return;
+        try {
+          if (await cache.match(u)) { prontos++; return; } // já estava guardado
+          // CORS de propósito: resposta opaca (no-cors) é contabilizada na cota
+          // com uma folga enorme e estoura o armazenamento do aparelho.
+          let resp = null;
+          try {
+            const r = await fetch(u, { mode: 'cors', cache: 'no-store', credentials: 'omit' });
+            if (r.ok) resp = r;
+          } catch (e) { /* provedor não libera CORS */ }
+          if (!resp) resp = await fetch(u, { mode: 'no-cors', cache: 'no-store' });
+          await cache.put(u, resp);
+          prontos++;
+        } catch (e) {
+          if (e && e.name === 'QuotaExceededError') semEspaco = true;
+          falhas++;
+        }
+      }));
+      if (botao) botao.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>${Math.round((i / urls.length) * 100)}%`;
+    }
+
+    if (botao) { botao.disabled = false; botao.innerHTML = rotuloOriginal; }
+    if (semEspaco) {
+      App.alerta(`Acabou o espaço do aparelho para mapas — ${prontos} imagens guardadas antes disso. `
+        + 'Aproxime o mapa e baixe uma área menor, ou libere espaço no aparelho.', 'warning');
+      return;
+    }
+    const detalhe = `${prontos} imagens · ${zoomsOk} nível(is) de zoom` + (falhas ? ` · ${falhas} falharam` : '');
+    App.alerta(prontos
+      ? `Mapa desta área guardado no aparelho (${detalhe}). Agora ele abre sem sinal.`
+      : 'Não foi possível baixar o mapa desta área.',
+      prontos ? (falhas ? 'warning' : 'success') : 'danger');
+  },
+
   // leve=true: atualiza só o DESENHO (SVG), sem recriar os tiles do satélite —
   // usado ao ARRASTAR um vértice (a vista não muda, então a imagem fica FIXA e
   // não pisca/recarrega, facilitando posicionar o ponto).
@@ -1421,11 +1517,14 @@ const Croqui = {
     const svgEl = palco.querySelector('#croquiSvg');
     const podeLeve = leve && svgEl; // só faz leve se o mapa já foi montado uma vez
 
-    // Camada de satélite (Web Mercator) — some offline; o desenho continua.
+    // Camada de satélite (Web Mercator). Offline ela CONTINUA sendo montada: o
+    // service worker serve os tiles já guardados (cache-first, CACHE_MAPA), e o
+    // que não estiver guardado some sozinho pelo onerror do <img>. Antes havia um
+    // guard navigator.onLine aqui, que apagava o satélite inteiro sem sinal.
     // A camada de RÓTULOS (nomes de cidades/localidades/ruas, como no Google) é
     // outra camada de tiles transparente por cima do satélite (provedor configurável).
     let tilesHtml = '', labelsHtml = '';
-    if (!podeLeve && Croqui.tiles && Croqui.tiles.url && navigator.onLine) {
+    if (!podeLeve && Croqui.tiles && Croqui.tiles.url) {
       tilesHtml = Croqui._tilesHtml(Croqui.tiles.url, larg, alt);
       if (Croqui.tiles.labels) labelsHtml = Croqui._tilesHtml(Croqui.tiles.labels, larg, alt);
     }
@@ -1538,7 +1637,7 @@ const Croqui = {
           <button type="button" class="btn btn-light btn-sm" onclick="Croqui.zoom(1)" title="Aproximar"><i class="bi bi-plus-lg"></i></button>
           <button type="button" class="btn btn-light btn-sm" onclick="Croqui.zoom(-1)" title="Afastar"><i class="bi bi-dash-lg"></i></button>
         </div>
-        ${Croqui.tiles && navigator.onLine ? `<div class="croqui-atribuicao">${App.escapeHtml(Croqui.tiles.atribuicao || '')}</div>` : ''}`;
+        ${Croqui.tiles ? `<div class="croqui-atribuicao">${App.escapeHtml(Croqui.tiles.atribuicao || '')}</div>` : ''}`;
       palco.querySelector('#croquiSvg').innerHTML = svg;
     }
     document.getElementById('croquiLegenda').innerHTML = legenda.join('');
