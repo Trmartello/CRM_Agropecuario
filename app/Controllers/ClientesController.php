@@ -864,6 +864,14 @@ class ClientesController
                 $vizinhos[] = ['nome' => $t['nome'], 'pontos' => $pts];
             }
         }
+        // MESMO desenho de um talhão já cadastrado (toque repetido em Salvar, reenvio):
+        // não é "vizinho que divide a linha" — é duplicata. Recusa com o nome.
+        foreach ($vizinhos as $v) {
+            if (\App\Services\CroquiService::mesmoContorno($pontos, $v['pontos'])) {
+                json_erro('Este desenho é o mesmo do talhão "' . $v['nome'] . '", que já está cadastrado. '
+                    . 'Edite o talhão existente em vez de criar outro igual.');
+            }
+        }
         // Desenho que está (quase) todo dentro de um vizinho: recusa antes de expulsar —
         // senão os pontos iriam todos para a borda e sobraria um talhão sem área.
         $metade = (int) ceil(count($pontos) / 2);
@@ -1284,6 +1292,16 @@ class ClientesController
             $imovelId = (int) $this->primeiroImovel($propriedadeId)['id'];
         }
         $finalidadeId = (int) ($_POST['finalidade_id'] ?? 0) ?: null;
+
+        // NÃO ACEITAR SALVAR MAIS DE UMA VEZ (teste de campo: "Morro" gravado 7x por
+        // toques repetidos): nome repetido no mesmo imóvel só vale para EDITAR o existente.
+        $homonimo = Database::um(
+            'SELECT id FROM talhoes WHERE propriedade_id = ? AND imovel_id <=> ? AND LOWER(nome) = LOWER(?) AND id <> ? LIMIT 1',
+            [$propriedadeId, $imovelId, $nome, $id]
+        );
+        if ($homonimo) {
+            json_erro('Já existe um talhão chamado "' . $nome . '" neste imóvel. Edite o talhão existente (lápis na ficha) ou use outro nome.');
+        }
 
         // Talhão DESENHADO no croqui (teste de campo): o contorno vem junto e a área
         // é a MEDIDA — a área digitada só vale para talhão antigo sem desenho.

@@ -14,32 +14,58 @@ const App = {
     return dados;
   },
 
-  /** Envia um formulário via AJAX (FormData). */
+  /**
+   * TRAVA DE ENVIO DUPLO (pedido do teste de campo: o mesmo talhão foi gravado
+   * 7 vezes com toques repetidos em "Salvar" na rede lenta). Enquanto um envio
+   * está em voo, o mesmo formulário/rota não sai de novo: os botões de submit
+   * ficam desabilitados e um segundo toque recebe "Aguarde…".
+   */
+  _emVoo: new Set(),
+  _travar(chave, form) {
+    if (App._emVoo.has(chave)) throw new Error('Aguarde — ainda estamos salvando o envio anterior.');
+    App._emVoo.add(chave);
+    const botoes = form && form.querySelectorAll ? [...form.querySelectorAll('button:not([type=button]):not([type=reset])')] : [];
+    botoes.forEach(b => { b.dataset.travado = b.disabled ? '' : '1'; b.disabled = true; });
+    return () => {
+      App._emVoo.delete(chave);
+      botoes.forEach(b => { if (b.dataset.travado === '1') b.disabled = false; delete b.dataset.travado; });
+    };
+  },
+
+  /** Envia um formulário via AJAX (FormData). Um envio por vez por formulário. */
   async enviarForm(form, url) {
-    return App.json(url, { method: 'POST', body: new FormData(form) });
+    const soltar = App._travar('form:' + (form.id || url), form);
+    try {
+      return await App.json(url, { method: 'POST', body: new FormData(form) });
+    } finally { soltar(); }
   },
 
   /**
    * Envia um formulário/FormData com suporte offline: sem conexão (ou se a rede
    * cair no meio), guarda na fila local e devolve { ok:true, offline:true }.
    * Erros de negócio (validação do servidor) continuam sendo lançados.
+   * Um envio por vez por formulário/rota (trava de envio duplo).
    */
   async enviarFormOffline(origem, url, opc = {}) {
     const rota = String(url).replace(/^.*[?&]r=/, '').replace(/&.*$/, '');
-    const fd = origem instanceof FormData ? origem : new FormData(origem);
-    if (!navigator.onLine) {
-      await Offline.enfileirar(rota, fd, opc);
-      return { ok: true, offline: true };
-    }
+    const ehForm = !(origem instanceof FormData);
+    const soltar = App._travar(ehForm ? 'form:' + (origem.id || rota) : 'rota:' + rota, ehForm ? origem : null);
     try {
-      return await App.json(url, { method: 'POST', body: fd });
-    } catch (e) {
-      if (e instanceof TypeError) { // falha de REDE (não de negócio) → enfileira
+      const fd = ehForm ? new FormData(origem) : origem;
+      if (!navigator.onLine) {
         await Offline.enfileirar(rota, fd, opc);
         return { ok: true, offline: true };
       }
-      throw e;
-    }
+      try {
+        return await App.json(url, { method: 'POST', body: fd });
+      } catch (e) {
+        if (e instanceof TypeError) { // falha de REDE (não de negócio) → enfileira
+          await Offline.enfileirar(rota, fd, opc);
+          return { ok: true, offline: true };
+        }
+        throw e;
+      }
+    } finally { soltar(); }
   },
 
   alerta(mensagem, tipo = 'success') {
@@ -1966,7 +1992,33 @@ const Croqui = {
         return true;
       }
     }
-    return false;
+    // Polígonos IGUAIS (mesmo desenho salvo de novo): sem vértice dentro e sem
+    // cruzamento — um ponto do INTERIOR de um está dentro do outro (espelho do servidor)
+    const dentroLonge = (xy, pol) => Croqui._dentroXY(xy, pol) && Croqui._posicaoNaBorda(xy, pol).dist > TOL;
+    const ia = Croqui._pontoInterior(pa, TOL);
+    if (ia && dentroLonge(ia, pb)) return true;
+    const ib = Croqui._pontoInterior(pb, TOL);
+    return !!(ib && dentroLonge(ib, pa));
+  },
+
+  /** Ray casting em coordenadas já projetadas (metros). */
+  _dentroXY(p, pol) {
+    let dentro = false;
+    for (let i = 0, j = pol.length - 1; i < pol.length; j = i++) {
+      const [xi, yi] = pol[i], [xj, yj] = pol[j];
+      if ((yi > p[1]) !== (yj > p[1]) && p[0] < (xj - xi) * (p[1] - yi) / ((yj - yi) || 1e-12) + xi) dentro = !dentro;
+    }
+    return dentro;
+  },
+
+  /** Ponto no INTERIOR do polígono (metros), longe da borda mais que tol; null se degenerado. */
+  _pontoInterior(pol, tol) {
+    const n = pol.length;
+    const cx = pol.reduce((s, p) => s + p[0], 0) / n, cy = pol.reduce((s, p) => s + p[1], 0) / n;
+    const cand = [[cx, cy]];
+    pol.forEach(p => cand.push([(cx + p[0]) / 2, (cy + p[1]) / 2]));
+    for (let i = 0; i < n; i++) { const q = pol[(i + 2) % n]; cand.push([(pol[i][0] + q[0]) / 2, (pol[i][1] + q[1]) / 2]); }
+    return cand.find(c => Croqui._dentroXY(c, pol) && Croqui._posicaoNaBorda(c, pol).dist > tol) || null;
   },
 
   /** Distância (m) de um ponto [lat,lng] à borda do polígono [[lat,lng],...]. */
