@@ -895,6 +895,8 @@ const Croqui = {
   atualId: 0,          // 0 = divisa do IMÓVEL (CAR); -1 = ÁREA DE PLANTIO do imóvel; >0 = talhão
   PLANTIO_ID: -1,
   NOVO_ID: -2,         // "➕ Novo talhão (desenhar)": desenha primeiro, dá nome/cultura ao salvar
+  SNAP_DIVISA_M: 6,    // ponto a até 6 m da divisa é encaixado NA divisa (o talhão margeia o CAR)
+  _undo: [],           // pilha de estados p/ Desfazer (uma ação = um estado, mesmo que insira vários pontos)
   pontos: [],
   vista: null,         // {z, cx, cy} em coordenadas de mundo Web Mercator (0..1); z pode ser fracionário (pinça)
   watchId: null,
@@ -960,6 +962,7 @@ const Croqui = {
     Croqui._carCod = '';
     Croqui._selecionado = null;
     Croqui.carLayer = []; Croqui.carLayerOn = false; Croqui._carLayerCentro = null;
+    Croqui._undo = [];
     { const b = document.getElementById('croquiCarMapaBtn'); if (b) b.classList.remove('active'); }
     document.getElementById('croquiUsarArea').checked = true; // o desenho define a área (desmarque só se a oficial for outra)
     document.getElementById('croquiModoManual').checked = true;
@@ -1091,6 +1094,7 @@ const Croqui = {
     }
     Croqui.atualId = alvo;
     Croqui.pontos = Croqui._contornoDe(Croqui.atualId);
+    Croqui._undo = []; // outro alvo: o Desfazer recomeça
     Croqui._dirty = false;
     Croqui._carCod = '';
     Croqui._selecionado = null;
@@ -1614,7 +1618,9 @@ const Croqui = {
     if (Croqui.atualId === 0) return p; // desenhando a própria divisa
     // 1) fora da divisa do imóvel → puxa para a borda da divisa
     const divisa = Croqui._contornoDe(0);
-    if (divisa.length >= 3 && !Croqui._dentroDe(p, divisa)) p = Croqui._bordaMaisProxima(p, divisa);
+    // Fora da divisa OU colado nela (≤ SNAP_DIVISA_M): vai para a borda EXATA — o talhão
+    // margeia a divisa tal como foi desenhada (pedido do teste de campo)
+    if (divisa.length >= 3 && (!Croqui._dentroDe(p, divisa) || Croqui._distBordaM(p, divisa) <= Croqui.SNAP_DIVISA_M)) p = Croqui._bordaMaisProxima(p, divisa);
     // 2) talhão: dentro de OUTRO talhão → puxa para a borda do vizinho (talhões não se cobrem)
     if (Croqui._ehTalhao(Croqui.atualId)) {
       for (const t of Croqui.talhoes) {
@@ -1687,6 +1693,76 @@ const Croqui = {
       }
     }
     return false;
+  },
+
+  /** Distância (m) de um ponto [lat,lng] à borda do polígono [[lat,lng],...]. */
+  _distBordaM(p, poligono) {
+    const { proj } = Croqui._projetor(poligono);
+    return Croqui._posicaoNaBorda(proj(p), poligono.map(proj)).dist;
+  },
+
+  /** Aresta da borda mais próxima do ponto (já em metros): {i, t, dist}. */
+  _posicaoNaBorda(xy, pol) {
+    let melhor = { i: 0, t: 0, dist: Infinity };
+    for (let i = 0; i < pol.length; i++) {
+      const [ax, ay] = pol[i], [bx, by] = pol[(i + 1) % pol.length];
+      const abx = bx - ax, aby = by - ay, len2 = abx * abx + aby * aby;
+      const t = len2 > 0 ? Math.max(0, Math.min(1, ((xy[0] - ax) * abx + (xy[1] - ay) * aby) / len2)) : 0;
+      const d = Math.hypot(xy[0] - (ax + t * abx), xy[1] - (ay + t * aby));
+      if (d < melhor.dist) melhor = { i, t, dist: d };
+    }
+    return melhor;
+  },
+
+  /**
+   * Vértices da borda entre duas posições da divisa, no sentido MAIS CURTO
+   * (espelho de CroquiService::caminhoBorda). Posição contínua s = aresta + t.
+   */
+  _caminhoBorda(pol, pa, pb) {
+    const n = pol.length, sa = pa.i + pa.t, sb = pb.i + pb.t;
+    const frente = [], tras = [];
+    let k = Math.floor(sa) + 1, arco = ((sb - sa) % n + n) % n, passo = k - sa;
+    while (passo < arco - 1e-9 && frente.length < n) { frente.push(pol[k % n]); k++; passo += 1; }
+    k = Math.ceil(sa) - 1; arco = ((sa - sb) % n + n) % n; passo = sa - k;
+    while (passo < arco - 1e-9 && tras.length < n) { tras.push(pol[((k % n) + n) % n]); k--; passo += 1; }
+    const ponto = q => { const [ax, ay] = pol[q.i], [bx, by] = pol[(q.i + 1) % n]; return [ax + q.t * (bx - ax), ay + q.t * (by - ay)]; };
+    const A = ponto(pa), B = ponto(pb);
+    const compr = vs => { let l = 0, ant = A; for (const v of vs.concat([B])) { l += Math.hypot(v[0] - ant[0], v[1] - ant[1]); ant = v; } return l; };
+    return compr(frente) <= compr(tras) ? frente : tras;
+  },
+
+  /**
+   * MARGEAR A DIVISA (pedido do teste de campo): dois pontos seguidos na borda da
+   * divisa cuja reta SAI da área do CAR (a divisa faz curva/quina entre eles) ganham
+   * o próprio caminho da borda no meio — os vértices da divisa entram no desenho e
+   * nenhuma linha fica fora. Reta que segue por dentro (corte de lado a lado) não
+   * muda. Idempotente. Espelho de CroquiService::margearDivisa. Devolve true se mudou.
+   */
+  _margearDivisa() {
+    if (Croqui.atualId === 0) return false;
+    const divisa = Croqui._contornoDe(0), pts = Croqui.pontos, n = pts.length;
+    if (divisa.length < 3 || n < 2) return false;
+    const { mLat, mLng, proj } = Croqui._projetor(divisa);
+    const pol = divisa.map(proj), xy = pts.map(proj);
+    const desproj = q => [Number((-q[1] / mLat).toFixed(7)), Number((q[0] / mLng).toFixed(7))];
+    const arestas = n >= 3 ? n : n - 1, saida = [];
+    let mudou = false;
+    for (let i = 0; i < arestas; i++) {
+      saida.push(pts[i]);
+      const pa = Croqui._posicaoNaBorda(xy[i], pol), pb = Croqui._posicaoNaBorda(xy[(i + 1) % n], pol);
+      if (pa.dist > Croqui.SNAP_DIVISA_M || pb.dist > Croqui.SNAP_DIVISA_M) continue;
+      if (!Croqui._linhasFora([pts[i], pts[(i + 1) % n]], divisa).length) continue;
+      for (const v of Croqui._caminhoBorda(pol, pa, pb)) { saida.push(desproj(v)); mudou = true; }
+    }
+    if (n === 2) saida.push(pts[1]);
+    if (mudou) Croqui.pontos = saida;
+    return mudou;
+  },
+
+  /** Guarda o estado atual para o Desfazer (uma ação do usuário = um estado). */
+  _snapshot() {
+    Croqui._undo.push(Croqui.pontos.map(p => [p[0], p[1]]));
+    if (Croqui._undo.length > 40) Croqui._undo.shift();
   },
 
   /**
@@ -2200,6 +2276,7 @@ const Croqui = {
         Croqui._arrasto = Number(v.dataset.idx);
         Croqui._arrastoIni = { x: ev.clientX, y: ev.clientY };
         Croqui._arrastoMoveu = false;
+        Croqui._snapshot();
         ev.preventDefault();
         return;
       }
@@ -2261,7 +2338,9 @@ const Croqui = {
       if (Croqui._arrasto !== null) {
         const idx = Croqui._arrasto, moveu = Croqui._arrastoMoveu;
         Croqui._arrasto = null; Croqui._arrastoMoveu = false; Croqui._arrastoIni = null;
-        if (moveu || ev.type !== 'pointerup') return;
+        if (moveu) { if (Croqui._margearDivisa()) Croqui.render(); return; } // soltou: margeia a divisa se precisar
+        if (ev.type !== 'pointerup') { Croqui._undo.pop(); return; }
+        Croqui._undo.pop(); // toque sem arrasto: não é uma ação a desfazer
         // Toque no ponto (sem arrastar): DUPLO toque no mesmo ponto = REMOVE direto.
         // O 1º toque só realça o ponto (feedback "toque de novo para remover").
         const lt = Croqui._ultimoTap;
@@ -2297,8 +2376,10 @@ const Croqui = {
               && Math.hypot(x - lt.x, y - lt.y) < Croqui._DUPLO_PX;
             if (duplo) {
               Croqui._ultimoTap = null;
+              Croqui._snapshot();
               Croqui.pontos.splice(aresta + 1, 0, Croqui._prender(geo));
               Croqui._selecionado = aresta + 1; // realça o ponto recém-criado
+              if (Croqui._margearDivisa()) Croqui._selecionado = null;
               Croqui._dirty = true;
               Croqui.render();
             } else {
@@ -2319,7 +2400,9 @@ const Croqui = {
           } else if (manual) {
             // Toque no VAZIO (longe das linhas) = adiciona um ponto no fim (desenhar)
             Croqui._ultimoTap = null;
+            Croqui._snapshot();
             Croqui.pontos.push(Croqui._prender(geo));
+            Croqui._margearDivisa(); // dois pontos na divisa com a reta saindo do CAR → segue a borda
             Croqui._dirty = true;
             Croqui.render();
           }
@@ -2333,12 +2416,19 @@ const Croqui = {
     window.addEventListener('resize', () => { if (document.querySelector('#modalCroqui.show')) Croqui.render(); });
   },
 
-  desfazer() { Croqui.pontos.pop(); Croqui._selecionado = null; Croqui._ultimoTap = null; Croqui._dirty = true; Croqui.render(); },
+  desfazer() {
+    // Desfaz a ÚLTIMA AÇÃO inteira (um toque que margeou a divisa pode ter inserido vários pontos)
+    const ant = Croqui._undo.pop();
+    if (ant) Croqui.pontos = ant; else Croqui.pontos.pop();
+    Croqui._selecionado = null; Croqui._ultimoTap = null; Croqui._dirty = true; Croqui.render();
+  },
 
   /** Remove um ponto específico (duplo toque no ponto). */
   _removerPonto(i) {
     if (i < 0 || i >= Croqui.pontos.length) return;
+    Croqui._snapshot();
     Croqui.pontos.splice(i, 1);
+    Croqui._margearDivisa();
     Croqui._selecionado = null;
     Croqui._ultimoTap = null;
     Croqui._dirty = true;
@@ -2347,6 +2437,7 @@ const Croqui = {
 
   limpar() {
     if (!confirm('Apagar todos os pontos deste contorno?')) return;
+    Croqui._snapshot(); // Desfazer traz o contorno de volta
     Croqui.pontos = [];
     Croqui._selecionado = null;
     Croqui._ultimoTap = null;
