@@ -422,6 +422,8 @@ class ClientesController
                 json_erro('Este imóvel ainda não tem a divisa do CAR. Traga o CAR no croqui (CAR pela sede, CAR no mapa ou o arquivo do SICAR) antes de desenhar a área de plantio ou os talhões.');
             }
             $pontos = \App\Services\CroquiService::prenderNaDivisa($pontos, $divisa);
+            // Margeia a divisa: reta entre dois pontos da borda que sairia do CAR vira o caminho da borda
+            $pontos = \App\Services\CroquiService::margearDivisa($pontos, $divisa);
             if ($tipo === 'talhao') {
                 // REGRA (teste de campo): talhão NÃO cobre outro talhão. Ponto dentro de
                 // um vizinho é puxado para a borda dele; se ainda cruzar, recusa.
@@ -1232,6 +1234,8 @@ class ClientesController
                 json_erro('Este imóvel ainda não tem a divisa do CAR. Traga o CAR no croqui antes de desenhar talhões.');
             }
             $pontos = \App\Services\CroquiService::prenderNaDivisa($pontos, $divisa);
+            // Margeia a divisa: reta entre dois pontos da borda que sairia do CAR vira o caminho da borda
+            $pontos = \App\Services\CroquiService::margearDivisa($pontos, $divisa);
             $pontos = $this->semSobreporVizinhos($pontos, $imovelId, $id);
             $this->exigirLinhasDentro($pontos, $divisa);
             $areaGps = \App\Services\CroquiService::areaHa($pontos);

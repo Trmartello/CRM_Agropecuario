@@ -92,13 +92,132 @@ class CroquiService
 
         foreach ($pontos as $i => $p) {
             $xy = $proj($p);
-            if (self::dentro($xy, $poligono)) {
+            // Dentro e longe da borda: fica. Fora OU "colado" na borda (≤ SNAP_DIVISA_M):
+            // vai para a borda exata — o talhão margeia a divisa tal como foi desenhada.
+            if (self::dentro($xy, $poligono) && self::distanciaBordaM($xy, $poligono) > self::SNAP_DIVISA_M) {
                 continue;
             }
             [$bx, $by] = self::pontoMaisProximoBorda($xy, $poligono);
             $pontos[$i] = [round(-$by / $mLat, 7), round($bx / $mLng, 7)];
         }
         return $pontos;
+    }
+
+    /**
+     * Distância (m) para um ponto ser considerado "na divisa": é encaixado na
+     * borda exata e o talhão passa a MARGEAR a divisa (pedido do teste de campo).
+     */
+    public const SNAP_DIVISA_M = 6;
+
+    /**
+     * MARGEAR A DIVISA (pedido do teste de campo): quando dois pontos seguidos
+     * estão na borda da divisa mas a reta entre eles SAI da área do CAR (a
+     * divisa faz uma curva/quina entre eles), a reta é substituída pelo próprio
+     * caminho da borda — os vértices da divisa entram no talhão e nenhuma linha
+     * fica fora. Reta que segue por dentro (corte de um lado ao outro) não muda.
+     * Idempotente: rodar de novo não insere nada. Devolve os pontos [lat,lng].
+     */
+    public static function margearDivisa(array $pontos, array $divisa, float $tolM = self::SNAP_DIVISA_M): array
+    {
+        $n = count($pontos);
+        if ($n < 2 || count($divisa) < 3) {
+            return $pontos;
+        }
+        $lat0 = array_sum(array_column($divisa, 0)) / count($divisa);
+        $mLat = 110574.0;
+        $mLng = 111320.0 * cos(deg2rad($lat0));
+        $proj = fn ($p) => [$p[1] * $mLng, -$p[0] * $mLat];
+        $desproj = fn ($xy) => [round(-$xy[1] / $mLat, 7), round($xy[0] / $mLng, 7)];
+        $poligono = array_map($proj, $divisa);
+        $xy = array_map($proj, $pontos);
+        $arestas = $n >= 3 ? $n : $n - 1;
+        $saida = [];
+        for ($i = 0; $i < $arestas; $i++) {
+            $a = $xy[$i];
+            $b = $xy[($i + 1) % $n];
+            $saida[] = $pontos[$i];
+            $pa = self::posicaoNaBorda($a, $poligono);
+            $pb = self::posicaoNaBorda($b, $poligono);
+            if ($pa['dist'] > $tolM || $pb['dist'] > $tolM) {
+                continue; // um dos dois está no meio do imóvel: reta normal
+            }
+            if (!self::linhasFora([$pontos[$i], $pontos[($i + 1) % $n]], $divisa)) {
+                continue; // a reta já fica dentro (corte de um lado ao outro): não muda
+            }
+            foreach (self::caminhoBorda($poligono, $pa, $pb) as $v) {
+                $saida[] = $desproj($v);
+            }
+        }
+        if ($n === 2) {
+            $saida[] = $pontos[1];
+        }
+        return $saida;
+    }
+
+    /** Aresta da borda mais próxima do ponto (índice, parâmetro 0..1 e distância em m). */
+    private static function posicaoNaBorda(array $p, array $poligono): array
+    {
+        $melhor = ['i' => 0, 't' => 0.0, 'dist' => INF];
+        $n = count($poligono);
+        for ($i = 0; $i < $n; $i++) {
+            [$ax, $ay] = $poligono[$i];
+            [$bx, $by] = $poligono[($i + 1) % $n];
+            $abx = $bx - $ax; $aby = $by - $ay;
+            $len2 = $abx * $abx + $aby * $aby;
+            $t = $len2 > 0 ? max(0, min(1, (($p[0] - $ax) * $abx + ($p[1] - $ay) * $aby) / $len2)) : 0;
+            $d = hypot($p[0] - ($ax + $t * $abx), $p[1] - ($ay + $t * $aby));
+            if ($d < $melhor['dist']) {
+                $melhor = ['i' => $i, 't' => $t, 'dist' => $d];
+            }
+        }
+        return $melhor;
+    }
+
+    /**
+     * Vértices da borda entre duas posições na divisa, no sentido MAIS CURTO
+     * (a divisa é um anel: há dois caminhos). Não inclui os dois extremos.
+     * Posição contínua no anel: s = aresta + parâmetro (0 ≤ s < n).
+     */
+    private static function caminhoBorda(array $poligono, array $pa, array $pb): array
+    {
+        $n = count($poligono);
+        $sa = $pa['i'] + $pa['t'];
+        $sb = $pb['i'] + $pb['t'];
+        // frente (índices crescentes): vértices floor(sa)+1, ... até antes de sb
+        $frente = [];
+        $k = (int) floor($sa) + 1;
+        $arco = fmod($sb - $sa + $n, $n);
+        $passo = $k - $sa;
+        while ($passo < $arco - 1e-9 && count($frente) < $n) {
+            $frente[] = $poligono[$k % $n];
+            $k++; $passo += 1;
+        }
+        // trás (índices decrescentes): vértices ceil(sa)-1, ... até antes de sb
+        $tras = [];
+        $k = (int) ceil($sa) - 1;
+        $arco = fmod($sa - $sb + $n, $n);
+        $passo = $sa - $k;
+        while ($passo < $arco - 1e-9 && count($tras) < $n) {
+            $tras[] = $poligono[(($k % $n) + $n) % $n];
+            $k--; $passo += 1;
+        }
+        $ptA = self::pontoNaAresta($poligono, $pa);
+        $ptB = self::pontoNaAresta($poligono, $pb);
+        $compr = function (array $vs) use ($ptA, $ptB): float {
+            $l = 0; $ant = $ptA;
+            foreach (array_merge($vs, [$ptB]) as $v) { $l += hypot($v[0] - $ant[0], $v[1] - $ant[1]); $ant = $v; }
+            return $l;
+        };
+        return $compr($frente) <= $compr($tras) ? $frente : $tras;
+    }
+
+    /** Ponto [x,y] correspondente a uma posição (aresta i, parâmetro t) da borda. */
+    private static function pontoNaAresta(array $poligono, array $pos): array
+    {
+        $n = count($poligono);
+        [$ax, $ay] = $poligono[$pos['i']];
+        [$bx, $by] = $poligono[($pos['i'] + 1) % $n];
+        return [$ax + $pos['t'] * ($bx - $ax), $ay + $pos['t'] * ($by - $ay)];
     }
 
     /**
@@ -223,7 +342,6 @@ class CroquiService
         $proj = self::projetar(array_merge($divisa, $pontos));
         $poligono = array_slice($proj, 0, count($divisa));
         $xy = array_slice($proj, count($divisa));
-        $nd = count($poligono);
         $fora = [];
         for ($i = 0; $i < $n; $i++) {
             $a = $xy[$i];
