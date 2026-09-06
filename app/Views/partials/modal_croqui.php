@@ -55,7 +55,7 @@
         <div id="croquiPalco" class="croqui-palco flex-grow-1"></div>
         <div class="d-flex flex-wrap align-items-center gap-3">
           <div class="form-check form-check-sm mb-0">
-            <input class="form-check-input" type="checkbox" id="croquiUsarArea">
+            <input class="form-check-input" type="checkbox" id="croquiUsarArea" checked>
             <label class="form-check-label small" for="croquiUsarArea">Usar a área medida como área oficial do imóvel</label>
           </div>
           <span id="croquiTotais" class="small text-muted"></span>

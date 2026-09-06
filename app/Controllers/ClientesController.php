@@ -446,8 +446,9 @@ class ClientesController
         }
         // Divisa vinda do CAR (identificação por GPS) traz o número do imóvel
         if ($tipo === 'imovel' && trim($_POST['car_numero'] ?? '') !== '') {
-            Database::executar('UPDATE imoveis SET car_numero = ? WHERE id = ?',
-                [mb_substr(trim($_POST['car_numero']), 0, 60), $alvoId]);
+            // Divisa adotada do CAR: a área total do imóvel é a medida por ela (oficial)
+            Database::executar('UPDATE imoveis SET car_numero = ?, area_ha = ? WHERE id = ?',
+                [mb_substr(trim($_POST['car_numero']), 0, 60), $areaGps, $alvoId]);
         }
         sync_confirmar($_POST['uuid_offline'] ?? null);
         auditar('salvar', 'croqui', $alvoId, $rotulo . ' · ' . count($pontos) . " pontos · {$areaGps} ha");
@@ -501,15 +502,16 @@ class ClientesController
 
         // Número do CAR: usa o que o usuário digitou; senão, o código lido do próprio arquivo (.dbf)
         $car = trim($_POST['car_numero'] ?? '') ?: (string) ($lido['cod'] ?? '');
+        // A divisa do CAR é a verdade oficial: a área total do imóvel passa a ser a MEDIDA por ela
         if ($car !== '') {
             Database::executar(
-                'UPDATE imoveis SET contorno = ?, area_gps = ?, car_numero = ? WHERE id = ?',
-                [json_encode($pontos), $areaGps, mb_substr($car, 0, 60), $imovelId]
+                'UPDATE imoveis SET contorno = ?, area_gps = ?, area_ha = ?, car_numero = ? WHERE id = ?',
+                [json_encode($pontos), $areaGps, $areaGps, mb_substr($car, 0, 60), $imovelId]
             );
         } else {
             Database::executar(
-                'UPDATE imoveis SET contorno = ?, area_gps = ? WHERE id = ?',
-                [json_encode($pontos), $areaGps, $imovelId]
+                'UPDATE imoveis SET contorno = ?, area_gps = ?, area_ha = ? WHERE id = ?',
+                [json_encode($pontos), $areaGps, $areaGps, $imovelId]
             );
         }
         // Município detectado no arquivo preenche imóvel e propriedade se estiverem vazios
@@ -872,9 +874,8 @@ class ClientesController
         if (!empty($imovel['nome'])) {
             return (string) $imovel['nome'];
         }
-        if (!empty($imovel['car_numero'])) {
-            return 'CAR ' . $imovel['car_numero'];
-        }
+        // Sem apelido: "Imóvel" (o nº do CAR fica na linha própria, com o link — no
+        // título ele ocupava três linhas no celular e aparecia duas vezes)
         return 'Imóvel' . (isset($imovel['ordem']) && (int) $imovel['ordem'] > 0 ? ' ' . (int) $imovel['ordem'] : '');
     }
 
@@ -1051,6 +1052,20 @@ class ClientesController
         }
         if ($areaHa > 0 && $areaPlantio > $areaHa) {
             json_erro('A área de plantio não pode ser maior que a área total do imóvel.');
+        }
+        // A área vem do DESENHO, não da digitação: se o imóvel já tem divisa (CAR) ou
+        // área de plantio desenhada, a medida prevalece sobre o que veio digitado.
+        if ($id > 0) {
+            $atual = Database::um('SELECT area_gps, area_plantio_gps FROM imoveis WHERE id = ? AND propriedade_id = ?', [$id, $propriedadeId]);
+            if ($atual && $atual['area_gps'] !== null && (float) $atual['area_gps'] > 0) {
+                $areaHa = (float) $atual['area_gps'];
+            }
+            if ($atual && $atual['area_plantio_gps'] !== null && (float) $atual['area_plantio_gps'] > 0) {
+                $areaPlantio = (float) $atual['area_plantio_gps'];
+            }
+            if ($areaHa > 0 && $areaPlantio > $areaHa) {
+                json_erro('A área de plantio não pode ser maior que a área total medida do imóvel (' . number_format($areaHa, 1, ',', '.') . ' ha).');
+            }
         }
         $dados = [
             trim($_POST['nome'] ?? '') ? mb_substr(trim($_POST['nome']), 0, 120) : null,

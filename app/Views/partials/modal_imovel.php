@@ -20,15 +20,27 @@
             <label class="form-label">Apelido <span class="text-muted small">(opcional)</span></label>
             <input name="nome" class="form-control" placeholder="Ex.: Matrícula 1, Área da mãe, Terreno do rio">
           </div>
-          <div class="col-6">
+          <?php /* A área vem do DESENHO: com divisa do CAR / área de plantio desenhada, mostra a
+                   medida (só leitura); o campo digitado só aparece enquanto não há desenho. */ ?>
+          <div class="col-6" id="imovelAreaWrap">
             <label class="form-label">Área total (ha)</label>
             <input name="area_ha" class="form-control" inputmode="decimal">
-            <div class="form-text">Do CAR. O croqui pode medir e assumir como oficial.</div>
+            <div class="form-text">Sem divisa ainda. Traga o CAR no croqui e a área é medida.</div>
           </div>
-          <div class="col-6">
+          <div class="col-6 d-none" id="imovelAreaMedida">
+            <label class="form-label">Área total</label>
+            <div class="form-control-plaintext fw-semibold" id="imovelAreaMedidaValor"></div>
+            <div class="form-text">Medida pela divisa do CAR no croqui.</div>
+          </div>
+          <div class="col-6" id="imovelPlantioWrap">
             <label class="form-label">Área de plantio (ha)</label>
             <input name="area_plantio_ha" class="form-control" inputmode="decimal">
-            <div class="form-text">O que dá para plantar (fora mata, APP, reserva, sede).</div>
+            <div class="form-text">O que dá para plantar (fora mata, APP, reserva, sede). Ou desenhe no croqui.</div>
+          </div>
+          <div class="col-6 d-none" id="imovelPlantioMedida">
+            <label class="form-label">Área de plantio</label>
+            <div class="form-control-plaintext fw-semibold" id="imovelPlantioMedidaValor"></div>
+            <div class="form-text">Medida pelo desenho no croqui.</div>
           </div>
           <div class="col-12">
             <label class="form-label">Município</label>

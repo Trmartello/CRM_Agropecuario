@@ -154,8 +154,8 @@ class IntegracaoController
             $divisa = \App\Services\CarService::maiorAnel($im['contorno']);
             $area = \App\Services\CroquiService::areaHa($divisa);
             \App\Core\Database::executar(
-                'UPDATE imoveis SET contorno = ?, area_gps = ?, car_numero = COALESCE(?, car_numero) WHERE id = ?',
-                [json_encode($divisa), round((float) $area, 2),
+                'UPDATE imoveis SET contorno = ?, area_gps = ?, area_ha = ?, car_numero = COALESCE(?, car_numero) WHERE id = ?',
+                [json_encode($divisa), round((float) $area, 2), round((float) $area, 2),
                     mb_substr((string) ($im['cod'] ?? ''), 0, 60) ?: null, (int) $p['imovel_id']]
             );
             $vinc++;

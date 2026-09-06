@@ -463,7 +463,21 @@ const Clientes = {
     form.querySelector('[name=propriedade_id]').value = propriedadeId;
     document.getElementById('modalImovelTitulo').textContent = 'Novo imóvel (CAR)';
     document.getElementById('btnExcluirImovel').classList.add('d-none');
+    Clientes._areasNoModalImovel(null, null); // novo: ainda sem desenho → campos digitados
     new bootstrap.Modal('#modalImovel').show();
+  },
+
+  /** A área vem do desenho: com medida, mostra só leitura; sem medida, o campo digitado. */
+  _areasNoModalImovel(areaMedida, plantioMedido) {
+    const fmt = v => Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + ' ha';
+    const temArea = areaMedida !== null && areaMedida !== undefined && Number(areaMedida) > 0;
+    document.getElementById('imovelAreaWrap').classList.toggle('d-none', temArea);
+    document.getElementById('imovelAreaMedida').classList.toggle('d-none', !temArea);
+    if (temArea) document.getElementById('imovelAreaMedidaValor').textContent = fmt(areaMedida);
+    const temPlantio = plantioMedido !== null && plantioMedido !== undefined && Number(plantioMedido) > 0;
+    document.getElementById('imovelPlantioWrap').classList.toggle('d-none', temPlantio);
+    document.getElementById('imovelPlantioMedida').classList.toggle('d-none', !temPlantio);
+    if (temPlantio) document.getElementById('imovelPlantioMedidaValor').textContent = fmt(plantioMedido);
   },
 
   editarImovel(im) {
@@ -478,6 +492,7 @@ const Clientes = {
     form.querySelector('[name=area_plantio_ha]').value = Number(im.area_plantio_ha) > 0 ? im.area_plantio_ha : '';
     document.getElementById('modalImovelTitulo').textContent = 'Editar imóvel (CAR)';
     document.getElementById('btnExcluirImovel').classList.remove('d-none');
+    Clientes._areasNoModalImovel(im.contorno ? im.area_gps : null, im.contorno_plantio ? im.area_plantio_gps : null);
     new bootstrap.Modal('#modalImovel').show();
   },
 
@@ -883,7 +898,7 @@ const Croqui = {
     // Garante a base do CAR do município no aparelho para o "CAR aqui" offline
     if (typeof Offline !== 'undefined') Offline.baixarCarMunicipio();
     document.getElementById('croquiPropNome').textContent = dados.propriedade.nome
-      + (Croqui.outros.length || dados.imovel.nome || dados.imovel.car_numero ? ' · ' + dados.imovel.rotulo : '');
+      + (Croqui.outros.length || dados.imovel.nome ? ' · ' + dados.imovel.rotulo : ''); // só o apelido (o nº do CAR fica na ficha)
     // pré-preenche o "Ir para" com o endereço do produtor (município/UF/linha)
     { const s = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
       s('croquiIrMun', dados.imovel.municipio || dados.propriedade.municipio); s('croquiIrUf', dados.propriedade.estado); s('croquiIrLinha', dados.propriedade.linha); }
@@ -894,7 +909,7 @@ const Croqui = {
     Croqui._selecionado = null;
     Croqui.carLayer = []; Croqui.carLayerOn = false; Croqui._carLayerCentro = null;
     { const b = document.getElementById('croquiCarMapaBtn'); if (b) b.classList.remove('active'); }
-    document.getElementById('croquiUsarArea').checked = false;
+    document.getElementById('croquiUsarArea').checked = true; // o desenho define a área (desmarque só se a oficial for outra)
     document.getElementById('croquiModoManual').checked = true;
     Croqui._refletirModo(); // split button mostra "Manual (toque)" ao abrir
     Croqui._prepararEventos();
