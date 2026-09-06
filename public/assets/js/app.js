@@ -2305,8 +2305,11 @@ const Croqui = {
               Croqui._ultimoTap = { tipo: 'linha', x, y, t: ev.timeStamp };
               if (Croqui._selecionado !== null) { Croqui._selecionado = null; Croqui.render(); }
             }
-          } else if (Croqui.carLayerOn) {
-            // Fora da linha, com overlay ligado: toque na área de um imóvel do CAR = adotar a divisa
+          } else if (Croqui.carLayerOn && Croqui.atualId === 0) {
+            // Fora da linha, com overlay ligado e editando a DIVISA: toque na área de um
+            // imóvel do CAR = adotar a divisa. Em "Área de plantio"/talhão o overlay fica
+            // só como referência (amarelo) e o toque DESENHA — bug do teste de campo:
+            // com o overlay auto-ligado não dava para marcar a área de plantio.
             const im = Croqui._carDoMapaNoPonto(geo[0], geo[1]);
             if (im) Croqui._selecionarCarDoMapa(im);
           } else if (manual && Croqui._selecionado !== null) {
