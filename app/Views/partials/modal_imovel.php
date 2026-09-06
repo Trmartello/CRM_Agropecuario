@@ -39,16 +39,7 @@
                    O nº do CAR ("UF-IBGE-hash") identifica o município sozinho (JS + servidor). */ ?>
           <div class="col-12">
             <label class="form-label">Município</label>
-            <select name="cod_ibge" class="form-select" id="imovelMunicipio">
-              <option value="">— selecione —</option>
-              <?php foreach (\App\Services\MunicipiosSul::porUf() as $ufLista => $muns): ?>
-                <optgroup label="<?= e($ufLista) ?>">
-                  <?php foreach ($muns as $cod => $nomeMun): ?>
-                    <option value="<?= e($cod) ?>"><?= e($nomeMun) ?></option>
-                  <?php endforeach; ?>
-                </optgroup>
-              <?php endforeach; ?>
-            </select>
+            <?= select_municipios('cod_ibge', 'imovelMunicipio', 'ibge') ?>
             <div class="form-text" id="imovelMunicipioNota">Preenchido sozinho pelo número do CAR; escolha na lista só se o imóvel ainda não tem CAR.</div>
           </div>
         </div>

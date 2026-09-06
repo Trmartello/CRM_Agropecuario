@@ -71,6 +71,11 @@ class ClientesController
             json_erro('Informe o nome do produtor.');
         }
 
+        // Município – UF da lista pré-cadastrada (MunicipiosSul): nome oficial + UF
+        // deduzida; texto fora da lista (carga do ERP/legado) segue como veio.
+        $munCli = \App\Services\MunicipiosSul::porCodigo(
+            \App\Services\MunicipiosSul::codigoPorNome(trim($_POST['municipio'] ?? ''), trim($_POST['estado'] ?? '') ?: null)
+        );
         $dados = [
             $nome,
             $_POST['situacao'] ?? 'Associado',
@@ -78,9 +83,9 @@ class ClientesController
             trim($_POST['telefone'] ?? '') ?: null,
             trim($_POST['email'] ?? '') ?: null,
             trim($_POST['endereco'] ?? '') ?: null,
-            trim($_POST['municipio'] ?? '') ?: null,
+            $munCli['nome'] ?? (trim($_POST['municipio'] ?? '') ?: null),
             trim($_POST['linha'] ?? '') ?: null,
-            strtoupper(trim($_POST['estado'] ?? 'SC')) ?: 'SC',
+            $munCli['uf'] ?? (strtoupper(trim($_POST['estado'] ?? 'SC')) ?: 'SC'),
             (int) ($_POST['filial_id'] ?? 0) ?: null,
             $_POST['latitude'] !== '' ? (float) $_POST['latitude'] : null,
             $_POST['longitude'] !== '' ? (float) $_POST['longitude'] : null,

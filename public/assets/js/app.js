@@ -343,7 +343,23 @@ const Clientes = {
       }
       const chkProsp = form.querySelector('[name=prospecto]');
       if (chkProsp) chkProsp.checked = Number(cliente.prospecto) === 1;
+      // Município – UF da lista: cadastro antigo em texto é casado sem acento (e pela UF)
+      const selMun = form.querySelector('[name=municipio]');
+      if (selMun && !selMun.value && cliente.municipio) {
+        const alvo = Clientes._semAcento(cliente.municipio);
+        const opt = [...selMun.options].find(o => Clientes._semAcento(o.dataset.nome) === alvo && (!cliente.estado || o.dataset.uf === cliente.estado))
+          || [...selMun.options].find(o => Clientes._semAcento(o.dataset.nome) === alvo);
+        if (opt) selMun.value = opt.value;
+      }
+      if (selMun) Clientes.ufDoMunicipio(selMun);
     } catch (e) { App.alerta(e.message, 'danger'); }
+  },
+
+  /** A UF do produtor vem do município escolhido na lista (hidden `estado`). */
+  ufDoMunicipio(sel) {
+    const uf = sel.selectedOptions[0] && sel.selectedOptions[0].dataset.uf;
+    const hid = sel.form && sel.form.querySelector('[name=estado]');
+    if (hid && uf) hid.value = uf;
   },
 
   async salvar(ev) {
@@ -530,7 +546,7 @@ const Clientes = {
     if (opt) {
       sel.value = m[2];
       sel.disabled = true;
-      nota.textContent = `Identificado pelo nº do CAR: ${opt.textContent}/${opt.parentElement.label}.`;
+      nota.textContent = `Identificado pelo nº do CAR: ${opt.dataset.nome}/${opt.dataset.uf}.`;
       nota.classList.add('text-success');
     } else {
       sel.disabled = false;
@@ -572,7 +588,7 @@ const Clientes = {
     selMun.value = im.cod_ibge || '';
     if (!selMun.value && im.municipio) {
       const alvo = Clientes._semAcento(im.municipio);
-      const opt = [...selMun.options].find(o => Clientes._semAcento(o.textContent) === alvo && (!im.uf || o.parentElement.label === im.uf));
+      const opt = [...selMun.options].find(o => Clientes._semAcento(o.dataset.nome) === alvo && (!im.uf || o.dataset.uf === im.uf));
       if (opt) selMun.value = opt.value;
     }
     document.getElementById('imovelMunicipioNota').textContent = 'Preenchido sozinho pelo número do CAR; escolha na lista só se o imóvel ainda não tem CAR.';

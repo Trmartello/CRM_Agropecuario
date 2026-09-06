@@ -33,17 +33,8 @@
           </div>
           <div class="col-12">
             <label class="form-label">Município</label>
-            <select name="municipio" class="form-select" id="propMunicipio">
-              <option value="">— selecione —</option>
-              <?php foreach (\App\Services\MunicipiosSul::porUf() as $ufLista => $muns): ?>
-                <optgroup label="<?= e($ufLista) ?>">
-                  <?php foreach ($muns as $cod => $nomeMun): ?>
-                    <option value="<?= e($nomeMun) ?>" data-uf="<?= e($ufLista) ?>"><?= e($nomeMun) ?></option>
-                  <?php endforeach; ?>
-                </optgroup>
-              <?php endforeach; ?>
-            </select>
-            <div class="form-text">Lista pré-cadastrada (SC/RS/PR). Ao trazer o CAR de um imóvel, o município entra sozinho se ainda estiver vazio.</div>
+            <?= select_municipios('municipio', 'propMunicipio', 'nome') ?>
+            <div class="form-text">Lista pré-cadastrada Município – UF (SC/RS/PR). Ao trazer o CAR de um imóvel, o município entra sozinho se ainda estiver vazio.</div>
           </div>
           <div class="col-12 form-text">
             O <strong>número do CAR</strong> fica em cada <strong>imóvel</strong> da propriedade (uma propriedade pode ter vários CARs).

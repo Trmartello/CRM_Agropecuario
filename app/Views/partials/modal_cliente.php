@@ -42,13 +42,11 @@
             <label class="form-label">Endereço</label>
             <input name="endereco" class="form-control">
           </div>
-          <div class="col-md-3">
-            <label class="form-label">Município</label>
-            <input name="municipio" class="form-control">
-          </div>
-          <div class="col-md-1">
-            <label class="form-label">UF</label>
-            <input name="estado" class="form-control" maxlength="2" value="SC">
+          <div class="col-md-4">
+            <label class="form-label">Município – UF</label>
+            <?php /* Lista pré-cadastrada (MunicipiosSul); a UF vai no hidden a partir do data-uf */ ?>
+            <?= select_municipios('municipio', 'clienteMunicipio', 'nome', 'form-select', 'onchange="Clientes.ufDoMunicipio(this)"') ?>
+            <input type="hidden" name="estado" value="SC">
           </div>
           <div class="col-md-3">
             <label class="form-label">Linha <span class="text-muted small">(localidade)</span></label>
