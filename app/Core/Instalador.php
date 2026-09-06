@@ -932,6 +932,82 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '39'"
             );
         }
+        if ($versao < 40) {
+            // Propriedade → IMÓVEIS (CAR) → área de plantio → talhões por cultura e
+            // FINALIDADE (docs/specs/propriedade-imoveis-plantio.md). Uma propriedade
+            // pode ter vários CARs; cada imóvel tem a própria divisa, a própria área
+            // de plantio e os próprios talhões. propriedades.car_numero/contorno/
+            // area_gps viram legado: copiados para o 1º imóvel e não mais gravados.
+            Database::executar(
+                'CREATE TABLE IF NOT EXISTS imoveis (
+                   id INT AUTO_INCREMENT PRIMARY KEY,
+                   propriedade_id INT NOT NULL,
+                   nome VARCHAR(120) NULL,
+                   car_numero VARCHAR(60) NULL,
+                   municipio VARCHAR(120) NULL,
+                   area_ha DECIMAL(10,2) NOT NULL DEFAULT 0,
+                   contorno TEXT NULL,
+                   area_gps DECIMAL(10,2) NULL,
+                   area_plantio_ha DECIMAL(10,2) NOT NULL DEFAULT 0,
+                   contorno_plantio TEXT NULL,
+                   area_plantio_gps DECIMAL(10,2) NULL,
+                   ordem INT NOT NULL DEFAULT 0,
+                   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                   INDEX idx_imoveis_prop (propriedade_id),
+                   FOREIGN KEY (propriedade_id) REFERENCES propriedades(id) ON DELETE CASCADE
+                 ) ENGINE=InnoDB'
+            );
+            Database::executar(
+                'CREATE TABLE IF NOT EXISTS finalidades (
+                   id INT AUTO_INCREMENT PRIMARY KEY,
+                   nome VARCHAR(60) NOT NULL UNIQUE,
+                   ativo TINYINT(1) NOT NULL DEFAULT 1,
+                   ordem INT NOT NULL DEFAULT 0
+                 ) ENGINE=InnoDB'
+            );
+            if ((int) Database::valor('SELECT COUNT(*) FROM finalidades') === 0) {
+                Database::executar(
+                    "INSERT INTO finalidades (nome, ordem) VALUES
+                     ('Grão', 1), ('Silagem', 2), ('Pastagem', 3), ('Feno/Pré-secado', 4), ('Semente', 5)"
+                );
+            }
+            self::adicionarColuna('talhoes', 'imovel_id', 'imovel_id INT NULL AFTER propriedade_id');
+            self::adicionarColuna('talhoes', 'finalidade_id', 'finalidade_id INT NULL AFTER cultura_id');
+            self::adicionarColuna('plantios', 'finalidade_id', 'finalidade_id INT NULL AFTER cultura_id');
+            foreach ([
+                ['talhoes', 'fk_talhoes_imovel', 'FOREIGN KEY (imovel_id) REFERENCES imoveis(id) ON DELETE SET NULL'],
+                ['talhoes', 'fk_talhoes_finalidade', 'FOREIGN KEY (finalidade_id) REFERENCES finalidades(id) ON DELETE SET NULL'],
+                ['plantios', 'fk_plantios_finalidade', 'FOREIGN KEY (finalidade_id) REFERENCES finalidades(id) ON DELETE SET NULL'],
+            ] as [$tabela, $nomeFk, $ddl]) {
+                $existe = Database::valor(
+                    'SELECT 1 FROM information_schema.TABLE_CONSTRAINTS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = ?',
+                    [$tabela, $nomeFk]
+                );
+                if (!$existe) {
+                    Database::executar("ALTER TABLE {$tabela} ADD CONSTRAINT {$nomeFk} {$ddl}");
+                }
+            }
+            // Backfill: 1 imóvel por propriedade que ainda não tem, herdando o legado
+            Database::executar(
+                'INSERT INTO imoveis (propriedade_id, car_numero, municipio, area_ha, contorno, area_gps)
+                 SELECT p.id, p.car_numero, p.municipio, p.area_ha, p.contorno, p.area_gps
+                   FROM propriedades p
+                  WHERE NOT EXISTS (SELECT 1 FROM imoveis i WHERE i.propriedade_id = p.id)'
+            );
+            // Talhões sem imóvel recebem o PRIMEIRO imóvel da própria propriedade
+            Database::executar(
+                'UPDATE talhoes t
+                   JOIN imoveis i ON i.propriedade_id = t.propriedade_id
+                    AND i.id = (SELECT MIN(i2.id) FROM imoveis i2 WHERE i2.propriedade_id = t.propriedade_id)
+                    SET t.imovel_id = i.id
+                  WHERE t.imovel_id IS NULL'
+            );
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '40')
+                 ON DUPLICATE KEY UPDATE valor = '40'"
+            );
+        }
     }
 
     /**

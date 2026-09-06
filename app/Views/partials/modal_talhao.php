@@ -14,6 +14,11 @@
           <input name="nome" class="form-control" required>
         </div>
         <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label">Imóvel (CAR) *</label>
+            <select name="imovel_id" class="form-select" id="talhaoImovel" required></select>
+            <div class="form-text">O talhão fica dentro da divisa deste imóvel. Trocar o imóvel move o talhão.</div>
+          </div>
           <div class="col-6">
             <label class="form-label">Área (ha)</label>
             <input name="area_ha" class="form-control" inputmode="decimal">
@@ -26,6 +31,16 @@
                 <option value="<?= $cu['id'] ?>"><?= e($cu['nome']) ?></option>
               <?php endforeach; ?>
             </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Finalidade</label>
+            <select name="finalidade_id" class="form-select" id="talhaoFinalidade">
+              <option value="">—</option>
+              <?php foreach (($finalidades ?? []) as $f): ?>
+                <option value="<?= (int) $f['id'] ?>"><?= e($f['nome']) ?></option>
+              <?php endforeach; ?>
+            </select>
+            <div class="form-text">Grão, silagem, pastagem... — é o que separa milho silagem de milho grão nos totais.</div>
           </div>
         </div>
       </div>

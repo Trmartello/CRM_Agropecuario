@@ -19,7 +19,8 @@ class PlantiosController
                 $talhaoId,
                 (int) ($_POST['cultura_id'] ?? 0),
                 trim($_POST['data_plantio'] ?? ''),
-                $_POST['cultivar'] ?? null
+                $_POST['cultivar'] ?? null,
+                (int) ($_POST['finalidade_id'] ?? 0) ?: null // v40: grão, silagem, pastagem...
             );
         } catch (\InvalidArgumentException $e) {
             json_erro($e->getMessage());

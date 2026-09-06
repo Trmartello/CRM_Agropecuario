@@ -212,11 +212,19 @@ class CroquiService
                 $divisa = $d;
             }
         }
-        if (!$comContorno && !$divisa) {
+        // Área de plantio do imóvel (v40): verde tracejado, entre a divisa e os talhões
+        $plantio = null;
+        if ($propriedade && !empty($propriedade['contorno_plantio'])) {
+            $d = json_decode((string) $propriedade['contorno_plantio'], true);
+            if (is_array($d) && count($d) >= 3) {
+                $plantio = $d;
+            }
+        }
+        if (!$comContorno && !$divisa && !$plantio) {
             return '';
         }
         // Junta todos os pontos para calcular o enquadramento comum
-        $todos = $divisa ?: [];
+        $todos = array_merge($divisa ?: [], $plantio ?: []);
         $poligonos = [];
         foreach ($comContorno as $t) {
             $pontos = json_decode((string) $t['contorno'], true);
@@ -226,7 +234,7 @@ class CroquiService
             $poligonos[] = ['talhao' => $t, 'pontos' => $pontos];
             $todos = array_merge($todos, $pontos);
         }
-        if (!$poligonos && !$divisa) {
+        if (!$poligonos && !$divisa && !$plantio) {
             return '';
         }
         $xy = self::projetar($todos);
@@ -256,6 +264,12 @@ class CroquiService
             $telaDiv = array_map($paraTela, $divisa);
             $svg .= '<polygon points="' . implode(' ', array_map(fn ($p) => $p[0] . ',' . $p[1], $telaDiv)) . '"'
                 . ' fill="#8d6e2f" fill-opacity=".07" stroke="#8d6e2f" stroke-width="2.5" stroke-dasharray="8 5"/>';
+        }
+        // Área de plantio (v40): o que dá para plantar dentro da divisa
+        if ($plantio) {
+            $telaPl = array_map($paraTela, $plantio);
+            $svg .= '<polygon points="' . implode(' ', array_map(fn ($p) => $p[0] . ',' . $p[1], $telaPl)) . '"'
+                . ' fill="#7cb342" fill-opacity=".10" stroke="#558b2f" stroke-width="2" stroke-dasharray="4 4"/>';
         }
         foreach ($poligonos as $i => $pol) {
             $cor = self::CORES[$i % count(self::CORES)];

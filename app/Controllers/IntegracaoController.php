@@ -127,9 +127,20 @@ class IntegracaoController
         if (\App\Services\CarService::total() === 0) {
             json_erro('Nenhuma base do CAR importada ainda. Importe o município/estado acima primeiro.');
         }
+        // v40: a divisa mora no IMÓVEL (CAR) da propriedade. Candidatos: o 1º imóvel
+        // de cada propriedade com sede cadastrada e ainda sem divisa (propriedade
+        // antiga sem nenhum imóvel ganha um na hora).
+        \App\Core\Database::executar(
+            'INSERT INTO imoveis (propriedade_id, car_numero, municipio, area_ha, contorno, area_gps)
+             SELECT p.id, p.car_numero, p.municipio, p.area_ha, p.contorno, p.area_gps FROM propriedades p
+              WHERE NOT EXISTS (SELECT 1 FROM imoveis i WHERE i.propriedade_id = p.id)'
+        );
         $props = \App\Core\Database::todos(
-            "SELECT id, latitude, longitude FROM propriedades
-              WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND (contorno IS NULL OR contorno = '')"
+            "SELECT i.id AS imovel_id, p.latitude, p.longitude
+               FROM propriedades p
+               JOIN imoveis i ON i.propriedade_id = p.id
+                AND i.id = (SELECT MIN(i2.id) FROM imoveis i2 WHERE i2.propriedade_id = p.id)
+              WHERE p.latitude IS NOT NULL AND p.longitude IS NOT NULL AND (i.contorno IS NULL OR i.contorno = '')"
         );
         $vinc = 0;
         $semCar = 0;
@@ -139,13 +150,13 @@ class IntegracaoController
                 $semCar++;
                 continue;
             }
-            // divisa da propriedade = 1 anel (maior parte, se o imóvel do CAR for multipartes)
+            // divisa do imóvel = 1 anel (maior parte, se o imóvel do CAR for multipartes)
             $divisa = \App\Services\CarService::maiorAnel($im['contorno']);
             $area = \App\Services\CroquiService::areaHa($divisa);
             \App\Core\Database::executar(
-                'UPDATE propriedades SET contorno = ?, area_gps = ?, car_numero = ? WHERE id = ?',
+                'UPDATE imoveis SET contorno = ?, area_gps = ?, car_numero = COALESCE(?, car_numero) WHERE id = ?',
                 [json_encode($divisa), round((float) $area, 2),
-                    mb_substr((string) ($im['cod'] ?? ''), 0, 60) ?: null, (int) $p['id']]
+                    mb_substr((string) ($im['cod'] ?? ''), 0, 60) ?: null, (int) $p['imovel_id']]
             );
             $vinc++;
         }

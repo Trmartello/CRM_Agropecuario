@@ -238,7 +238,14 @@ $variacao = ($totalAnterior !== null && $totalAnterior > 0)
     <?php foreach ($croquis as $cq): ?>
       <div class="text-center">
         <?= $cq['svg'] ?>
-        <div class="small text-muted mt-1"><?= e($cq['propriedade']) ?><?= $cq['area_gps'] ? ' · divisa medida: ' . numero($cq['area_gps'], 1) . ' ha' : '' ?></div>
+        <div class="small text-muted mt-1"><?= e($cq['propriedade']) ?><?= $cq['area_gps'] ? ' · divisa medida: ' . numero($cq['area_gps'], 1) . ' ha' : '' ?><?= !empty($cq['area_plantio']) ? ' · plantio: ' . numero($cq['area_plantio'], 1) . ' ha' : '' ?></div>
+        <?php if (!empty($cq['grupos'])): ?>
+          <div class="small mt-1">
+            <?php foreach ($cq['grupos'] as $g): ?>
+              <span class="badge text-bg-light border text-dark me-1"><?= e($g['cultura']) ?><?= $g['finalidade'] ? ' · ' . e($g['finalidade']) : '' ?>: <?= numero($g['area'], 1) ?> ha</span>
+            <?php endforeach; ?>
+          </div>
+        <?php endif; ?>
       </div>
     <?php endforeach; ?>
   </div>

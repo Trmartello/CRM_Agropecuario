@@ -74,6 +74,11 @@ class ConfiguracoesController
             'culturas' => \App\Core\Database::todos('SELECT id, nome FROM culturas ORDER BY nome'),
             'familias' => \App\Core\Database::todos('SELECT id, nome FROM familias_produto ORDER BY nome'),
             'categoriasReembolso' => $this->categoriasComValores(),
+            // v40: finalidades de cultura (grão, silagem, pastagem...) com uso em talhões
+            'finalidades' => \App\Core\Database::todos(
+                'SELECT f.*, (SELECT COUNT(*) FROM talhoes t WHERE t.finalidade_id = f.id) AS qtd_talhoes
+                   FROM finalidades f ORDER BY f.ordem, f.nome'
+            ),
             'tiposRefeicao' => \App\Services\DespesaService::TIPOS_REFEICAO,
             'logoAtual' => ConfigService::logoAplicacao(),
             'faviconAtual' => ConfigService::faviconAplicacao(),
@@ -189,6 +194,34 @@ class ConfiguracoesController
     }
 
     /** Categorias com os valores de reembolso por tipo agrupados (para a tela). */
+    /** Finalidade de cultura (v40): cria/edita; inativar em vez de excluir (talhões apontam para ela). */
+    public function salvarFinalidade(): void
+    {
+        Permissoes::exigir(['Administrador']);
+        $id = (int) ($_POST['id'] ?? 0);
+        $nome = mb_substr(trim($_POST['nome'] ?? ''), 0, 60);
+        if ($nome === '') {
+            json_erro('Informe o nome da finalidade.');
+        }
+        $ativo = (int) ($_POST['ativo'] ?? 1) ? 1 : 0;
+        $ordem = (int) ($_POST['ordem'] ?? 0);
+        $duplicado = Database::valor('SELECT id FROM finalidades WHERE nome = ? AND id <> ?', [$nome, $id]);
+        if ($duplicado) {
+            json_erro('Já existe uma finalidade com esse nome.');
+        }
+        if ($id > 0) {
+            Database::executar('UPDATE finalidades SET nome=?, ativo=?, ordem=? WHERE id=?', [$nome, $ativo, $ordem, $id]);
+        } else {
+            if ($ordem <= 0) {
+                $ordem = (int) Database::valor('SELECT COALESCE(MAX(ordem), 0) + 1 FROM finalidades');
+            }
+            Database::executar('INSERT INTO finalidades (nome, ativo, ordem) VALUES (?,?,?)', [$nome, $ativo, $ordem]);
+            $id = Database::ultimoId();
+        }
+        auditar('salvar', 'finalidade', $id, $nome . ($ativo ? '' : ' (inativa)'));
+        json_ok(['id' => $id]);
+    }
+
     private function categoriasComValores(): array
     {
         $categorias = Database::todos(

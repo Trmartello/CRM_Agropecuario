@@ -149,21 +149,27 @@ class RelatorioSafraService
             [$clienteId, $inicio, $fim]
         );
 
-        // ---- Croquis (6A) por propriedade (divisa + talhões) ----
+        // ---- Croquis (6A) por IMÓVEL (v40: divisa + área de plantio + talhões) ----
         $croquis = [];
         foreach (Database::todos(
             'SELECT * FROM propriedades WHERE cliente_id = ? ORDER BY nome', [$clienteId]
         ) as $prop) {
-            $talhoes = Database::todos(
-                'SELECT nome, area_ha, area_gps, contorno FROM talhoes WHERE propriedade_id = ?',
-                [(int) $prop['id']]
-            );
-            $svg = CroquiService::svg($talhoes, 420, 280, $prop);
-            if ($svg !== '') {
+            $imoveis = AreaPlantioService::imoveisDaPropriedade((int) $prop['id']);
+            foreach ($imoveis as $im) {
+                $svg = CroquiService::svg($im['talhoes'], 420, 280, $im);
+                if ($svg === '') {
+                    continue;
+                }
+                $rotulo = $prop['nome'];
+                if (count($imoveis) > 1) {
+                    $rotulo .= ' — ' . \App\Controllers\ClientesController::rotuloImovel($im);
+                }
                 $croquis[] = [
-                    'propriedade' => $prop['nome'],
+                    'propriedade' => $rotulo,
                     'svg' => $svg,
-                    'area_gps' => isset($prop['area_gps']) && $prop['area_gps'] !== null ? (float) $prop['area_gps'] : null,
+                    'area_gps' => isset($im['area_gps']) && $im['area_gps'] !== null ? (float) $im['area_gps'] : null,
+                    'area_plantio' => $im['resumo']['area_plantio'] ?? null,
+                    'grupos' => $im['resumo']['grupos'] ?? [],
                 ];
             }
         }

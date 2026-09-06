@@ -21,7 +21,16 @@
           <label class="form-label">Data do plantio *</label>
           <input type="date" name="data_plantio" class="form-control" required max="<?= date('Y-m-d') ?>">
         </div>
-        <div class="col-12">
+        <div class="col-md-6">
+          <label class="form-label">Finalidade</label>
+          <select name="finalidade_id" class="form-select" id="plantioFinalidade">
+            <option value="">—</option>
+            <?php foreach (($finalidades ?? []) as $f): ?>
+              <option value="<?= (int) $f['id'] ?>"><?= e($f['nome']) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="col-md-6">
           <label class="form-label">Cultivar <span class="text-muted small">(opcional)</span></label>
           <input name="cultivar" class="form-control" placeholder="Ex.: 58I60 IPRO">
         </div>
