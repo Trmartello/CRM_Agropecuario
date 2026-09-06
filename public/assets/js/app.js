@@ -853,6 +853,7 @@ const Croqui = {
     { const b = document.getElementById('croquiCarMapaBtn'); if (b) b.classList.remove('active'); }
     document.getElementById('croquiUsarArea').checked = false;
     document.getElementById('croquiModoManual').checked = true;
+    Croqui._refletirModo(); // split button mostra "Manual (toque)" ao abrir
     Croqui._prepararEventos();
     Croqui.vista = null; // recalcula o enquadramento ao abrir
     new bootstrap.Modal('#modalCroqui').show();
@@ -1319,6 +1320,30 @@ const Croqui = {
   trocarModo() {
     if (document.getElementById('croquiModoGps').checked) Croqui._iniciarGPS();
     else Croqui._pararGPS();
+    Croqui._refletirModo();
+  },
+
+  /** Split button do modo: escolhe 'manual' | 'gps' (marca o rádio escondido e aplica). */
+  setModo(modo) {
+    const alvo = document.getElementById(modo === 'gps' ? 'croquiModoGps' : 'croquiModoManual');
+    if (!alvo) return;
+    if (!alvo.checked) { alvo.checked = true; Croqui.trocarModo(); }
+    else Croqui._refletirModo();
+  },
+
+  /** O botão principal do split mostra o modo ATIVO (rótulo, ícone e cor). */
+  _refletirModo() {
+    const btn = document.getElementById('croquiModoBtn');
+    if (!btn) return;
+    const gps = document.getElementById('croquiModoGps').checked;
+    btn.innerHTML = gps
+      ? '<i class="bi bi-geo-alt me-1"></i>Caminhando a divisa'
+      : '<i class="bi bi-hand-index-thumb me-1"></i>Manual (toque)';
+    btn.classList.toggle('btn-primary', gps);
+    btn.classList.toggle('btn-success', !gps);
+    // a seta do split acompanha a cor do principal
+    const seta = btn.nextElementSibling;
+    if (seta) { seta.classList.toggle('btn-primary', gps); seta.classList.toggle('btn-success', !gps); }
   },
 
   _iniciarGPS() {
@@ -1591,6 +1616,14 @@ const Croqui = {
 
     const rotuloOriginal = botao ? botao.innerHTML : '';
     if (botao) botao.disabled = true;
+    // O botão agora vive num menu (fecha ao tocar): o progresso vai também para
+    // um selo ao lado do split button, que fica visível o tempo todo.
+    const selo = document.getElementById('croquiMapaStatus');
+    const mostrarProgresso = (pct) => {
+      if (botao) botao.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>Baixando… ${pct}%`;
+      if (selo) { selo.classList.remove('d-none'); selo.innerHTML = `<span class="spinner-border spinner-border-sm me-1" style="width:.8em;height:.8em"></span>Mapa ${pct}%`; }
+    };
+    mostrarProgresso(0);
     const cache = await caches.open(Croqui.CACHE_MAPA);
     let prontos = 0, falhas = 0, semEspaco = false;
 
@@ -1615,10 +1648,11 @@ const Croqui = {
           falhas++;
         }
       }));
-      if (botao) botao.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>${Math.round((i / urls.length) * 100)}%`;
+      mostrarProgresso(Math.round((i / urls.length) * 100));
     }
 
     if (botao) { botao.disabled = false; botao.innerHTML = rotuloOriginal; }
+    if (selo) { selo.classList.add('d-none'); selo.innerHTML = ''; }
     if (semEspaco) {
       App.alerta(`Acabou o espaço do aparelho para mapas — ${prontos} imagens guardadas antes disso. `
         + 'Aproxime o mapa e baixe uma área menor, ou libere espaço no aparelho.', 'warning');

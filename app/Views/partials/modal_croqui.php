@@ -9,21 +9,32 @@
       <div class="modal-body d-flex flex-column p-2 gap-2">
         <div class="d-flex flex-wrap align-items-center gap-2">
           <select id="croquiTalhao" class="form-select form-select-sm" style="max-width:230px" onchange="Croqui.trocarTalhao()"></select>
+          <?php /* Rádios do MODO ficam escondidos: o GPS (trocarModo) e o toque no mapa leem o estado deles.
+                   Na tela, um split button — o botão principal mostra o modo ATIVO (toque manual por padrão). */ ?>
+          <input type="radio" class="d-none" name="croquiModo" id="croquiModoGps" value="gps" onchange="Croqui.trocarModo()">
+          <input type="radio" class="d-none" name="croquiModo" id="croquiModoManual" value="manual" checked onchange="Croqui.trocarModo()">
           <div class="btn-group btn-group-sm" role="group" title="Como marcar os pontos">
-            <input type="radio" class="btn-check" name="croquiModo" id="croquiModoGps" value="gps" onchange="Croqui.trocarModo()">
-            <label class="btn btn-outline-success" for="croquiModoGps"><i class="bi bi-geo-alt me-1"></i>Caminhar a divisa</label>
-            <input type="radio" class="btn-check" name="croquiModo" id="croquiModoManual" value="manual" checked onchange="Croqui.trocarModo()">
-            <label class="btn btn-outline-success" for="croquiModoManual"><i class="bi bi-hand-index-thumb me-1"></i>Manual (toque)</label>
+            <button type="button" class="btn btn-success" id="croquiModoBtn" onclick="Croqui.setModo('manual')"><i class="bi bi-hand-index-thumb me-1"></i>Manual (toque)</button>
+            <button type="button" class="btn btn-success dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false"><span class="visually-hidden">Trocar o modo</span></button>
+            <ul class="dropdown-menu">
+              <li><button type="button" class="dropdown-item" onclick="Croqui.setModo('manual')"><i class="bi bi-hand-index-thumb me-2"></i>Manual (toque)<div class="small text-muted">Toque nos cantos sobre o satélite</div></button></li>
+              <li><button type="button" class="dropdown-item" onclick="Croqui.setModo('gps')"><i class="bi bi-geo-alt me-2"></i>Caminhar a divisa<div class="small text-muted">Um ponto a cada ~10 m pelo GPS</div></button></li>
+            </ul>
           </div>
           <span id="croquiGpsStatus" class="badge text-bg-light border d-none"></span>
-          <button class="btn btn-sm btn-outline-primary" onclick="Croqui.carAqui()"
-                  title="Identificar o imóvel pela sua posição (GPS) na base do CAR e puxar a divisa oficial"><i class="bi bi-crosshair me-1"></i>CAR aqui</button>
-          <button class="btn btn-sm btn-outline-primary" onclick="Croqui.carDaSede()"
-                  title="Puxar a divisa oficial do CAR pela posição da sede (sem GPS) — para preparar a divisa no escritório, antes de ir à propriedade"><i class="bi bi-house-door me-1"></i>CAR pela sede</button>
-          <button id="croquiCarMapaBtn" class="btn btn-sm btn-outline-warning" onclick="Croqui.toggleCarLayer()"
-                  title="Mostrar os imóveis do CAR no mapa e tocar na área do produtor para adotar a divisa"><i class="bi bi-grid-3x3-gap me-1"></i>CAR no mapa</button>
-          <button id="croquiBaixarMapaBtn" class="btn btn-sm btn-outline-dark" onclick="Croqui.baixarMapa()"
-                  title="Guardar a imagem de satélite desta área no aparelho — no escritório, com wi-fi — para o mapa abrir sem sinal na propriedade"><i class="bi bi-cloud-arrow-down me-1"></i>Baixar mapa</button>
+          <?php /* CAR: "CAR no mapa" é o principal (fica ativo sozinho quando há base na região); os demais no menu. */ ?>
+          <div class="btn-group btn-group-sm" role="group" title="Divisa oficial do CAR">
+            <button type="button" id="croquiCarMapaBtn" class="btn btn-outline-warning" onclick="Croqui.toggleCarLayer()"
+                    title="Mostrar os imóveis do CAR no mapa e tocar na área do produtor para adotar a divisa"><i class="bi bi-grid-3x3-gap me-1"></i>CAR no mapa</button>
+            <button type="button" class="btn btn-outline-warning dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false"><span class="visually-hidden">Mais opções do CAR</span></button>
+            <ul class="dropdown-menu">
+              <li><button type="button" class="dropdown-item" onclick="Croqui.carAqui()"><i class="bi bi-crosshair me-2"></i>CAR aqui<div class="small text-muted">Pela sua posição (GPS), na propriedade</div></button></li>
+              <li><button type="button" class="dropdown-item" onclick="Croqui.carDaSede()"><i class="bi bi-house-door me-2"></i>CAR pela sede<div class="small text-muted">Pela sede cadastrada, no escritório</div></button></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><button type="button" class="dropdown-item" id="croquiBaixarMapaBtn" onclick="Croqui.baixarMapa()"><i class="bi bi-cloud-arrow-down me-2"></i>Baixar mapa<div class="small text-muted">Guardar o satélite desta área para usar sem sinal</div></button></li>
+            </ul>
+          </div>
+          <span id="croquiMapaStatus" class="badge text-bg-light border d-none"></span>
           <div class="ms-auto d-flex flex-wrap gap-2 align-items-center">
             <span class="small" id="croquiArea"></span>
             <button class="btn btn-sm btn-outline-secondary" onclick="Croqui.desfazer()" title="Remover o último ponto"><i class="bi bi-arrow-counterclockwise"></i> Desfazer</button>
