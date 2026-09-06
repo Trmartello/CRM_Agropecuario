@@ -52,7 +52,7 @@ class CroquiService
      * REGRA DE NEGÓCIO: o talhão deve ficar DENTRO da divisa da propriedade.
      * Devolve os índices dos pontos que caem fora (vazio = contido).
      */
-    public static function pontosFora(array $pontos, array $divisa): array
+    public static function pontosFora(array $pontos, array $divisa, float $tolM = self::TOLERANCIA_DIVISA_M): array
     {
         if (count($divisa) < 3) {
             return [];
@@ -67,7 +67,7 @@ class CroquiService
         $fora = [];
         foreach ($pontos as $i => $p) {
             $xy = $proj($p);
-            if (!self::dentro($xy, $poligono) && self::distanciaBordaM($xy, $poligono) > self::TOLERANCIA_DIVISA_M) {
+            if (!self::dentro($xy, $poligono) && self::distanciaBordaM($xy, $poligono) > $tolM) {
                 $fora[] = $i;
             }
         }
@@ -540,19 +540,31 @@ class CroquiService
                 $divisa = $d;
             }
         }
-        // Área de plantio do imóvel (v40): verde tracejado, entre a divisa e os talhões
-        $plantio = null;
-        if ($propriedade && !empty($propriedade['contorno_plantio'])) {
+        // Áreas de plantio do imóvel (v44: várias — Campo, Morro...): verde tracejado,
+        // entre a divisa e os talhões. Legado: contorno_plantio único.
+        $plantios = [];
+        if ($propriedade && !empty($propriedade['areas_plantio']) && is_array($propriedade['areas_plantio'])) {
+            foreach ($propriedade['areas_plantio'] as $a) {
+                $d = json_decode((string) ($a['contorno'] ?? ''), true);
+                if (is_array($d) && count($d) >= 3) {
+                    $plantios[] = ['nome' => (string) ($a['nome'] ?? ''), 'pontos' => $d];
+                }
+            }
+        } elseif ($propriedade && !empty($propriedade['contorno_plantio'])) {
             $d = json_decode((string) $propriedade['contorno_plantio'], true);
             if (is_array($d) && count($d) >= 3) {
-                $plantio = $d;
+                $plantios[] = ['nome' => '', 'pontos' => $d];
             }
         }
+        $plantio = $plantios ? true : null;
         if (!$comContorno && !$divisa && !$plantio) {
             return '';
         }
         // Junta todos os pontos para calcular o enquadramento comum
-        $todos = array_merge($divisa ?: [], $plantio ?: []);
+        $todos = $divisa ?: [];
+        foreach ($plantios as $pl) {
+            $todos = array_merge($todos, $pl['pontos']);
+        }
         $poligonos = [];
         foreach ($comContorno as $t) {
             $pontos = json_decode((string) $t['contorno'], true);
@@ -593,11 +605,17 @@ class CroquiService
             $svg .= '<polygon points="' . implode(' ', array_map(fn ($p) => $p[0] . ',' . $p[1], $telaDiv)) . '"'
                 . ' fill="#8d6e2f" fill-opacity=".07" stroke="#8d6e2f" stroke-width="2.5" stroke-dasharray="8 5"/>';
         }
-        // Área de plantio (v40): o que dá para plantar dentro da divisa
-        if ($plantio) {
-            $telaPl = array_map($paraTela, $plantio);
+        // Áreas de plantio (v44): o que dá para plantar dentro da divisa, com o nome
+        foreach ($plantios as $pl) {
+            $telaPl = array_map($paraTela, $pl['pontos']);
             $svg .= '<polygon points="' . implode(' ', array_map(fn ($p) => $p[0] . ',' . $p[1], $telaPl)) . '"'
                 . ' fill="#7cb342" fill-opacity=".10" stroke="#558b2f" stroke-width="2" stroke-dasharray="4 4"/>';
+            if ($pl['nome'] !== '' && count($plantios) > 1) {
+                $cx = round(array_sum(array_column($telaPl, 0)) / count($telaPl), 1);
+                $cy = round(array_sum(array_column($telaPl, 1)) / count($telaPl), 1);
+                $svg .= '<text x="' . $cx . '" y="' . ($cy - 12) . '" text-anchor="middle" font-size="8" fill="#558b2f">'
+                    . e($pl['nome']) . '</text>';
+            }
         }
         foreach ($poligonos as $i => $pol) {
             $cor = self::CORES[$i % count(self::CORES)];

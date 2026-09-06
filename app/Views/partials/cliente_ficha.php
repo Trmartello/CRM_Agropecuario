@@ -353,7 +353,12 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
         <div class="px-3 pt-2 pb-1 d-flex justify-content-between align-items-start flex-wrap gap-1 bg-light bg-opacity-50">
           <div>
             <i class="bi bi-geo text-success me-1"></i><strong><?= e($rotuloIm) ?></strong>
-            <span class="text-muted small">· total <?= numero($r['area_total'], 1) ?> ha · plantio <?= numero($r['area_plantio'], 1) ?> ha<?= $r['plantio_origem'] === 'total' ? ' (= total)' : '' ?><?= !empty($im['municipio']) ? ' · ' . e($im['municipio']) . (!empty($im['uf']) ? '/' . e($im['uf']) : '') : '' ?></span>
+            <span class="text-muted small">· total <?= numero($r['area_total'], 1) ?> ha · plantio <?= numero($r['area_plantio'], 1) ?> ha<?= $r['plantio_origem'] === 'total' ? ' (= total)' : (count($r['areas'] ?? []) > 1 ? ' (' . count($r['areas']) . ' áreas)' : '') ?><?= !empty($im['municipio']) ? ' · ' . e($im['municipio']) . (!empty($im['uf']) ? '/' . e($im['uf']) : '') : '' ?></span>
+            <?php if (count($r['areas'] ?? []) > 0): ?>
+              <div class="small text-muted"><i class="bi bi-layers me-1 text-success"></i>Áreas de plantio:
+                <?php foreach ($r['areas'] as $ap): ?><span class="badge text-bg-light border text-dark me-1"><?= e($ap['nome']) ?> · <?= numero($ap['area_gps'], 1) ?> ha</span><?php endforeach; ?>
+              </div>
+            <?php endif; ?>
             <?php if (!empty($im['car_numero'])): ?>
               <div class="small text-muted">CAR: <?= e($im['car_numero']) ?>
                 <a href="https://consultapublica.car.gov.br/publico/imoveis/index" target="_blank" rel="noopener" class="ms-1"
@@ -374,7 +379,7 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
             <button class="btn btn-sm btn-outline-success" title="Novo talhão: desenhe a área no croqui deste imóvel (a área é medida, não digitada)"
                     onclick="Croqui.abrir(<?= (int) $im['id'] ?>, { novoTalhao: true })"><i class="bi bi-plus-lg"></i> Talhão</button>
             <?php if (!$im['talhoes']): ?>
-              <button class="btn btn-sm btn-outline-success" title="Toda a área de plantio com uma cultura só: cria um talhão único"
+              <button class="btn btn-sm btn-outline-success" title="Toda a área de plantio com uma cultura só: cria um talhão por área de plantio desenhada"
                       onclick='Clientes.plantarAreaToda(<?= (int) $im['id'] ?>, <?= json_attr($rotuloIm) ?>, <?= json_encode($r['area_plantio']) ?>)'><i class="bi bi-grid-1x2 me-1"></i>Área toda</button>
             <?php endif; ?>
           </div>
@@ -420,7 +425,7 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
             <?php if ($croquiSvg !== ''): ?><div class="text-center"><?= $croquiSvg ?></div><?php endif; ?>
             <div class="small text-muted mt-1">
               <?php if (!empty($im['area_gps'])): ?>Divisa medida: <strong><?= numero((float) $im['area_gps'], 1) ?> ha</strong> · <?php endif; ?>
-              <?php if (!empty($im['area_plantio_gps'])): ?>Área de plantio desenhada: <strong><?= numero((float) $im['area_plantio_gps'], 1) ?> ha</strong> · <?php endif; ?>
+              <?php if ($r['plantio_origem'] === 'plantio' && count($r['areas'] ?? []) > 0): ?>Área de plantio desenhada: <strong><?= numero($r['area_plantio'], 1) ?> ha</strong><?= count($r['areas']) > 1 ? ' (' . count($r['areas']) . ' áreas)' : '' ?> · <?php endif; ?>
               Talhões: <strong><?= numero($r['soma'], 1) ?> ha</strong> de <strong><?= numero($r['area_plantio'], 1) ?> ha</strong> de plantio
             </div>
             <?= $barraPlantio($r) ?>

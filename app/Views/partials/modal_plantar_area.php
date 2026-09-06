@@ -9,8 +9,8 @@
       <div class="modal-body row g-3">
         <input type="hidden" name="imovel_id" value="0">
         <div class="col-12 small text-muted">
-          Cria <strong>um único talhão</strong> com o mesmo contorno e a mesma área da <strong>área de plantio</strong> do imóvel
-          (<span id="plantarAreaHa">—</span> ha). Use quando toda a área de plantio recebe uma cultura só.
+          Cria <strong>um talhão por área de plantio</strong> desenhada no croqui, com o mesmo contorno e a mesma área
+          (total <span id="plantarAreaHa">—</span> ha; com várias áreas, cada talhão recebe o nome da área). Use quando toda a área de plantio recebe uma cultura só.
           Para dividir (ex.: metade milho, metade pastagem), cadastre talhões e desenhe cada um no croqui.
         </div>
         <div class="col-md-6">
