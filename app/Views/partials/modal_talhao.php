@@ -50,7 +50,10 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-outline-danger me-auto d-none" id="btnExcluirTalhao" onclick="Clientes.excluirTalhao()"><i class="bi bi-trash me-1"></i>Excluir</button>
+        <button type="button" class="btn btn-outline-danger d-none" id="btnExcluirTalhao" onclick="Clientes.excluirTalhao()"><i class="bi bi-trash me-1"></i>Excluir</button>
+        <?php /* Cadastrou como talhão o que era a área de plantio: o desenho vira a área de plantio do imóvel */ ?>
+        <button type="button" class="btn btn-outline-success me-auto d-none" id="btnTalhaoParaPlantio" onclick="Clientes.talhaoParaPlantio()"
+                title="Este desenho é a área de plantio do imóvel, não um talhão"><i class="bi bi-arrow-right-circle me-1"></i>Virar área de plantio</button>
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
         <button class="btn btn-success"><i class="bi bi-check-lg me-1"></i>Salvar</button>
       </div>

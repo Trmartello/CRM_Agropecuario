@@ -37,6 +37,14 @@
           <span id="croquiMapaStatus" class="badge text-bg-light border d-none"></span>
           <div class="ms-auto d-flex flex-wrap gap-2 align-items-center">
             <span class="small" id="croquiArea"></span>
+            <?php /* Alvo = talhão: o desenho pode virar a ÁREA DE PLANTIO (cadastro errado). Alvo = área de plantio: copiar o desenho de um talhão. */ ?>
+            <button type="button" class="btn btn-sm btn-outline-success d-none" id="croquiVirarPlantioBtn" onclick="Croqui.talhaoParaPlantio()"
+                    title="Este desenho é a área de plantio do imóvel, não um talhão"><i class="bi bi-arrow-right-circle"></i> Virar área de plantio</button>
+            <div class="btn-group btn-group-sm d-none" id="croquiCopiarTalhaoWrap">
+              <button type="button" class="btn btn-outline-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"
+                      title="Carregar o desenho de um talhão como área de plantio (ajuste e salve)"><i class="bi bi-copy"></i> Copiar de talhão</button>
+              <ul class="dropdown-menu" id="croquiCopiarTalhaoMenu"></ul>
+            </div>
             <button class="btn btn-sm btn-outline-secondary" onclick="Croqui.desfazer()" title="Remover o último ponto"><i class="bi bi-arrow-counterclockwise"></i> Desfazer</button>
             <button class="btn btn-sm btn-outline-danger" onclick="Croqui.limpar()" title="Apagar o contorno deste talhão"><i class="bi bi-trash"></i> Limpar</button>
             <button class="btn btn-sm btn-success" onclick="Croqui.salvar()"><i class="bi bi-check-lg me-1"></i>Salvar croqui</button>
