@@ -22,7 +22,7 @@ DROP TABLE IF EXISTS nfe_captura_log, nfe_item, nfe_documento, map_ncm_item, pro
   calendario_agronomico, culturas_referencia, planos_safra,
   metas_cap, realizado_cap, garantias, potencial_compra, titulos_financeiros,
   compras, produtos, familias_produto, safras, concorrencia_registros,
-  visita_fotos, visitas, modelos_recomendacao, talhoes, propriedades,
+  visita_fotos, visitas, modelos_recomendacao, talhoes, imoveis, finalidades, propriedades,
   cliente_contatos, clientes, culturas, municipios, filiais, usuarios;
 SET FOREIGN_KEY_CHECKS = 1;
 
@@ -162,16 +162,50 @@ CREATE TABLE car_imoveis (
   INDEX idx_car_bbox (min_lat, max_lat, min_lng, max_lng)
 ) ENGINE=InnoDB;
 
+-- Imóvel rural = 1 inscrição no CAR (schema v40). Uma propriedade pode ter vários.
+-- Cada imóvel tem a própria divisa (área total), a própria ÁREA DE PLANTIO e os
+-- próprios talhões. propriedades.car_numero/contorno/area_gps são legado.
+-- Spec: docs/specs/propriedade-imoveis-plantio.md
+CREATE TABLE imoveis (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  propriedade_id INT NOT NULL,
+  nome VARCHAR(120) NULL COMMENT 'apelido do imóvel (ex.: Matrícula 1, Área da mãe)',
+  car_numero VARCHAR(60) NULL COMMENT 'número de inscrição no CAR (SICAR)',
+  municipio VARCHAR(120) NULL,
+  area_ha DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT 'área total cadastrada (CAR)',
+  contorno TEXT NULL COMMENT 'divisa oficial/desenhada [[lat,lng],...]',
+  area_gps DECIMAL(10,2) NULL COMMENT 'área total (ha) medida pela divisa',
+  area_plantio_ha DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT 'área disponível para plantio (digitada)',
+  contorno_plantio TEXT NULL COMMENT 'área de plantio desenhada no croqui [[lat,lng],...]',
+  area_plantio_gps DECIMAL(10,2) NULL COMMENT 'área de plantio (ha) medida pelo contorno',
+  ordem INT NOT NULL DEFAULT 0,
+  criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_imoveis_prop (propriedade_id),
+  FOREIGN KEY (propriedade_id) REFERENCES propriedades(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Finalidade da cultura no talhão/plantio (Grão, Silagem, Pastagem...). Editável em Configurações.
+CREATE TABLE finalidades (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  nome VARCHAR(60) NOT NULL UNIQUE,
+  ativo TINYINT(1) NOT NULL DEFAULT 1,
+  ordem INT NOT NULL DEFAULT 0
+) ENGINE=InnoDB;
+
 CREATE TABLE talhoes (
   id INT AUTO_INCREMENT PRIMARY KEY,
   propriedade_id INT NOT NULL,
+  imovel_id INT NULL COMMENT 'imóvel (CAR) do talhão — mesma propriedade (v40)',
   nome VARCHAR(120) NOT NULL,
   area_ha DECIMAL(10,2) NOT NULL DEFAULT 0,
   cultura_id INT,
+  finalidade_id INT NULL COMMENT 'uso atual: grão, silagem, pastagem... (v40)',
   contorno TEXT NULL COMMENT 'croqui: vértices [[lat,lng],...] marcados no campo (Fase 6A)',
   area_gps DECIMAL(10,2) NULL COMMENT 'área (ha) calculada pelo contorno GPS',
   FOREIGN KEY (propriedade_id) REFERENCES propriedades(id) ON DELETE CASCADE,
-  FOREIGN KEY (cultura_id) REFERENCES culturas(id)
+  FOREIGN KEY (cultura_id) REFERENCES culturas(id),
+  CONSTRAINT fk_talhoes_imovel FOREIGN KEY (imovel_id) REFERENCES imoveis(id) ON DELETE SET NULL,
+  CONSTRAINT fk_talhoes_finalidade FOREIGN KEY (finalidade_id) REFERENCES finalidades(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 -- ============================================================================
@@ -695,6 +729,7 @@ CREATE TABLE plantios (
   id INT AUTO_INCREMENT PRIMARY KEY,
   talhao_id INT NOT NULL,
   cultura_id INT NOT NULL,
+  finalidade_id INT NULL COMMENT 'finalidade desta safra: grão, silagem... (v40, histórico)',
   safra_id INT,
   data_plantio DATE NOT NULL,
   cultivar VARCHAR(120),
@@ -704,7 +739,8 @@ CREATE TABLE plantios (
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (talhao_id) REFERENCES talhoes(id) ON DELETE CASCADE,
   FOREIGN KEY (cultura_id) REFERENCES culturas(id),
-  FOREIGN KEY (safra_id) REFERENCES safras(id)
+  FOREIGN KEY (safra_id) REFERENCES safras(id),
+  CONSTRAINT fk_plantios_finalidade FOREIGN KEY (finalidade_id) REFERENCES finalidades(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 -- Estágios fenológicos de referência por cultura (DAP = dias após o plantio)
@@ -1607,6 +1643,13 @@ INSERT INTO reclamacoes (cliente_id, usuario_id, produto_id, tipo, lote, nota_fi
 (1,4,1,'Sementes','L2026-0455','NF-88231',1,'Baixa germinação','Germinação abaixo de 70% em duas glebas.','Em análise'),
 (6,5,7,'Defensivos','FG-7781','NF-88410',1,'Fitotoxidez','Sintoma de fitotoxidez após aplicação de fungicida.','Registrada');
 
+-- v40: finalidades de cultura + 1 imóvel (CAR) por propriedade seed + talhões vinculados
+INSERT INTO finalidades (nome, ordem) VALUES
+('Grão', 1), ('Silagem', 2), ('Pastagem', 3), ('Feno/Pré-secado', 4), ('Semente', 5);
+INSERT INTO imoveis (propriedade_id, car_numero, municipio, area_ha, contorno, area_gps)
+SELECT p.id, p.car_numero, p.municipio, p.area_ha, p.contorno, p.area_gps FROM propriedades p;
+UPDATE talhoes t JOIN imoveis i ON i.propriedade_id = t.propriedade_id SET t.imovel_id = i.id;
+
 -- schema_versao: instalações novas já nascem na versão atual (não re-executam migrações)
 -- ---------------------------------------------------------------------------
 -- FASE 4 — vínculo do Produtor ao cliente, agenda e notificações de exemplo
@@ -1635,7 +1678,7 @@ CREATE TABLE sync_processados (
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','39')
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','40')
   ON DUPLICATE KEY UPDATE valor = '39';
 
 -- ============================================================================
