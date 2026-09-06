@@ -283,7 +283,7 @@ class ClientesController
         $primeiroId = (int) Database::valor('SELECT MIN(id) FROM imoveis WHERE propriedade_id = ?', [$propId]);
         // Talhão legado (sem imóvel) aparece no PRIMEIRO imóvel, para não sumir do croqui
         $talhoes = Database::todos(
-            'SELECT t.id, t.nome, t.area_ha, t.area_gps, t.contorno, t.imovel_id, cu.nome AS cultura, f.nome AS finalidade
+            'SELECT t.id, t.nome, t.area_ha, t.area_gps, t.contorno, t.imovel_id, t.area_plantio_id, cu.nome AS cultura, f.nome AS finalidade
                FROM talhoes t
                LEFT JOIN culturas cu ON cu.id = t.cultura_id
                LEFT JOIN finalidades f ON f.id = t.finalidade_id
@@ -367,7 +367,7 @@ class ClientesController
 
         if ($tipo === 'talhao') {
             $alvoId = (int) ($_POST['talhao_id'] ?? 0);
-            $talhao = Database::um('SELECT t.id, t.propriedade_id, t.imovel_id FROM talhoes t WHERE t.id = ?', [$alvoId]);
+            $talhao = Database::um('SELECT t.id, t.propriedade_id, t.imovel_id, t.area_plantio_id FROM talhoes t WHERE t.id = ?', [$alvoId]);
             if (!$talhao) {
                 json_erro('Talhão não encontrado.', 404);
             }
@@ -408,6 +408,11 @@ class ClientesController
         if ($contornoJson === '' || $contornoJson === '[]') {
             if ($tipo === 'plantio') {
                 if ($alvoId > 0) {
+                    $hospedados = Database::todos('SELECT nome FROM talhoes WHERE area_plantio_id = ?', [$alvoId]);
+                    if ($hospedados) {
+                        json_erro('Esta área de plantio tem talhões dentro (' . implode(', ', array_column($hospedados, 'nome'))
+                            . '). Exclua ou mova os talhões antes de apagar a área.');
+                    }
                     Database::executar('DELETE FROM areas_plantio WHERE id = ? AND imovel_id = ?', [$alvoId, $imovelId]);
                     auditar('excluir', 'croqui', $alvoId, 'área de plantio removida · imóvel #' . $imovelId);
                 }
@@ -455,32 +460,43 @@ class ClientesController
             if (!$divisa) {
                 json_erro('Este imóvel ainda não tem a divisa do CAR. Traga o CAR no croqui (CAR pela sede, CAR no mapa ou o arquivo do SICAR) antes de desenhar a área de plantio ou os talhões.');
             }
-            $pontos = \App\Services\CroquiService::prenderNaDivisa($pontos, $divisa);
-            // Margeia a divisa: reta entre dois pontos da borda que sairia do CAR vira o caminho da borda
-            $pontos = \App\Services\CroquiService::margearDivisa($pontos, $divisa);
+            $hostTalhao = null;
             if ($tipo === 'talhao') {
-                // REGRA (teste de campo): talhão NÃO cobre outro talhão. Ponto dentro de
-                // um vizinho é puxado para a borda dele; se ainda cruzar, recusa.
-                $pontos = $this->semSobreporVizinhos($pontos, $imovelId, $alvoId);
-            } elseif ($tipo === 'plantio') {
+                // v45 — fluxo guiado: o talhão fica DENTRO de uma ÁREA DE PLANTIO (a
+                // hospedeira é o limite: prende, margeia, não sobrepõe, nenhuma linha fora)
+                [$pontos, $hostTalhao] = $this->talhaoDentroDaAreaPlantio($pontos, $imovelId, $alvoId, $talhao['area_plantio_id'] ?? null);
+            } else {
+                $pontos = \App\Services\CroquiService::prenderNaDivisa($pontos, $divisa);
+                // Margeia a divisa: reta entre dois pontos da borda que sairia do CAR vira o caminho da borda
+                $pontos = \App\Services\CroquiService::margearDivisa($pontos, $divisa);
                 // v44: uma área de plantio NÃO cobre outra (mesma regra dos talhões)
                 $pontos = $this->semSobreporAreasPlantio($pontos, $imovelId, $alvoId);
-            }
-            $this->exigirLinhasDentro($pontos, $divisa);
-            if ($tipo === 'plantio') {
-                // Talhão fora de TODAS as áreas de plantio é AVISO, não bloqueio (§3 da spec)
-                $areas = [];
+                $this->exigirLinhasDentro($pontos, $divisa);
+                // v45: a área de plantio NÃO deixa para fora os talhões hospedados nela (bloqueio);
+                // talhão legado (sem área) fora de todas as áreas segue como aviso
+                $foraDaArea = [];
+                $areasOutras = [];
                 foreach (\App\Services\AreaPlantioService::areasDoImovel($imovelId) as $a) {
                     if ((int) $a['id'] !== $alvoId) {
-                        $areas[] = json_decode((string) $a['contorno'], true) ?: [];
+                        $areasOutras[] = json_decode((string) $a['contorno'], true) ?: [];
                     }
                 }
-                $areas[] = $pontos;
                 foreach ($this->talhoesDoImovel($imovelId, true) as $t) {
                     $pts = json_decode((string) $t['contorno'], true) ?: [];
-                    if ($pts && \App\Services\AreaPlantioService::pontosForaDasAreas($pts, $areas)) {
+                    if (!$pts) {
+                        continue;
+                    }
+                    if ($alvoId > 0 && (int) ($t['area_plantio_id'] ?? 0) === $alvoId) {
+                        if (\App\Services\CroquiService::pontosFora($pts, $pontos, \App\Services\CroquiService::TOLERANCIA_SOBREPOSICAO_M)) {
+                            $foraDaArea[] = $t['nome'];
+                        }
+                    } elseif (\App\Services\AreaPlantioService::pontosForaDasAreas($pts, array_merge($areasOutras, [$pontos]))) {
                         $avisos[] = $t['nome'];
                     }
+                }
+                if ($foraDaArea) {
+                    json_erro('A área de plantio deixaria para fora o(s) talhão(ões) ' . implode(', ', $foraDaArea)
+                        . '. Os talhões ficam dentro da área de plantio — amplie a área ou ajuste os talhões antes.');
                 }
             }
         }
@@ -511,6 +527,9 @@ class ClientesController
                 "UPDATE {$tabela} SET {$colContorno} = ?, {$colArea} = ? WHERE id = ?",
                 [json_encode($pontos), $areaGps, $alvoId]
             );
+            if ($tipo === 'talhao' && $hostTalhao !== null) {
+                Database::executar('UPDATE talhoes SET area_plantio_id = ? WHERE id = ?', [(int) $hostTalhao['id'], $alvoId]);
+            }
             // Opcional: assumir a área medida como a área oficial (total ou do talhão)
             if ($colOficial !== null && (int) ($_POST['usar_area'] ?? 0) === 1 && $areaGps > 0) {
                 Database::executar("UPDATE {$tabela} SET {$colOficial} = ? WHERE id = ?", [$areaGps, $alvoId]);
@@ -921,7 +940,7 @@ class ClientesController
         $propId = (int) Database::valor('SELECT propriedade_id FROM imoveis WHERE id = ?', [$imovelId]);
         $primeiroId = (int) Database::valor('SELECT MIN(id) FROM imoveis WHERE propriedade_id = ?', [$propId]);
         return Database::todos(
-            'SELECT id, nome, contorno, area_gps, area_ha FROM talhoes
+            'SELECT id, nome, contorno, area_gps, area_ha, area_plantio_id FROM talhoes
               WHERE propriedade_id = ? AND (imovel_id = ? OR (imovel_id IS NULL AND ? = ?))'
             . ($soComContorno ? ' AND contorno IS NOT NULL' : '') . ' ORDER BY nome',
             [$propId, $imovelId, $imovelId, $primeiroId]
@@ -1015,14 +1034,38 @@ class ClientesController
      * pontos não basta em divisa côncava; se alguma aresta cruzar ou passar por
      * fora, recusa apontando quais.
      */
-    private function exigirLinhasDentro(array $pontos, array $divisa): void
+    private function exigirLinhasDentro(array $pontos, array $divisa, string $rotulo = 'área do CAR'): void
     {
         $fora = \App\Services\CroquiService::linhasFora($pontos, $divisa);
         if ($fora) {
             $nums = array_map(fn ($i) => ($i + 1) . '→' . (($i + 1) % count($pontos) + 1), $fora);
-            json_erro('Linha fora da área do CAR (entre os pontos ' . implode(', ', $nums)
-                . '). Nenhuma linha pode sair da divisa — acrescente um ponto na linha vermelha e puxe-o para dentro.');
+            json_erro("Linha fora da {$rotulo} (entre os pontos " . implode(', ', $nums)
+                . '). Nenhuma linha pode sair do limite — acrescente um ponto na linha vermelha e puxe-o para dentro.');
         }
+    }
+
+    /**
+     * v45 — REGRA (fluxo guiado): o TALHÃO é desenhado DENTRO de uma ÁREA DE PLANTIO
+     * (não só dentro da divisa). Acha a área hospedeira, prende os pontos nela,
+     * margeia a borda dela, não sobrepõe outros talhões e nenhuma linha sai dela.
+     * Devolve [pontos corrigidos, área hospedeira].
+     */
+    private function talhaoDentroDaAreaPlantio(array $pontos, int $imovelId, int $talhaoId, ?int $areaAtualId): array
+    {
+        $areas = \App\Services\AreaPlantioService::areasDoImovel($imovelId);
+        if (!$areas) {
+            json_erro('Marque primeiro as áreas de plantio deste imóvel (etapa 2 do croqui). O talhão é desenhado dentro de uma área de plantio.');
+        }
+        $host = \App\Services\AreaPlantioService::areaHospedeira($pontos, $areas, $areaAtualId);
+        if ($host === null) {
+            json_erro('O talhão precisa ficar dentro de uma área de plantio — desenhe dentro de uma das áreas verdes.');
+        }
+        $limite = json_decode((string) $host['contorno'], true) ?: [];
+        $pontos = \App\Services\CroquiService::prenderNaDivisa($pontos, $limite);
+        $pontos = \App\Services\CroquiService::margearDivisa($pontos, $limite);
+        $pontos = $this->semSobreporVizinhos($pontos, $imovelId, $talhaoId);
+        $this->exigirLinhasDentro($pontos, $limite, 'área de plantio "' . $host['nome'] . '"');
+        return [$pontos, $host];
     }
 
     /** Nome de exibição do imóvel: apelido, senão nº do CAR, senão "Imóvel". */
@@ -1429,7 +1472,7 @@ class ClientesController
         $areas = \App\Services\AreaPlantioService::areasDoImovel($imovelId);
         $lotes = [];
         foreach ($areas as $a) {
-            $lotes[] = ['nome' => count($areas) > 1 ? (string) $a['nome'] : $nome, 'area' => (float) $a['area_gps'], 'contorno' => $a['contorno']];
+            $lotes[] = ['nome' => count($areas) > 1 ? (string) $a['nome'] : $nome, 'area' => (float) $a['area_gps'], 'contorno' => $a['contorno'], 'area_id' => (int) $a['id']];
         }
         if (!$lotes) {
             $areaPlantio = \App\Services\AreaPlantioService::areaValida($imovel, 'area_plantio_gps', 'area_plantio_ha');
@@ -1442,16 +1485,16 @@ class ClientesController
             if ($areaPlantio <= 0 && !$contorno) {
                 json_erro('Desenhe a área de plantio no croqui (ou traga a divisa do CAR) antes de plantar a área toda.');
             }
-            $lotes[] = ['nome' => $nome, 'area' => $areaPlantio, 'contorno' => $contorno];
+            $lotes[] = ['nome' => $nome, 'area' => $areaPlantio, 'contorno' => $contorno, 'area_id' => null];
         }
         $ids = [];
         $total = 0.0;
         foreach ($lotes as $l) {
             Database::executar(
-                'INSERT INTO talhoes (propriedade_id, imovel_id, nome, area_ha, cultura_id, finalidade_id, contorno, area_gps)
-                 VALUES (?,?,?,?,?,?,?,?)',
+                'INSERT INTO talhoes (propriedade_id, imovel_id, nome, area_ha, cultura_id, finalidade_id, contorno, area_gps, area_plantio_id)
+                 VALUES (?,?,?,?,?,?,?,?,?)',
                 [(int) $imovel['propriedade_id'], $imovelId, mb_substr($l['nome'], 0, 120), round($l['area'], 2),
-                    $culturaId, $finalidadeId, $l['contorno'], $l['contorno'] ? round($l['area'], 2) : null]
+                    $culturaId, $finalidadeId, $l['contorno'], $l['contorno'] ? round($l['area'], 2) : null, $l['area_id']]
             );
             $ids[] = Database::ultimoId();
             $total += $l['area'];
@@ -1511,11 +1554,9 @@ class ClientesController
             if (!$divisa) {
                 json_erro('Este imóvel ainda não tem a divisa do CAR. Traga o CAR no croqui antes de desenhar talhões.');
             }
-            $pontos = \App\Services\CroquiService::prenderNaDivisa($pontos, $divisa);
-            // Margeia a divisa: reta entre dois pontos da borda que sairia do CAR vira o caminho da borda
-            $pontos = \App\Services\CroquiService::margearDivisa($pontos, $divisa);
-            $pontos = $this->semSobreporVizinhos($pontos, $imovelId, $id);
-            $this->exigirLinhasDentro($pontos, $divisa);
+            // v45 — fluxo guiado: o talhão fica DENTRO de uma área de plantio (limite real)
+            $areaAtual = $id > 0 ? Database::valor('SELECT area_plantio_id FROM talhoes WHERE id = ?', [$id]) : null;
+            [$pontos, $hostTalhao] = $this->talhaoDentroDaAreaPlantio($pontos, $imovelId, $id, $areaAtual !== null ? (int) $areaAtual : null);
             $areaGps = \App\Services\CroquiService::areaHa($pontos);
         }
         $areaHa = $areaGps ?? (float) str_replace(',', '.', $_POST['area_ha'] ?? 0);
@@ -1532,13 +1573,15 @@ class ClientesController
                 array_merge($dados, [$id, $propriedadeId])
             );
             if ($pontos !== null) {
-                Database::executar('UPDATE talhoes SET contorno=?, area_gps=? WHERE id=?', [json_encode($pontos), $areaGps, $id]);
+                Database::executar('UPDATE talhoes SET contorno=?, area_gps=?, area_plantio_id=? WHERE id=?',
+                    [json_encode($pontos), $areaGps, (int) $hostTalhao['id'], $id]);
             }
         } else {
             Database::executar(
-                'INSERT INTO talhoes (nome, area_ha, cultura_id, finalidade_id, imovel_id, propriedade_id, contorno, area_gps)
-                 VALUES (?,?,?,?,?,?,?,?)',
-                array_merge($dados, [$propriedadeId, $pontos !== null ? json_encode($pontos) : null, $areaGps])
+                'INSERT INTO talhoes (nome, area_ha, cultura_id, finalidade_id, imovel_id, propriedade_id, contorno, area_gps, area_plantio_id)
+                 VALUES (?,?,?,?,?,?,?,?,?)',
+                array_merge($dados, [$propriedadeId, $pontos !== null ? json_encode($pontos) : null, $areaGps,
+                    $pontos !== null ? (int) $hostTalhao['id'] : null])
             );
             $id = Database::ultimoId();
         }
@@ -1547,7 +1590,7 @@ class ClientesController
         }
         // Devolve o talhão pronto para o croqui (com cultura/finalidade por nome)
         $talhao = Database::um(
-            'SELECT t.id, t.nome, t.area_ha, t.area_gps, t.contorno, t.imovel_id, t.cultura_id, t.finalidade_id,
+            'SELECT t.id, t.nome, t.area_ha, t.area_gps, t.contorno, t.imovel_id, t.area_plantio_id, t.cultura_id, t.finalidade_id,
                     cu.nome AS cultura, f.nome AS finalidade
                FROM talhoes t
                LEFT JOIN culturas cu ON cu.id = t.cultura_id

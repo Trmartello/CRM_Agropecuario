@@ -214,6 +214,7 @@ CREATE TABLE talhoes (
   id INT AUTO_INCREMENT PRIMARY KEY,
   propriedade_id INT NOT NULL,
   imovel_id INT NULL COMMENT 'imóvel (CAR) do talhão — mesma propriedade (v40)',
+  area_plantio_id INT NULL COMMENT 'área de plantio que hospeda o talhão (v45) — o talhão fica dentro dela',
   nome VARCHAR(120) NOT NULL,
   area_ha DECIMAL(10,2) NOT NULL DEFAULT 0,
   cultura_id INT,
@@ -223,6 +224,7 @@ CREATE TABLE talhoes (
   FOREIGN KEY (propriedade_id) REFERENCES propriedades(id) ON DELETE CASCADE,
   FOREIGN KEY (cultura_id) REFERENCES culturas(id),
   CONSTRAINT fk_talhoes_imovel FOREIGN KEY (imovel_id) REFERENCES imoveis(id) ON DELETE SET NULL,
+  CONSTRAINT fk_talhoes_area_plantio FOREIGN KEY (area_plantio_id) REFERENCES areas_plantio(id) ON DELETE SET NULL,
   CONSTRAINT fk_talhoes_finalidade FOREIGN KEY (finalidade_id) REFERENCES finalidades(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
@@ -1705,8 +1707,8 @@ UPDATE propriedades p SET area_ha = (
   SELECT COALESCE(SUM(CASE WHEN i.area_gps IS NOT NULL AND i.area_gps > 0 THEN i.area_gps ELSE i.area_ha END), 0)
     FROM imoveis i WHERE i.propriedade_id = p.id)
  WHERE EXISTS (SELECT 1 FROM imoveis i2 WHERE i2.propriedade_id = p.id AND COALESCE(i2.area_gps, i2.area_ha) > 0);
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','44')
-  ON DUPLICATE KEY UPDATE valor = '44';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','45')
+  ON DUPLICATE KEY UPDATE valor = '45';
 
 -- ============================================================================
 -- SEED — Mapa Territorial: 5 imóveis fictícios (Concórdia/SC), vínculos e talhões

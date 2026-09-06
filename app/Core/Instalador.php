@@ -1098,6 +1098,35 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '44'"
             );
         }
+        if ($versao < 45) {
+            // Fluxo guiado (Divisa → Áreas de plantio → Talhões): o talhão pertence a UMA
+            // área de plantio (hospedeira). Coluna + backfill pela geometria (a área que
+            // contém mais vértices do talhão). Talhão sem desenho/sem área fica NULL (legado).
+            if (!self::temColuna('talhoes', 'area_plantio_id')) {
+                Database::executar('ALTER TABLE talhoes ADD COLUMN area_plantio_id INT NULL AFTER imovel_id');
+                Database::executar('ALTER TABLE talhoes ADD CONSTRAINT fk_talhoes_area_plantio FOREIGN KEY (area_plantio_id) REFERENCES areas_plantio(id) ON DELETE SET NULL');
+            }
+            $talhoes = Database::todos(
+                'SELECT id, imovel_id, contorno FROM talhoes WHERE area_plantio_id IS NULL AND contorno IS NOT NULL AND imovel_id IS NOT NULL'
+            );
+            $porImovel = [];
+            foreach ($talhoes as $t) {
+                $pts = json_decode((string) $t['contorno'], true);
+                if (!is_array($pts) || count($pts) < 3) {
+                    continue;
+                }
+                $imId = (int) $t['imovel_id'];
+                $porImovel[$imId] ??= \App\Services\AreaPlantioService::areasDoImovel($imId);
+                $host = \App\Services\AreaPlantioService::areaHospedeira($pts, $porImovel[$imId]);
+                if ($host !== null) {
+                    Database::executar('UPDATE talhoes SET area_plantio_id = ? WHERE id = ?', [(int) $host['id'], (int) $t['id']]);
+                }
+            }
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '45')
+                 ON DUPLICATE KEY UPDATE valor = '45'"
+            );
+        }
     }
 
     /** Apaga cópias idênticas de talhão (mantém a de menor id), poupando as que têm histórico. */

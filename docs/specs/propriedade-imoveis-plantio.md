@@ -2,7 +2,7 @@
 
 **Projeto:** CRM Agropecuário Copérdia
 **Local no repo:** `docs/specs/propriedade-imoveis-plantio.md`
-**Status:** aprovado pelo dono do produto (06/09/2026) · schema v40
+**Status:** aprovado pelo dono do produto (06/09/2026) · schema v40 → v45 (várias áreas de plantio, talhão preso à área, croqui em 3 etapas)
 **Decisões do usuário:** vários CARs por propriedade · finalidades editáveis em Configurações
 
 ---
@@ -18,9 +18,9 @@ Produtor (clientes)
  └─ Propriedade (propriedades)            "Morais 2", "Fazenda São José"
      └─ Imóvel rural / CAR (imoveis)      1 registro por inscrição no SICAR
          ├─ divisa oficial (contorno)     área total do CAR
-         ├─ área de plantio (contorno_plantio)   o que dá para plantar (fora mata/APP/reserva/sede)
-         └─ Talhões (talhoes.imovel_id)   cada um com cultura + finalidade, desenhado no croqui
-             └─ Plantios por safra (plantios.finalidade_id guarda o histórico)
+         └─ Áreas de plantio (areas_plantio)   o que dá para plantar (fora mata/APP/reserva/sede), N por imóvel
+             └─ Talhões (talhoes.imovel_id + area_plantio_id)   dentro de UMA área, cultura + finalidade, desenhado no croqui
+                 └─ Plantios por safra (plantios.finalidade_id guarda o histórico)
 ```
 
 - Uma propriedade pode ter **N imóveis (CARs)**. Cada imóvel tem a própria divisa, a própria área de plantio e os próprios talhões.
@@ -31,7 +31,9 @@ Produtor (clientes)
 
 - **Várias por imóvel** (pedido do teste de campo, 06/09/2026): tabela `areas_plantio` (`imovel_id`, `nome`, `contorno`, `area_gps`, `ordem`) — cada área é um polígono com nome (Campo, Morro…) desenhado no croqui (alvo **"Nova área de plantio"**; cada área gravada vira um alvo próprio no seletor; verde tracejado com o nome quando há mais de uma). `imoveis.contorno_plantio`/`area_plantio_gps` são **legado** (a migração v44 copia a área única para a 1ª linha e zera as colunas); `area_plantio_ha` digitada só vale para imóvel sem área desenhada.
 - Regras: cada área fica **dentro da divisa** (ponto fora é preso na borda; nenhuma linha fora do CAR) e **uma área não cobre outra** (mesma regra dos talhões: ponto dentro da vizinha é puxado para a borda; cruzamento recusa; desenho igual recusa). A divisa nova não deixa nenhuma área para fora (bloqueio).
-- **Área de plantio do imóvel = soma das áreas** (`AreaPlantioService`). Talhão fora de **todas** as áreas é **aviso**, não bloqueio (tolerância curta, 3 m). Talhão fora da **divisa** continua bloqueado.
+- **Área de plantio do imóvel = soma das áreas** (`AreaPlantioService`).
+- **Talhão dentro de UMA área de plantio (v45 — bloqueio, pedido do teste de campo 06/09/2026)**: `talhoes.area_plantio_id` (FK `areas_plantio`, `ON DELETE SET NULL`) guarda a área hospedeira. O limite do talhão passa a ser a **área de plantio**, não a divisa: ponto fora da área é preso na borda dela e a reta é margeada pela própria borda (`prenderNaDivisa`/`margearDivisa` com o contorno da área), linha fora da área é recusada (`exigirLinhasDentro` com rótulo da área), talhão sem nenhuma área que contenha seus vértices é **recusado** ("desenhe dentro de uma das áreas verdes"), e imóvel sem áreas de plantio recusa talhão ("marque primeiro as áreas de plantio — etapa 2"). A área hospedeira é a que contém mais vértices (`AreaPlantioService::areaHospedeira`, empate → a área atual do talhão). Uma área de plantio **não pode encolher deixando talhão hospedado para fora** nem ser excluída com talhões dentro (bloqueio); talhões legados sem vínculo fora de todas as áreas viram só aviso e aparecem na ficha em "Talhões fora das áreas de plantio (ajuste no croqui)". A migração v45 vincula os talhões existentes pela área que os contém.
+- **Croqui guiado em 3 etapas (v45)**: 1 **Divisa** (traz o CAR e ajusta os pontos; único alvo, grupo do CAR visível) → 2 **Áreas de plantio** (seletor só com as áreas + "Nova área"; limite = divisa SALVA) → 3 **Talhões** (seletor só com talhões + "Novo talhão"; limite = área hospedeira, desenhada em laranja como limite, divisa apagada ao fundo). A etapa 2 só abre com divisa salva e a 3 só com ao menos uma área; o croqui abre na primeira etapa pendente e a ficha mostra "Próximo passo (n/3)" por imóvel. Os talhões na ficha ficam agrupados pela área de plantio.
 - Renomear pelo croqui ("Renomear"); excluir = Limpar + Salvar na área. **Talhão cadastrado errado → "Virar área de plantio"** cria uma área nova com o nome do talhão (não substitui as outras); **"Copiar de talhão"** carrega o desenho de um talhão numa área nova para ajustar.
 - **"Plantar a área toda"**: cria **um talhão por área de plantio** (com o nome da área quando há mais de uma), na cultura/finalidade escolhidas. Só quando o imóvel ainda não tem talhões.
 

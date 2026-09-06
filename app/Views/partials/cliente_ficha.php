@@ -376,7 +376,7 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
                     onclick="Croqui.abrir(<?= (int) $im['id'] ?>)"><i class="bi bi-bounding-box-circles me-1"></i>Croqui</button>
             <button class="btn btn-sm btn-outline-secondary" title="Editar o imóvel (CAR, áreas)"
                     onclick='Clientes.editarImovel(<?= json_attr($im) ?>)'><i class="bi bi-pencil"></i></button>
-            <button class="btn btn-sm btn-outline-success" title="Novo talhão: desenhe a área no croqui deste imóvel (a área é medida, não digitada)"
+            <button class="btn btn-sm btn-outline-success" title="Novo talhão: desenhe dentro de uma área de plantio no croqui (a área é medida, não digitada)"
                     onclick="Croqui.abrir(<?= (int) $im['id'] ?>, { novoTalhao: true })"><i class="bi bi-plus-lg"></i> Talhão</button>
             <?php if (!$im['talhoes']): ?>
               <button class="btn btn-sm btn-outline-success" title="Toda a área de plantio com uma cultura só: cria um talhão por área de plantio desenhada"
@@ -385,11 +385,36 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
           </div>
         </div>
 
+        <?php
+          // Fluxo guiado (v45): próximo passo do imóvel + talhões AGRUPADOS pela área de plantio hospedeira
+          $passo = empty($im['contorno']) ? [1, 'Traga a divisa do CAR e ajuste os pontos da área total (Croqui → etapa 1).']
+              : (empty($im['areas_plantio']) ? [2, 'Marque as áreas de plantio dentro da divisa (Croqui → etapa 2).']
+              : (!$im['talhoes'] ? [3, 'Desenhe os talhões dentro das áreas de plantio (Croqui → etapa 3).'] : null));
+          $grupos = [];
+          foreach ($im['areas_plantio'] ?? [] as $ap) { $grupos[(int) $ap['id']] = ['area' => $ap, 'talhoes' => []]; }
+          $semArea = [];
+          foreach ($im['talhoes'] as $t) {
+              $apId = (int) ($t['area_plantio_id'] ?? 0);
+              if ($apId && isset($grupos[$apId])) { $grupos[$apId]['talhoes'][] = $t; } else { $semArea[] = $t; }
+          }
+          $linhasTalhao = [];
+          foreach ($grupos as $g) { if ($g['talhoes']) { $linhasTalhao[] = ['cab' => '🌱 ' . $g['area']['nome'] . ' · ' . numero((float) $g['area']['area_gps'], 1) . ' ha', 'itens' => $g['talhoes']]; } }
+          if ($semArea) { $linhasTalhao[] = ['cab' => $grupos ? 'Talhões fora das áreas de plantio (ajuste no croqui)' : '', 'itens' => $semArea, 'aviso' => (bool) $grupos]; }
+        ?>
+        <?php if ($passo): ?>
+          <div class="px-3 py-1 small text-success-emphasis bg-success-subtle bg-opacity-25 border-top">
+            <i class="bi bi-signpost-2 me-1"></i><strong>Próximo passo (<?= (int) $passo[0] ?>/3):</strong> <?= e($passo[1]) ?>
+          </div>
+        <?php endif; ?>
         <?php if ($im['talhoes']): ?>
         <ul class="list-group list-group-flush">
-          <?php foreach ($im['talhoes'] as $t): ?>
+          <?php foreach ($linhasTalhao as $lt): ?>
+          <?php if ($lt['cab'] !== ''): ?>
+            <li class="list-group-item py-1 small <?= !empty($lt['aviso']) ? 'text-warning-emphasis bg-warning-subtle' : 'text-success-emphasis bg-success-subtle bg-opacity-25' ?>"><?= !empty($lt['aviso']) ? '<i class="bi bi-exclamation-circle me-1"></i>' : '' ?><?= e($lt['cab']) ?></li>
+          <?php endif; ?>
+          <?php foreach ($lt['itens'] as $t): ?>
           <?php $pa = $plantiosAtivos[(int) $t['id']] ?? null; $co = $colheitas[(int) $t['id']] ?? null; ?>
-          <li class="list-group-item py-1 d-flex justify-content-between align-items-center flex-wrap gap-1">
+          <li class="list-group-item py-1 d-flex justify-content-between align-items-center flex-wrap gap-1<?= $lt['cab'] !== '' ? ' ps-4' : '' ?>">
             <span><i class="bi bi-grid-3x3-gap me-1 text-muted"></i><?= e($t['nome']) ?>
               <span class="text-muted small">· <?= numero(\App\Services\AreaPlantioService::areaValida($t, 'area_gps', 'area_ha'), 1) ?> ha<?= $t['cultura'] ? ' · ' . e($t['cultura']) : '' ?><?= !empty($t['finalidade']) ? ' <span class="badge text-bg-light border text-dark">' . e($t['finalidade']) . '</span>' : '' ?></span>
               <?php if (empty($t['contorno'])): ?><span class="badge text-bg-light border text-muted ms-1" title="Sem contorno no croqui">não desenhado</span><?php endif; ?>
@@ -415,6 +440,7 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
               <button class="btn btn-sm btn-outline-secondary" onclick='Clientes.editarTalhao(<?= json_attr($t) ?>, <?= json_attr($imoveisLista) ?>)'><i class="bi bi-pencil"></i></button>
             </span>
           </li>
+          <?php endforeach; ?>
           <?php endforeach; ?>
         </ul>
         <?php endif; ?>
