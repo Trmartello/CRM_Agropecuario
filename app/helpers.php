@@ -241,7 +241,8 @@ function select_municipios(string $name, string $id, string $valorPor = 'nome', 
         iconv('UTF-8', 'ASCII//TRANSLIT', mb_strtolower($a[1])) ?: $a[1],
         iconv('UTF-8', 'ASCII//TRANSLIT', mb_strtolower($b[1])) ?: $b[1]
     ) ?: strcmp($a[2], $b[2]));
-    $html = '<select name="' . e($name) . '" id="' . e($id) . '" class="' . e($classe) . '" data-placeholder="Digite o nome do município…" ' . $extra . '>'
+    $placeholder = str_contains($extra, 'data-placeholder=') ? '' : 'data-placeholder="Digite o nome do município…" ';
+    $html = '<select name="' . e($name) . '" id="' . e($id) . '" class="' . e($classe) . '" ' . $placeholder . $extra . '>'
         . '<option value="">— selecione —</option>';
     foreach ($itens as [$cod, $nome, $uf]) {
         $valor = $valorPor === 'ibge' ? $cod : $nome;

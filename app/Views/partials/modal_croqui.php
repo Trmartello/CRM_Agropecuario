@@ -44,10 +44,11 @@
         </div>
         <div class="d-flex flex-wrap align-items-center gap-1">
           <span class="small text-muted me-1"><i class="bi bi-geo-alt-fill text-danger"></i> Ir para:</span>
-          <input id="croquiIrMun" class="form-control form-control-sm" style="max-width:180px" placeholder="Município"
-                 onkeydown="if(event.key==='Enter'){event.preventDefault();Croqui.irParaArea();}">
-          <input id="croquiIrUf" class="form-control form-control-sm text-uppercase" style="max-width:64px" maxlength="2" placeholder="UF"
-                 onkeydown="if(event.key==='Enter'){event.preventDefault();Croqui.irParaArea();}">
+          <?php /* Município – UF da lista pré-cadastrada com busca digitável (a UF vem da escolha, no hidden) */ ?>
+          <div style="flex:1 1 200px;max-width:280px">
+            <?= select_municipios('ir_municipio', 'croquiIrMun', 'nome', 'form-select form-select-sm select-busca', 'data-placeholder="Município (digite para buscar)" onchange="Croqui.ufDoIrPara()"') ?>
+          </div>
+          <input type="hidden" id="croquiIrUf">
           <input id="croquiIrLinha" class="form-control form-control-sm" style="max-width:200px" placeholder="Linha (localidade rural)"
                  onkeydown="if(event.key==='Enter'){event.preventDefault();Croqui.irParaArea();}">
           <button class="btn btn-sm btn-outline-secondary" onclick="Croqui.irParaArea()" title="Centralizar o mapa nessa região"><i class="bi bi-search me-1"></i>Ir</button>

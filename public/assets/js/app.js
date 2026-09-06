@@ -106,7 +106,7 @@ const App = {
     wrap.className = 'select-busca';
     const inp = document.createElement('input');
     inp.type = 'text';
-    inp.className = 'form-control';
+    inp.className = 'form-control' + (sel.classList.contains('form-select-sm') ? ' form-control-sm' : '');
     inp.autocomplete = 'off';
     inp.setAttribute('enterkeyhint', 'done');
     inp.placeholder = sel.dataset.placeholder || 'Digite para buscar…';
@@ -1148,8 +1148,7 @@ const Croqui = {
     document.getElementById('croquiPropNome').textContent = dados.propriedade.nome
       + (Croqui.outros.length || dados.imovel.nome ? ' · ' + dados.imovel.rotulo : ''); // só o apelido (o nº do CAR fica na ficha)
     // pré-preenche o "Ir para" com o endereço do produtor (município/UF/linha)
-    { const s = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
-      s('croquiIrMun', dados.imovel.municipio || dados.propriedade.municipio); s('croquiIrUf', dados.propriedade.estado); s('croquiIrLinha', dados.propriedade.linha); }
+    Croqui._setIrPara(dados.imovel.municipio || dados.propriedade.municipio, dados.propriedade.estado, dados.propriedade.linha);
     Croqui._montarSelect();
     Croqui.atualId = 0; // começa pela divisa do imóvel (área total)
     Croqui.pontos = Croqui._contornoDe(0);
@@ -1465,6 +1464,38 @@ const Croqui = {
   /** Município do filtro (campo "Ir para") — plota só esse município, se preenchido. */
   _carFiltroMun() { return (document.getElementById('croquiIrMun')?.value || '').trim(); },
 
+  /**
+   * "Ir para" usa a lista pré-cadastrada Município – UF (busca digitável): o
+   * select guarda o nome oficial e a UF vai para o hidden #croquiIrUf.
+   * O endereço do produtor (texto do ERP, às vezes sem acento/maiúsculo) é
+   * casado sem acento; fora da lista, o campo fica vazio para o técnico escolher.
+   */
+  _setIrPara(municipio, uf, linha) {
+    const sel = document.getElementById('croquiIrMun');
+    const elLinha = document.getElementById('croquiIrLinha');
+    if (elLinha) elLinha.value = linha || '';
+    if (!sel) return;
+    sel.value = '';
+    if (municipio) {
+      const alvo = Clientes._semAcento(municipio);
+      const opts = [...sel.options];
+      const opt = opts.find(o => Clientes._semAcento(o.dataset.nome) === alvo && (!uf || o.dataset.uf === String(uf).toUpperCase()))
+        || opts.find(o => Clientes._semAcento(o.dataset.nome) === alvo);
+      if (opt) sel.value = opt.value;
+    }
+    App.selectBuscaSync(sel);
+    Croqui.ufDoIrPara();
+  },
+
+  /** UF do "Ir para" acompanha o município escolhido (hidden #croquiIrUf). */
+  ufDoIrPara() {
+    const sel = document.getElementById('croquiIrMun');
+    const hid = document.getElementById('croquiIrUf');
+    if (!sel || !hid) return;
+    const o = sel.selectedOptions[0];
+    hid.value = o && o.value !== '' ? (o.dataset.uf || '') : '';
+  },
+
   /** Carrega os imóveis do CAR na ÁREA VISÍVEL (menos dados) + filtro de município. */
   async _carregarCarLayer(silencioso = false) {
     if (!Croqui.vista) return;
@@ -1548,6 +1579,7 @@ const Croqui = {
 
   /** "Ir para": centraliza o mapa num município/UF/linha (dados locais e, se faltar, geocoder). */
   async irParaArea() {
+    Croqui.ufDoIrPara();
     const mun = (document.getElementById('croquiIrMun').value || '').trim();
     const uf = (document.getElementById('croquiIrUf').value || '').trim();
     const linha = (document.getElementById('croquiIrLinha').value || '').trim();
