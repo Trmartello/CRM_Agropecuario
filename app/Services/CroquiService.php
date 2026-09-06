@@ -101,6 +101,113 @@ class CroquiService
         return $pontos;
     }
 
+    /**
+     * Tolerância (m) da regra "talhão não cobre outro talhão": vértice a menos
+     * disso da borda do vizinho não conta como sobreposição (erro do GPS/toque;
+     * talhões lado a lado dividem a mesma linha).
+     */
+    public const TOLERANCIA_SOBREPOSICAO_M = 3;
+
+    /**
+     * REGRA (teste de campo): talhões NÃO se sobrepõem. Índices dos pontos de
+     * $pontos que caem DENTRO de $outro (além da tolerância da borda).
+     */
+    public static function pontosDentroDe(array $pontos, array $outro, float $tolM = self::TOLERANCIA_SOBREPOSICAO_M): array
+    {
+        if (count($outro) < 3) {
+            return [];
+        }
+        $proj = self::projetar(array_merge($outro, $pontos));
+        $poligono = array_slice($proj, 0, count($outro));
+        $xy = array_slice($proj, count($outro));
+        $dentro = [];
+        foreach ($xy as $i => $p) {
+            if (self::dentro($p, $poligono) && self::distanciaBordaM($p, $poligono) > $tolM) {
+                $dentro[] = $i;
+            }
+        }
+        return $dentro;
+    }
+
+    /**
+     * Expulsa de $outro: ponto que caiu dentro do talhão vizinho é puxado para a
+     * borda mais próxima dele — desenhar "colado" no vizinho fica automático,
+     * sem sobrepor. Devolve os pontos corrigidos [lat,lng].
+     */
+    public static function expulsarDe(array $pontos, array $outro): array
+    {
+        if (count($outro) < 3) {
+            return $pontos;
+        }
+        $lat0 = array_sum(array_column($outro, 0)) / count($outro);
+        $mLat = 110574.0;
+        $mLng = 111320.0 * cos(deg2rad($lat0));
+        $proj = fn ($p) => [$p[1] * $mLng, -$p[0] * $mLat];
+        $poligono = array_map($proj, $outro);
+        foreach ($pontos as $i => $p) {
+            $xy = $proj($p);
+            if (!self::dentro($xy, $poligono)) {
+                continue;
+            }
+            [$bx, $by] = self::pontoMaisProximoBorda($xy, $poligono);
+            $pontos[$i] = [round(-$by / $mLat, 7), round($bx / $mLng, 7)];
+        }
+        return $pontos;
+    }
+
+    /**
+     * Dois polígonos se sobrepõem? Vértice de um dentro do outro (além da
+     * tolerância) ou arestas que se CRUZAM de verdade. Vizinhos que só dividem
+     * uma linha (aresta em comum, vértice encostado) NÃO contam.
+     */
+    public static function sobrepoe(array $a, array $b, float $tolM = self::TOLERANCIA_SOBREPOSICAO_M): bool
+    {
+        if (count($a) < 3 || count($b) < 3) {
+            return false;
+        }
+        if (self::pontosDentroDe($a, $b, $tolM) || self::pontosDentroDe($b, $a, $tolM)) {
+            return true;
+        }
+        $proj = self::projetar(array_merge($a, $b));
+        $pa = array_slice($proj, 0, count($a));
+        $pb = array_slice($proj, count($a));
+        $na = count($pa);
+        $nb = count($pb);
+        for ($i = 0; $i < $na; $i++) {
+            $a1 = $pa[$i];
+            $a2 = $pa[($i + 1) % $na];
+            for ($j = 0; $j < $nb; $j++) {
+                if (self::segmentosCruzam($a1, $a2, $pb[$j], $pb[($j + 1) % $nb], $tolM)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** Cruzamento PRÓPRIO de dois segmentos (metros): interseção estritamente no meio dos dois. */
+    private static function segmentosCruzam(array $p1, array $p2, array $q1, array $q2, float $tolM): bool
+    {
+        $orient = fn ($a, $b, $c) => ($b[0] - $a[0]) * ($c[1] - $a[1]) - ($b[1] - $a[1]) * ($c[0] - $a[0]);
+        $d1 = $orient($q1, $q2, $p1);
+        $d2 = $orient($q1, $q2, $p2);
+        $d3 = $orient($p1, $p2, $q1);
+        $d4 = $orient($p1, $p2, $q2);
+        if (!(($d1 > 0) !== ($d2 > 0)) || !(($d3 > 0) !== ($d4 > 0))) {
+            return false; // não cruzam (ou só encostam/colineares)
+        }
+        // Cruzam: só conta se a interseção está longe das pontas (senão é vértice encostado na linha)
+        $t = $d1 / ($d1 - $d2);
+        $x = $p1[0] + $t * ($p2[0] - $p1[0]);
+        $y = $p1[1] + $t * ($p2[1] - $p1[1]);
+        foreach ([$p1, $p2, $q1, $q2] as $ponta) {
+            if (hypot($x - $ponta[0], $y - $ponta[1]) <= $tolM) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /** Ponto da borda do polígono mais próximo de [x,y] (tudo em metros). */
     private static function pontoMaisProximoBorda(array $p, array $poligono): array
     {

@@ -31,7 +31,7 @@ Na aba **Propriedades** da ficha:
 
 1. **Imóvel (CAR)** — cada inscrição no CAR é um imóvel. Falta um? **+ Imóvel (CAR)**. Toque no lápis para informar o nº do CAR e a **área de plantio** (o que dá para plantar, sem mata/APP/sede).
 2. **Croqui** do imóvel → no seletor escolha **🌱 Área de plantio** → toque nos cantos sobre o satélite → *Salvar croqui*. Marque *usar a área medida* se ela for a oficial.
-3. **Talhões:** **+ Talhão** com **cultura e finalidade** (Milho **Silagem** ≠ Milho **Grão**). Desenhe cada um no croqui. Foi tudo uma cultura só? Toque em **Área toda**.
+3. **Talhões:** **+ Talhão** abre o croqui já no modo *Novo talhão* → toque nos cantos sobre o satélite → *Salvar croqui* → dê o **nome, a cultura e a finalidade** (Milho **Silagem** ≠ Milho **Grão**). A área é **medida pelo desenho**, não digitada. **Um talhão não cobre outro**: ponto dentro do vizinho é puxado para a borda dele, e se cruzar fica vermelho e não salva. Foi tudo uma cultura só? Toque em **Área toda**.
 4. Confira com o produtor a **barra por cultura** na ficha. Vermelho = os talhões somam mais que a área de plantio: algum está grande demais.
 
 ## Fim do dia

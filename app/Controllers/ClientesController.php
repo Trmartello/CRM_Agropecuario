@@ -419,6 +419,11 @@ class ClientesController
             if ($divisa) {
                 $pontos = \App\Services\CroquiService::prenderNaDivisa($pontos, $divisa);
             }
+            if ($tipo === 'talhao') {
+                // REGRA (teste de campo): talhão NÃO cobre outro talhão. Ponto dentro de
+                // um vizinho é puxado para a borda dele; se ainda cruzar, recusa.
+                $pontos = $this->semSobreporVizinhos($pontos, $imovelId, $alvoId);
+            }
             if ($tipo === 'plantio') {
                 // Talhão fora da área de plantio é AVISO, não bloqueio (§3 da spec)
                 foreach ($this->talhoesDoImovel($imovelId, true) as $t) {
@@ -815,6 +820,52 @@ class ClientesController
         );
     }
 
+    /**
+     * REGRA (teste de campo): talhão não cobre outro talhão do mesmo imóvel.
+     * 1) ponto dentro de um vizinho é PUXADO para a borda dele (desenhar colado
+     *    fica automático); 2) se ainda houver cruzamento, recusa com os nomes.
+     * Devolve os pontos corrigidos.
+     */
+    private function semSobreporVizinhos(array $pontos, int $imovelId, int $ignorarTalhaoId = 0): array
+    {
+        $vizinhos = [];
+        foreach ($this->talhoesDoImovel($imovelId, true) as $t) {
+            if ((int) $t['id'] === $ignorarTalhaoId) {
+                continue;
+            }
+            $pts = json_decode((string) $t['contorno'], true) ?: [];
+            if (count($pts) >= 3) {
+                $vizinhos[] = ['nome' => $t['nome'], 'pontos' => $pts];
+            }
+        }
+        // Desenho que está (quase) todo dentro de um vizinho: recusa antes de expulsar —
+        // senão os pontos iriam todos para a borda e sobraria um talhão sem área.
+        $metade = (int) ceil(count($pontos) / 2);
+        foreach ($vizinhos as $v) {
+            if (count(\App\Services\CroquiService::pontosDentroDe($pontos, $v['pontos'])) >= $metade) {
+                json_erro('O desenho está dentro do talhão "' . $v['nome'] . '". Um talhão não pode ficar por cima de outro — '
+                    . 'desenhe ao lado dele ou edite o talhão existente.');
+            }
+        }
+        foreach ($vizinhos as $v) {
+            $pontos = \App\Services\CroquiService::expulsarDe($pontos, $v['pontos']);
+        }
+        if (\App\Services\CroquiService::areaHa($pontos) < 0.01) {
+            json_erro('Depois de ajustar os pontos para fora dos talhões vizinhos, o talhão ficou sem área. Desenhe em um espaço livre.');
+        }
+        $cruzam = [];
+        foreach ($vizinhos as $v) {
+            if (\App\Services\CroquiService::sobrepoe($pontos, $v['pontos'])) {
+                $cruzam[] = $v['nome'];
+            }
+        }
+        if ($cruzam) {
+            json_erro('O talhão cobre outro talhão: ' . implode(', ', $cruzam)
+                . '. Um talhão não pode passar por cima de outro — ajuste os pontos em vermelho.');
+        }
+        return $pontos;
+    }
+
     /** Nome de exibição do imóvel: apelido, senão nº do CAR, senão "Imóvel". */
     public static function rotuloImovel(array $imovel): string
     {
@@ -1108,9 +1159,30 @@ class ClientesController
             $imovelId = (int) $this->primeiroImovel($propriedadeId)['id'];
         }
         $finalidadeId = (int) ($_POST['finalidade_id'] ?? 0) ?: null;
+
+        // Talhão DESENHADO no croqui (teste de campo): o contorno vem junto e a área
+        // é a MEDIDA — a área digitada só vale para talhão antigo sem desenho.
+        $contornoJson = trim($_POST['contorno'] ?? '');
+        $pontos = null;
+        $areaGps = null;
+        if ($contornoJson !== '' && $contornoJson !== '[]') {
+            try {
+                $pontos = \App\Services\CroquiService::validarContorno($contornoJson);
+            } catch (\InvalidArgumentException $e) {
+                json_erro($e->getMessage());
+            }
+            $imovel = Database::um('SELECT contorno FROM imoveis WHERE id = ?', [$imovelId]);
+            $divisa = !empty($imovel['contorno']) ? (json_decode((string) $imovel['contorno'], true) ?: []) : [];
+            if ($divisa) {
+                $pontos = \App\Services\CroquiService::prenderNaDivisa($pontos, $divisa);
+            }
+            $pontos = $this->semSobreporVizinhos($pontos, $imovelId, $id);
+            $areaGps = \App\Services\CroquiService::areaHa($pontos);
+        }
+        $areaHa = $areaGps ?? (float) str_replace(',', '.', $_POST['area_ha'] ?? 0);
         $dados = [
             $nome,
-            (float) str_replace(',', '.', $_POST['area_ha'] ?? 0),
+            $areaHa,
             (int) ($_POST['cultura_id'] ?? 0) ?: null,
             $finalidadeId,
             $imovelId,
@@ -1120,14 +1192,31 @@ class ClientesController
                 'UPDATE talhoes SET nome=?, area_ha=?, cultura_id=?, finalidade_id=?, imovel_id=? WHERE id=? AND propriedade_id=?',
                 array_merge($dados, [$id, $propriedadeId])
             );
+            if ($pontos !== null) {
+                Database::executar('UPDATE talhoes SET contorno=?, area_gps=? WHERE id=?', [json_encode($pontos), $areaGps, $id]);
+            }
         } else {
             Database::executar(
-                'INSERT INTO talhoes (nome, area_ha, cultura_id, finalidade_id, imovel_id, propriedade_id) VALUES (?,?,?,?,?,?)',
-                array_merge($dados, [$propriedadeId])
+                'INSERT INTO talhoes (nome, area_ha, cultura_id, finalidade_id, imovel_id, propriedade_id, contorno, area_gps)
+                 VALUES (?,?,?,?,?,?,?,?)',
+                array_merge($dados, [$propriedadeId, $pontos !== null ? json_encode($pontos) : null, $areaGps])
             );
             $id = Database::ultimoId();
         }
-        json_ok(['id' => $id]);
+        if ($pontos !== null) {
+            auditar('salvar', 'croqui', $id, 'talhão desenhado · ' . count($pontos) . " pontos · {$areaGps} ha");
+        }
+        // Devolve o talhão pronto para o croqui (com cultura/finalidade por nome)
+        $talhao = Database::um(
+            'SELECT t.id, t.nome, t.area_ha, t.area_gps, t.contorno, t.imovel_id, t.cultura_id, t.finalidade_id,
+                    cu.nome AS cultura, f.nome AS finalidade
+               FROM talhoes t
+               LEFT JOIN culturas cu ON cu.id = t.cultura_id
+               LEFT JOIN finalidades f ON f.id = t.finalidade_id
+              WHERE t.id = ?',
+            [$id]
+        );
+        json_ok(['id' => $id, 'talhao' => $talhao, 'area_gps' => $areaGps]);
     }
 
     /** Salva plano de safra (intenção de plantio) via modal AJAX. */

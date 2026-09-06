@@ -537,12 +537,25 @@ const Clientes = {
     else if (lista.length) sel.value = lista[0].id;
   },
 
-  novoTalhao(propriedadeId, imovelId, imoveis) {
+  /** Talhão novo NASCE DESENHADO (teste de campo): abre o croqui do imóvel já no modo "novo talhão". */
+  novoTalhao(propriedadeId, imovelId) {
+    Croqui.abrir(imovelId, { novoTalhao: true });
+  },
+
+  /**
+   * Chamado pelo croqui ao salvar um talhão novo: o contorno já está desenhado,
+   * falta nome, cultura e finalidade. O modal grava tudo junto (salvar-talhao com
+   * contorno; o servidor mede a área, prende na divisa e recusa sobreposição).
+   */
+  novoTalhaoDoCroqui(pontos) {
     const form = document.getElementById('formTalhao');
     form.reset();
     form.querySelector('[name=id]').value = 0;
-    form.querySelector('[name=propriedade_id]').value = propriedadeId;
-    Clientes._imoveisNoModalTalhao(imoveis, imovelId);
+    form.querySelector('[name=propriedade_id]').value = Croqui.prop.id;
+    form.querySelector('[name=contorno]').value = JSON.stringify(pontos);
+    form.dataset.origem = 'croqui';
+    Clientes._imoveisNoModalTalhao([{ id: Croqui.imovel.id, rotulo: Croqui.imovel.rotulo }], Croqui.imovel.id);
+    Clientes._modoTalhaoModal({ croqui: true, medida: Croqui.areaHa(pontos) });
     new bootstrap.Modal('#modalTalhao').show();
   },
 
@@ -551,19 +564,52 @@ const Clientes = {
     form.reset();
     form.querySelector('[name=id]').value = t.id;
     form.querySelector('[name=propriedade_id]').value = t.propriedade_id;
+    form.querySelector('[name=contorno]').value = '';
+    form.dataset.origem = 'ficha';
     form.querySelector('[name=nome]').value = t.nome;
     form.querySelector('[name=area_ha]').value = t.area_ha;
     if (t.cultura_id) form.querySelector('[name=cultura_id]').value = t.cultura_id;
     if (t.finalidade_id) form.querySelector('[name=finalidade_id]').value = t.finalidade_id;
     Clientes._imoveisNoModalTalhao(imoveis, t.imovel_id);
+    // Área digitada só vale para talhão antigo SEM desenho; com desenho, a área é a medida
+    Clientes._modoTalhaoModal({ croqui: false, medida: t.contorno ? Number(t.area_gps || t.area_ha) : null });
     new bootstrap.Modal('#modalTalhao').show();
+  },
+
+  /** Mostra/esconde os campos do modal de talhão conforme a origem (croqui × ficha) e se há desenho. */
+  _modoTalhaoModal({ croqui, medida }) {
+    const titulo = document.getElementById('modalTalhaoTitulo');
+    if (titulo) titulo.textContent = croqui ? 'Novo talhão desenhado' : 'Talhão';
+    const wrapImovel = document.getElementById('talhaoImovelWrap');
+    if (wrapImovel) wrapImovel.classList.toggle('d-none', !!croqui); // no croqui o imóvel é o aberto
+    const wrapArea = document.getElementById('talhaoAreaWrap');
+    const medidaEl = document.getElementById('talhaoAreaMedida');
+    const temDesenho = medida !== null && medida !== undefined;
+    if (wrapArea) wrapArea.classList.toggle('d-none', temDesenho);
+    if (medidaEl) {
+      medidaEl.classList.toggle('d-none', !temDesenho);
+      if (temDesenho) medidaEl.innerHTML = `<i class="bi bi-bounding-box-circles me-1 text-success"></i>Área medida no croqui: <strong>${Number(medida).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha</strong>`;
+    }
   },
 
   async salvarTalhao(ev) {
     ev.preventDefault();
     try {
-      await App.enviarForm(ev.target, 'index.php?r=clientes/salvar-talhao');
+      const r = await App.enviarForm(ev.target, 'index.php?r=clientes/salvar-talhao');
       bootstrap.Modal.getInstance('#modalTalhao').hide();
+      if (ev.target.dataset.origem === 'croqui' && r.talhao && typeof Croqui !== 'undefined') {
+        // Veio do croqui: o talhão entra na lista, vira o alvo selecionado e o desenho
+        // passa a ser o gravado (o servidor pode ter prendido pontos na divisa/vizinhos)
+        Croqui.talhoes.push(r.talhao);
+        Croqui._montarSelect(r.talhao.id);
+        Croqui.atualId = Number(r.talhao.id);
+        Croqui.pontos = Croqui._contornoDe(r.talhao.id);
+        Croqui._dirty = false;
+        Croqui._selecionado = null;
+        Croqui.render();
+        App.alerta(`Talhão "${r.talhao.nome}" criado — ${Number(r.area_gps || r.talhao.area_ha).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha medidos.`);
+        return false; // a ficha atualiza ao fechar o croqui (Croqui.fechar)
+      }
       App.alerta('Talhão salvo.');
       if (Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId);
     } catch (e) { App.alerta(e.message, 'danger'); }
@@ -781,6 +827,7 @@ const Croqui = {
   tiles: null,
   atualId: 0,          // 0 = divisa do IMÓVEL (CAR); -1 = ÁREA DE PLANTIO do imóvel; >0 = talhão
   PLANTIO_ID: -1,
+  NOVO_ID: -2,         // "➕ Novo talhão (desenhar)": desenha primeiro, dá nome/cultura ao salvar
   pontos: [],
   vista: null,         // {z, cx, cy} em coordenadas de mundo Web Mercator (0..1); z pode ser fracionário (pinça)
   watchId: null,
@@ -819,7 +866,7 @@ const Croqui = {
 
   // v40: o croqui é por IMÓVEL (CAR). Abre com a divisa do imóvel; o seletor tem
   // também a ÁREA DE PLANTIO e os talhões desse imóvel.
-  async abrir(imovelId) {
+  async abrir(imovelId, opts = {}) {
     let dados;
     try {
       dados = await App.json('index.php?r=clientes/croqui-dados&imovel_id=' + Number(imovelId));
@@ -840,11 +887,7 @@ const Croqui = {
     // pré-preenche o "Ir para" com o endereço do produtor (município/UF/linha)
     { const s = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
       s('croquiIrMun', dados.imovel.municipio || dados.propriedade.municipio); s('croquiIrUf', dados.propriedade.estado); s('croquiIrLinha', dados.propriedade.linha); }
-    const sel = document.getElementById('croquiTalhao');
-    sel.innerHTML = '<option value="0">🏠 Divisa do imóvel (CAR) — área total</option>'
-      + `<option value="${Croqui.PLANTIO_ID}">🌱 Área de plantio</option>`
-      + Croqui.talhoes.map(t =>
-      `<option value="${Number(t.id)}">▪ ${App.escapeHtml(t.nome)}${t.cultura ? ' (' + App.escapeHtml(t.cultura) + (t.finalidade ? ' · ' + App.escapeHtml(t.finalidade) : '') + ')' : ''}</option>`).join('');
+    Croqui._montarSelect();
     Croqui.atualId = 0; // começa pela divisa do imóvel (área total)
     Croqui.pontos = Croqui._contornoDe(0);
     Croqui._carCod = '';
@@ -867,7 +910,24 @@ const Croqui = {
       Croqui._autoCarSede();
       // E mostra todos os imóveis do CAR no mapa p/ o técnico escolher a área do produtor.
       Croqui._autoMostrarCar();
+      // "+ Talhão" na ficha: já entra no modo "novo talhão" (desenha, depois dá o nome)
+      if (opts.novoTalhao) {
+        document.getElementById('croquiTalhao').value = String(Croqui.NOVO_ID);
+        Croqui.trocarTalhao();
+        App.alerta('Toque nos cantos do talhão sobre o satélite. Ao salvar, você dá o nome, a cultura e a finalidade.', 'info');
+      }
     }, 250);
+  },
+
+  /** Monta o seletor de alvos: divisa, área de plantio, talhões e "novo talhão". */
+  _montarSelect(selecionar) {
+    const sel = document.getElementById('croquiTalhao');
+    sel.innerHTML = '<option value="0">🏠 Divisa do imóvel (CAR) — área total</option>'
+      + `<option value="${Croqui.PLANTIO_ID}">🌱 Área de plantio</option>`
+      + Croqui.talhoes.map(t =>
+      `<option value="${Number(t.id)}">▪ ${App.escapeHtml(t.nome)}${t.cultura ? ' (' + App.escapeHtml(t.cultura) + (t.finalidade ? ' · ' + App.escapeHtml(t.finalidade) : '') + ')' : ''}</option>`).join('')
+      + `<option value="${Croqui.NOVO_ID}">➕ Novo talhão (desenhar)</option>`;
+    if (selecionar !== undefined) sel.value = String(selecionar);
   },
 
   /**
@@ -1477,19 +1537,45 @@ const Croqui = {
    */
   _prender(p) {
     if (Croqui.atualId === 0) return p; // desenhando a própria divisa
+    // 1) fora da divisa do imóvel → puxa para a borda da divisa
     const divisa = Croqui._contornoDe(0);
-    if (divisa.length < 3) return p;
-    const lat0 = divisa.reduce((s, q) => s + Number(q[0]), 0) / divisa.length;
+    if (divisa.length >= 3 && !Croqui._dentroDe(p, divisa)) p = Croqui._bordaMaisProxima(p, divisa);
+    // 2) talhão: dentro de OUTRO talhão → puxa para a borda do vizinho (talhões não se cobrem)
+    if (Croqui._ehTalhao(Croqui.atualId)) {
+      for (const t of Croqui.talhoes) {
+        if (Number(t.id) === Croqui.atualId) continue;
+        const pts = Croqui._contornoDe(t.id);
+        if (pts.length >= 3 && Croqui._dentroDe(p, pts)) p = Croqui._bordaMaisProxima(p, pts);
+      }
+    }
+    return p;
+  },
+
+  _ehTalhao(id) { return Number(id) > 0 || Number(id) === Croqui.NOVO_ID; },
+
+  /** Projeção local (metros) de um polígono + função para projetar pontos na mesma referência. */
+  _projetor(poligono) {
+    const lat0 = poligono.reduce((s, q) => s + Number(q[0]), 0) / poligono.length;
     const mLat = 110574, mLng = 111320 * Math.cos(lat0 * Math.PI / 180);
-    const proj = q => [Number(q[1]) * mLng, -Number(q[0]) * mLat];
-    const pol = divisa.map(proj);
-    const xy = proj(p);
+    return { mLat, mLng, proj: q => [Number(q[1]) * mLng, -Number(q[0]) * mLat] };
+  },
+
+  /** Ponto [lat,lng] dentro do polígono [[lat,lng],...] (ray casting). */
+  _dentroDe(p, poligono) {
+    const { proj } = Croqui._projetor(poligono);
+    const pol = poligono.map(proj), xy = proj(p);
     let dentro = false;
     for (let i = 0, j = pol.length - 1; i < pol.length; j = i++) {
       const [xi, yi] = pol[i], [xj, yj] = pol[j];
       if (((yi > xy[1]) !== (yj > xy[1])) && xy[0] < (xj - xi) * (xy[1] - yi) / ((yj - yi) || 1e-12) + xi) dentro = !dentro;
     }
-    if (dentro) return p;
+    return dentro;
+  },
+
+  /** Ponto da borda do polígono mais próximo de p, devolvido em [lat,lng]. */
+  _bordaMaisProxima(p, poligono) {
+    const { mLat, mLng, proj } = Croqui._projetor(poligono);
+    const pol = poligono.map(proj), xy = proj(p);
     let melhor = pol[0], menor = Infinity;
     for (let i = 0; i < pol.length; i++) {
       const [ax, ay] = pol[i], [bx, by] = pol[(i + 1) % pol.length];
@@ -1502,6 +1588,52 @@ const Croqui = {
     return [-melhor[1] / mLat, melhor[0] / mLng];
   },
 
+  /**
+   * Dois polígonos se sobrepõem? (mesma regra do servidor, CroquiService::sobrepoe)
+   * Vértice de um dentro do outro além de 3 m da borda, ou arestas que se cruzam
+   * de verdade. Vizinhos que só dividem uma linha não contam.
+   */
+  _sobrepoe(a, b) {
+    if (a.length < 3 || b.length < 3) return false;
+    const TOL = 3;
+    if (Croqui._pontosDentroDe(a, b, TOL).length || Croqui._pontosDentroDe(b, a, TOL).length) return true;
+    const { proj } = Croqui._projetor(a.concat(b));
+    const pa = a.map(proj), pb = b.map(proj);
+    const orient = (o, q, r) => (q[0] - o[0]) * (r[1] - o[1]) - (q[1] - o[1]) * (r[0] - o[0]);
+    for (let i = 0; i < pa.length; i++) {
+      const p1 = pa[i], p2 = pa[(i + 1) % pa.length];
+      for (let j = 0; j < pb.length; j++) {
+        const q1 = pb[j], q2 = pb[(j + 1) % pb.length];
+        const d1 = orient(q1, q2, p1), d2 = orient(q1, q2, p2), d3 = orient(p1, p2, q1), d4 = orient(p1, p2, q2);
+        if (!((d1 > 0) !== (d2 > 0)) || !((d3 > 0) !== (d4 > 0))) continue;
+        const t = d1 / (d1 - d2), x = p1[0] + t * (p2[0] - p1[0]), y = p1[1] + t * (p2[1] - p1[1]);
+        if ([p1, p2, q1, q2].some(pt => Math.hypot(x - pt[0], y - pt[1]) <= TOL)) continue; // só encostou
+        return true;
+      }
+    }
+    return false;
+  },
+
+  /** Índices dos pontos de `pontos` que caem dentro de `outro` (além de tolM da borda). */
+  _pontosDentroDe(pontos, outro, tolM = 3) {
+    if (outro.length < 3) return [];
+    const { proj } = Croqui._projetor(outro);
+    const pol = outro.map(proj);
+    const distBorda = xy => {
+      let menor = Infinity;
+      for (let i = 0; i < pol.length; i++) {
+        const [ax, ay] = pol[i], [bx, by] = pol[(i + 1) % pol.length];
+        const abx = bx - ax, aby = by - ay, len2 = abx * abx + aby * aby;
+        const t = len2 > 0 ? Math.max(0, Math.min(1, ((xy[0] - ax) * abx + (xy[1] - ay) * aby) / len2)) : 0;
+        menor = Math.min(menor, Math.hypot(xy[0] - (ax + t * abx), xy[1] - (ay + t * aby)));
+      }
+      return menor;
+    };
+    const out = [];
+    pontos.forEach((p, i) => { if (Croqui._dentroDe(p, outro) && distBorda(proj(p)) > tolM) out.push(i); });
+    return out;
+  },
+
   /** Situação da regra para o desenho atual: {fora: [índices], talhoesFora: [nomes]} */
   /**
    * Regras (v40, spec §3): área de plantio e talhão ficam DENTRO da divisa do
@@ -1511,20 +1643,31 @@ const Croqui = {
    */
   _validarRegra() {
     const avisos = [];
+    const sobrepostos = [];
     if (Croqui.atualId !== 0) {
-      const fora = Croqui._pontosFora(Croqui.pontos, Croqui._contornoDe(0));
+      let fora = Croqui._pontosFora(Croqui.pontos, Croqui._contornoDe(0));
       if (Croqui.atualId === Croqui.PLANTIO_ID && Croqui.pontos.length >= 3) {
         // desenhando a área de plantio: avisa os talhões que ficariam fora dela
         Croqui.talhoes.forEach(t => {
           const pts = Croqui._contornoDe(t.id);
           if (pts.length >= 3 && Croqui._pontosFora(pts, Croqui.pontos).length) avisos.push(t.nome);
         });
-      } else if (Croqui.atualId > 0 && Croqui.pontos.length >= 3) {
-        // desenhando um talhão: avisa se sai da área de plantio (se ela existir)
+      } else if (Croqui._ehTalhao(Croqui.atualId)) {
+        // REGRA (teste de campo): talhão NÃO cobre outro talhão — ponto dentro de
+        // um vizinho fica vermelho e o cruzamento bloqueia o salvar
+        Croqui.talhoes.forEach(t => {
+          if (Number(t.id) === Croqui.atualId) return;
+          const pts = Croqui._contornoDe(t.id);
+          if (pts.length < 3) return;
+          fora = fora.concat(Croqui._pontosDentroDe(Croqui.pontos, pts));
+          if (Croqui.pontos.length >= 3 && Croqui._sobrepoe(Croqui.pontos, pts)) sobrepostos.push(t.nome);
+        });
+        fora = [...new Set(fora)];
+        // avisa se sai da área de plantio (se ela existir)
         const plantio = Croqui._contornoDe(Croqui.PLANTIO_ID);
-        if (plantio.length >= 3 && Croqui._pontosFora(Croqui.pontos, plantio).length) avisos.push('fora da área de plantio');
+        if (Croqui.pontos.length >= 3 && plantio.length >= 3 && Croqui._pontosFora(Croqui.pontos, plantio).length) avisos.push('fora da área de plantio');
       }
-      return { fora, talhoesFora: [], avisos };
+      return { fora, talhoesFora: [], avisos, sobrepostos };
     }
     // Editando a divisa: nenhum talhão já desenhado (nem a área de plantio) pode ficar para fora
     const talhoesFora = [];
@@ -1536,7 +1679,7 @@ const Croqui = {
       const plantio = Croqui._contornoDe(Croqui.PLANTIO_ID);
       if (plantio.length >= 3 && Croqui._pontosFora(plantio, Croqui.pontos).length) talhoesFora.push('Área de plantio');
     }
-    return { fora: [], talhoesFora, avisos };
+    return { fora: [], talhoesFora, avisos, sobrepostos };
   },
 
   /** HTML de uma camada de tiles (satélite OU rótulos) para a vista atual. */
@@ -1839,8 +1982,10 @@ const Croqui = {
     const regra = Croqui._validarRegra();
     const fmt = (v, d = 1) => Number(v).toLocaleString('pt-BR', { maximumFractionDigits: d });
     let alerta = '';
-    if (regra.fora.length) {
-      alerta = ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> ${regra.fora.length} ponto(s) fora da divisa do imóvel</span>`;
+    if (regra.sobrepostos && regra.sobrepostos.length) {
+      alerta = ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> cobre outro talhão: ${App.escapeHtml(regra.sobrepostos.join(', '))} — talhões não se sobrepõem</span>`;
+    } else if (regra.fora.length) {
+      alerta = ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> ${regra.fora.length} ponto(s) ${Croqui._ehTalhao(Croqui.atualId) ? 'fora da divisa ou dentro de outro talhão' : 'fora da divisa do imóvel'}</span>`;
     } else if (regra.talhoesFora.length) {
       alerta = ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> divisa deixa fora: ${App.escapeHtml(regra.talhoesFora.join(', '))}</span>`;
     } else if (regra.avisos.length) {
@@ -2084,12 +2229,25 @@ const Croqui = {
     // REGRAS (v40): área de plantio e talhão dentro da divisa do imóvel; a divisa
     // não deixa nada para fora (o servidor também valida)
     const regra = Croqui._validarRegra();
+    // Sobreposição primeiro: é a causa mais provável dos pontos vermelhos num talhão
+    if (regra.sobrepostos && regra.sobrepostos.length) {
+      App.alerta('O talhão cobre outro talhão: ' + regra.sobrepostos.join(', ') + '. Um talhão não pode passar por cima de outro — ajuste os pontos em vermelho.', 'danger');
+      return;
+    }
     if (regra.fora.length) {
-      App.alerta(`${Croqui.atualId === Croqui.PLANTIO_ID ? 'A área de plantio' : 'O talhão'} deve ficar DENTRO da divisa do imóvel — ajuste os ${regra.fora.length} ponto(s) em vermelho.`, 'danger');
+      App.alerta(Croqui.atualId === Croqui.PLANTIO_ID
+        ? `A área de plantio deve ficar DENTRO da divisa do imóvel — ajuste os ${regra.fora.length} ponto(s) em vermelho.`
+        : `O talhão deve ficar dentro da divisa e fora dos outros talhões — ajuste os ${regra.fora.length} ponto(s) em vermelho.`, 'danger');
       return;
     }
     if (regra.talhoesFora.length) {
       App.alerta('A divisa deixaria para fora: ' + regra.talhoesFora.join(', ') + '. Amplie a divisa.', 'danger');
+      return;
+    }
+    // NOVO talhão: desenhou primeiro; agora dá nome, cultura e finalidade (o modal grava tudo junto)
+    if (Croqui.atualId === Croqui.NOVO_ID) {
+      if (Croqui.pontos.length < 3) { App.alerta('Marque pelo menos 3 pontos para fechar o talhão.', 'warning'); return; }
+      Clientes.novoTalhaoDoCroqui(Croqui.pontos.map(p => [Number(Number(p[0]).toFixed(7)), Number(Number(p[1]).toFixed(7))]));
       return;
     }
     const ehImovel = Croqui.atualId === 0, ehPlantio = Croqui.atualId === Croqui.PLANTIO_ID;
