@@ -32,13 +32,41 @@
         <input type="email" name="email" class="form-control form-control-lg" required autofocus autocomplete="username">
       </div>
       <div class="mb-4">
-        <label class="form-label">Senha</label>
-        <input type="password" name="senha" class="form-control form-control-lg" required autocomplete="current-password">
+        <label class="form-label" for="senha">Senha</label>
+        <div class="input-group input-group-lg">
+          <input type="password" name="senha" id="senha" class="form-control" required autocomplete="current-password">
+          <button class="btn btn-outline-secondary" type="button" id="verSenha"
+                  title="Mostrar a senha" aria-label="Mostrar a senha" aria-pressed="false">
+            <i class="bi bi-eye" aria-hidden="true"></i>
+          </button>
+        </div>
       </div>
       <button class="btn btn-success btn-lg w-100"><i class="bi bi-box-arrow-in-right me-1"></i>Entrar</button>
     </form>
   </div>
 </div>
+<script>
+  // Mostrar/ocultar a senha — no celular é fácil errar a digitação às cegas,
+  // e o app bloqueia o e-mail após 5 tentativas. Esta tela não carrega o app.js.
+  (function () {
+    const campo = document.getElementById('senha');
+    const botao = document.getElementById('verSenha');
+    if (!campo || !botao) return;
+    botao.addEventListener('click', function () {
+      const visivel = campo.type === 'text';
+      const cursor = campo.selectionStart;
+      campo.type = visivel ? 'password' : 'text';
+      const rotulo = visivel ? 'Mostrar a senha' : 'Ocultar a senha';
+      botao.title = rotulo;
+      botao.setAttribute('aria-label', rotulo);
+      botao.setAttribute('aria-pressed', visivel ? 'false' : 'true');
+      botao.querySelector('i').className = visivel ? 'bi bi-eye' : 'bi bi-eye-slash';
+      // Devolve o foco e o cursor onde estavam (trocar o type reposiciona o caret).
+      campo.focus();
+      if (cursor !== null) { try { campo.setSelectionRange(cursor, cursor); } catch (e) { /* ignora */ } }
+    });
+  })();
+</script>
 <?php if (isset($_GET['saiu'])): ?>
 <script>
   // Logout: limpa o snapshot da carteira do aparelho (não vaza dados para o próximo
