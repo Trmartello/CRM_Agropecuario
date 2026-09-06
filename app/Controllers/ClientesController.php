@@ -47,8 +47,10 @@ class ClientesController
             "SELECT id, nome FROM usuarios WHERE perfil IN ('Consultor Técnico','Vendedor') AND ativo = 1 ORDER BY nome"
         );
         $culturas = Database::todos('SELECT * FROM culturas ORDER BY nome');
+        // v40: finalidades ativas para os modais de talhão/plantio/"plantar a área toda"
+        $finalidades = Database::todos('SELECT id, nome FROM finalidades WHERE ativo = 1 ORDER BY ordem, nome');
 
-        render('clientes', compact('clientes', 'filiais', 'responsaveis', 'culturas', 'busca', 'segmentoFiltro') + ['titulo' => 'Clientes']);
+        render('clientes', compact('clientes', 'filiais', 'responsaveis', 'culturas', 'finalidades', 'busca', 'segmentoFiltro') + ['titulo' => 'Clientes']);
     }
 
     /** Dados de um cliente para preencher o modal de edição (AJAX). */
@@ -175,15 +177,22 @@ class ClientesController
                FROM propriedades p WHERE p.cliente_id = ? ORDER BY p.nome',
             [$id]
         );
+        // v40: propriedade → imóveis (CAR) → talhões, com totalização por cultura × finalidade
+        $resumosProdutor = [];
         foreach ($propriedades as &$p) {
-            $p['talhoes'] = Database::todos(
-                'SELECT t.*, cu.nome AS cultura FROM talhoes t
-                  LEFT JOIN culturas cu ON cu.id = t.cultura_id
-                 WHERE t.propriedade_id = ? ORDER BY t.nome',
-                [(int) $p['id']]
-            );
+            $p['imoveis'] = \App\Services\AreaPlantioService::imoveisDaPropriedade((int) $p['id']);
+            $p['talhoes'] = [];
+            foreach ($p['imoveis'] as $im) {
+                foreach ($im['talhoes'] as $t) {
+                    $p['talhoes'][] = $t; // lista plana: plantios/colheitas por talhão continuam funcionando
+                }
+            }
+            $p['resumo'] = \App\Services\AreaPlantioService::consolidar(array_column($p['imoveis'], 'resumo'));
+            $resumosProdutor[] = $p['resumo'];
         }
         unset($p);
+        $resumoProdutor = \App\Services\AreaPlantioService::consolidar($resumosProdutor);
+        $finalidades = Database::todos('SELECT id, nome FROM finalidades WHERE ativo = 1 ORDER BY ordem, nome');
 
         // Fase 6E: plantio ativo (com fase estimada) e última colheita por talhão
         $plantiosAtivos = \App\Services\FenologiaService::plantiosAtivosPorCliente($id);
@@ -252,7 +261,7 @@ class ClientesController
         render_parcial('partials/cliente_ficha', compact(
             'cliente', 'propriedades', 'contatos', 'painel', 'potencial',
             'demandaPlano', 'planos', 'historico', 'historicoCompras', 'culturas', 'documentos',
-            'plantiosAtivos', 'colheitas'
+            'plantiosAtivos', 'colheitas', 'resumoProdutor', 'finalidades'
         ));
     }
 
@@ -260,30 +269,59 @@ class ClientesController
     public function croquiDados(): void
     {
         Permissoes::exigirInterno();
-        $propId = (int) ($_GET['propriedade_id'] ?? 0);
-        $prop = $this->propriedadeDaCarteira($propId);
+        // v40: o croqui é por IMÓVEL (CAR). propriedade_id ainda é aceito (fila offline
+        // antiga, links antigos) e cai no primeiro imóvel da propriedade.
+        $imovel = $this->imovelAlvo();
+        $prop = $this->propriedadeDaCarteira((int) $imovel['propriedade_id']);
+        $propId = (int) $prop['id'];
+        $imovelId = (int) $imovel['id'];
+        $primeiroId = (int) Database::valor('SELECT MIN(id) FROM imoveis WHERE propriedade_id = ?', [$propId]);
+        // Talhão legado (sem imóvel) aparece no PRIMEIRO imóvel, para não sumir do croqui
         $talhoes = Database::todos(
-            'SELECT t.id, t.nome, t.area_ha, t.area_gps, t.contorno, cu.nome AS cultura
-               FROM talhoes t LEFT JOIN culturas cu ON cu.id = t.cultura_id
-              WHERE t.propriedade_id = ? ORDER BY t.nome',
-            [$propId]
+            'SELECT t.id, t.nome, t.area_ha, t.area_gps, t.contorno, t.imovel_id, cu.nome AS cultura, f.nome AS finalidade
+               FROM talhoes t
+               LEFT JOIN culturas cu ON cu.id = t.cultura_id
+               LEFT JOIN finalidades f ON f.id = t.finalidade_id
+              WHERE t.propriedade_id = ? AND (t.imovel_id = ? OR (t.imovel_id IS NULL AND ? = ?))
+              ORDER BY t.nome',
+            [$propId, $imovelId, $imovelId, $primeiroId]
+        );
+        // Outros imóveis da mesma propriedade: só a divisa, para contexto no mapa (não editáveis)
+        $outros = Database::todos(
+            'SELECT id, nome, car_numero, contorno FROM imoveis
+              WHERE propriedade_id = ? AND id <> ? AND contorno IS NOT NULL ORDER BY ordem, id',
+            [$propId, $imovelId]
         );
         // Município/estado/linha do produtor — pré-preenchem o "Ir para" (localizar no mapa)
         $cli = Database::um('SELECT municipio, estado, linha FROM clientes WHERE id = ?', [(int) $prop['cliente_id']]) ?: [];
+        $num = fn ($v) => $v !== null && $v !== '' ? (float) $v : null;
         json_ok([
             'propriedade' => [
-                'id' => (int) $prop['id'],
+                'id' => $propId,
                 'nome' => $prop['nome'],
-                'latitude' => $prop['latitude'] !== null ? (float) $prop['latitude'] : null,
-                'longitude' => $prop['longitude'] !== null ? (float) $prop['longitude'] : null,
+                'latitude' => $num($prop['latitude']),
+                'longitude' => $num($prop['longitude']),
                 'area_ha' => (float) $prop['area_ha'],
-                'area_gps' => isset($prop['area_gps']) && $prop['area_gps'] !== null ? (float) $prop['area_gps'] : null,
-                'contorno' => $prop['contorno'] ?? null,
-                'car_numero' => $prop['car_numero'] ?? null,
                 'municipio' => $prop['municipio'] ?? ($cli['municipio'] ?? null),
                 'estado' => $cli['estado'] ?? null,
                 'linha' => $cli['linha'] ?? null,
             ],
+            'imovel' => [
+                'id' => $imovelId,
+                'nome' => $imovel['nome'],
+                'rotulo' => self::rotuloImovel($imovel),
+                'car_numero' => $imovel['car_numero'],
+                'municipio' => $imovel['municipio'],
+                'area_ha' => (float) $imovel['area_ha'],
+                'area_gps' => $num($imovel['area_gps']),
+                'contorno' => $imovel['contorno'],
+                'area_plantio_ha' => (float) $imovel['area_plantio_ha'],
+                'area_plantio_gps' => $num($imovel['area_plantio_gps']),
+                'contorno_plantio' => $imovel['contorno_plantio'],
+            ],
+            'outros' => array_map(fn ($o) => [
+                'id' => (int) $o['id'], 'rotulo' => self::rotuloImovel($o), 'contorno' => $o['contorno'],
+            ], $outros),
             'talhoes' => $talhoes,
             // Imagem de satélite de fundo (provedor configurável; vazio = sem mapa)
             'tiles' => [
@@ -307,26 +345,46 @@ class ClientesController
     {
         Permissoes::exigirInterno();
         sync_iniciar($_POST['uuid_offline'] ?? null);
-        $ehPropriedade = ($_POST['tipo'] ?? 'talhao') === 'propriedade';
-        if ($ehPropriedade) {
-            $alvoId = (int) ($_POST['propriedade_id'] ?? 0);
-            $this->propriedadeDaCarteira($alvoId);
-            $tabela = 'propriedades';
-        } else {
+        // v40 — três alvos: 'imovel' (divisa do CAR; 'propriedade' é alias da fila
+        // offline antiga), 'plantio' (área de plantio do imóvel) e 'talhao'.
+        $tipo = (string) ($_POST['tipo'] ?? 'talhao');
+        if ($tipo === 'propriedade') {
+            $tipo = 'imovel';
+        }
+        if (!in_array($tipo, ['imovel', 'plantio', 'talhao'], true)) {
+            json_erro('Tipo de croqui inválido.');
+        }
+        $rotulo = ['imovel' => 'divisa do imóvel', 'plantio' => 'área de plantio', 'talhao' => 'talhão'][$tipo];
+
+        if ($tipo === 'talhao') {
             $alvoId = (int) ($_POST['talhao_id'] ?? 0);
-            $talhao = Database::um('SELECT t.id, t.propriedade_id FROM talhoes t WHERE t.id = ?', [$alvoId]);
+            $talhao = Database::um('SELECT t.id, t.propriedade_id, t.imovel_id FROM talhoes t WHERE t.id = ?', [$alvoId]);
             if (!$talhao) {
                 json_erro('Talhão não encontrado.', 404);
             }
             $this->propriedadeDaCarteira((int) $talhao['propriedade_id']);
+            $imovel = $talhao['imovel_id'] !== null
+                ? Database::um('SELECT * FROM imoveis WHERE id = ?', [(int) $talhao['imovel_id']])
+                : $this->primeiroImovel((int) $talhao['propriedade_id']);
             $tabela = 'talhoes';
+            $colContorno = 'contorno';
+            $colArea = 'area_gps';
+            $colOficial = 'area_ha';
+        } else {
+            $imovel = $this->imovelAlvo();
+            $alvoId = (int) $imovel['id'];
+            $tabela = 'imoveis';
+            $colContorno = $tipo === 'imovel' ? 'contorno' : 'contorno_plantio';
+            $colArea = $tipo === 'imovel' ? 'area_gps' : 'area_plantio_gps';
+            $colOficial = $tipo === 'imovel' ? 'area_ha' : 'area_plantio_ha';
         }
+        $imovelId = (int) ($imovel['id'] ?? 0);
 
         $contornoJson = trim($_POST['contorno'] ?? '');
         if ($contornoJson === '' || $contornoJson === '[]') {
-            Database::executar("UPDATE {$tabela} SET contorno = NULL, area_gps = NULL WHERE id = ?", [$alvoId]);
+            Database::executar("UPDATE {$tabela} SET {$colContorno} = NULL, {$colArea} = NULL WHERE id = ?", [$alvoId]);
             sync_confirmar($_POST['uuid_offline'] ?? null);
-            auditar('excluir', 'croqui', $alvoId, ($ehPropriedade ? 'propriedade' : 'talhão') . ' — contorno removido');
+            auditar('excluir', 'croqui', $alvoId, $rotulo . ' — contorno removido');
             json_ok(['area_gps' => null]);
         }
         try {
@@ -335,52 +393,60 @@ class ClientesController
             json_erro($e->getMessage());
         }
 
-        // REGRA: talhão JAMAIS sai da divisa da propriedade
-        if ($ehPropriedade) {
-            // Divisa nova não pode deixar talhões já desenhados para fora
+        $divisa = !empty($imovel['contorno']) ? (json_decode((string) $imovel['contorno'], true) ?: []) : [];
+        $avisos = [];
+        if ($tipo === 'imovel') {
+            // REGRA: a divisa nova não pode deixar para fora nem os talhões já
+            // desenhados nem a área de plantio (ambos ficam DENTRO do imóvel)
             $foraDaNova = [];
-            foreach (Database::todos(
-                'SELECT nome, contorno FROM talhoes WHERE propriedade_id = ? AND contorno IS NOT NULL', [$alvoId]
-            ) as $t) {
+            foreach ($this->talhoesDoImovel($imovelId, true) as $t) {
                 $pts = json_decode((string) $t['contorno'], true) ?: [];
                 if ($pts && \App\Services\CroquiService::pontosFora($pts, $pontos)) {
                     $foraDaNova[] = $t['nome'];
                 }
             }
+            $plantio = !empty($imovel['contorno_plantio']) ? (json_decode((string) $imovel['contorno_plantio'], true) ?: []) : [];
+            if ($plantio && \App\Services\CroquiService::pontosFora($plantio, $pontos)) {
+                $foraDaNova[] = 'Área de plantio';
+            }
             if ($foraDaNova) {
-                json_erro('A divisa desenhada deixa talhão(ões) para fora da propriedade: '
-                    . implode(', ', $foraDaNova) . '. Amplie a divisa ou ajuste os talhões antes.');
+                json_erro('A divisa desenhada deixa para fora do imóvel: '
+                    . implode(', ', $foraDaNova) . '. Amplie a divisa ou ajuste antes.');
             }
         } else {
-            // Talhão fora da divisa é PRESO na borda da propriedade (não recusa —
-            // a fila offline nunca falha e o desenho fica sempre válido)
-            $divisaJson = Database::valor(
-                'SELECT p.contorno FROM propriedades p JOIN talhoes t ON t.propriedade_id = p.id WHERE t.id = ?',
-                [$alvoId]
-            );
-            $divisa = $divisaJson ? (json_decode((string) $divisaJson, true) ?: []) : [];
+            // Área de plantio e talhão: ponto fora da divisa é PRESO na borda (não
+            // recusa — a fila offline nunca falha e o desenho fica sempre válido)
             if ($divisa) {
                 $pontos = \App\Services\CroquiService::prenderNaDivisa($pontos, $divisa);
+            }
+            if ($tipo === 'plantio') {
+                // Talhão fora da área de plantio é AVISO, não bloqueio (§3 da spec)
+                foreach ($this->talhoesDoImovel($imovelId, true) as $t) {
+                    $pts = json_decode((string) $t['contorno'], true) ?: [];
+                    if ($pts && \App\Services\CroquiService::pontosFora($pts, $pontos)) {
+                        $avisos[] = $t['nome'];
+                    }
+                }
             }
         }
 
         $areaGps = \App\Services\CroquiService::areaHa($pontos);
         Database::executar(
-            "UPDATE {$tabela} SET contorno = ?, area_gps = ? WHERE id = ?",
+            "UPDATE {$tabela} SET {$colContorno} = ?, {$colArea} = ? WHERE id = ?",
             [json_encode($pontos), $areaGps, $alvoId]
         );
-        // Opcional: assumir a área medida como a área oficial
+        // Opcional: assumir a área medida como a área oficial (total, de plantio ou do talhão)
         if ((int) ($_POST['usar_area'] ?? 0) === 1 && $areaGps > 0) {
-            Database::executar("UPDATE {$tabela} SET area_ha = ? WHERE id = ?", [$areaGps, $alvoId]);
+            Database::executar("UPDATE {$tabela} SET {$colOficial} = ? WHERE id = ?", [$areaGps, $alvoId]);
         }
         // Divisa vinda do CAR (identificação por GPS) traz o número do imóvel
-        if ($ehPropriedade && trim($_POST['car_numero'] ?? '') !== '') {
-            Database::executar('UPDATE propriedades SET car_numero = ? WHERE id = ?',
+        if ($tipo === 'imovel' && trim($_POST['car_numero'] ?? '') !== '') {
+            Database::executar('UPDATE imoveis SET car_numero = ? WHERE id = ?',
                 [mb_substr(trim($_POST['car_numero']), 0, 60), $alvoId]);
         }
         sync_confirmar($_POST['uuid_offline'] ?? null);
-        auditar('salvar', 'croqui', $alvoId, ($ehPropriedade ? 'propriedade' : 'talhão') . ' · ' . count($pontos) . " pontos · {$areaGps} ha");
-        json_ok(['area_gps' => $areaGps]);
+        auditar('salvar', 'croqui', $alvoId, $rotulo . ' · ' . count($pontos) . " pontos · {$areaGps} ha");
+        json_ok(['area_gps' => $areaGps, 'talhoes_fora' => $avisos]);
     }
 
     /**
@@ -391,8 +457,10 @@ class ClientesController
     public function importarCar(): void
     {
         Permissoes::exigirInterno();
-        $propId = (int) ($_POST['propriedade_id'] ?? 0);
-        $this->propriedadeDaCarteira($propId);
+        // v40: a divisa do CAR é do IMÓVEL (imovel_id; propriedade_id cai no 1º imóvel)
+        $imovel = $this->imovelAlvo();
+        $imovelId = (int) $imovel['id'];
+        $propId = (int) $imovel['propriedade_id'];
 
         if (empty($_FILES['arquivo']['tmp_name']) || !is_uploaded_file($_FILES['arquivo']['tmp_name'])) {
             json_erro('Selecione o arquivo .zip do CAR (Shapefile).');
@@ -419,9 +487,7 @@ class ClientesController
         // A divisa do CAR é a verdade oficial: se algum talhão já desenhado ficar
         // para fora, avisamos (não bloqueia — deixa o gestor ajustar o talhão).
         $fora = [];
-        foreach (Database::todos(
-            'SELECT nome, contorno FROM talhoes WHERE propriedade_id = ? AND contorno IS NOT NULL', [$propId]
-        ) as $t) {
+        foreach ($this->talhoesDoImovel($imovelId, true) as $t) {
             $pts = json_decode((string) $t['contorno'], true) ?: [];
             if ($pts && \App\Services\CroquiService::pontosFora($pts, $pontos)) {
                 $fora[] = $t['nome'];
@@ -432,23 +498,26 @@ class ClientesController
         $car = trim($_POST['car_numero'] ?? '') ?: (string) ($lido['cod'] ?? '');
         if ($car !== '') {
             Database::executar(
-                'UPDATE propriedades SET contorno = ?, area_gps = ?, car_numero = ? WHERE id = ?',
-                [json_encode($pontos), $areaGps, mb_substr($car, 0, 60), $propId]
+                'UPDATE imoveis SET contorno = ?, area_gps = ?, car_numero = ? WHERE id = ?',
+                [json_encode($pontos), $areaGps, mb_substr($car, 0, 60), $imovelId]
             );
         } else {
             Database::executar(
-                'UPDATE propriedades SET contorno = ?, area_gps = ? WHERE id = ?',
-                [json_encode($pontos), $areaGps, $propId]
+                'UPDATE imoveis SET contorno = ?, area_gps = ? WHERE id = ?',
+                [json_encode($pontos), $areaGps, $imovelId]
             );
         }
-        // Município detectado no arquivo preenche o cadastro da propriedade se estiver vazio
+        // Município detectado no arquivo preenche imóvel e propriedade se estiverem vazios
         if (!empty($lido['municipio'])) {
+            $mun = mb_substr((string) $lido['municipio'], 0, 120);
             Database::executar(
-                "UPDATE propriedades SET municipio = ? WHERE id = ? AND (municipio IS NULL OR municipio = '')",
-                [mb_substr((string) $lido['municipio'], 0, 120), $propId]
+                "UPDATE imoveis SET municipio = ? WHERE id = ? AND (municipio IS NULL OR municipio = '')", [$mun, $imovelId]
+            );
+            Database::executar(
+                "UPDATE propriedades SET municipio = ? WHERE id = ? AND (municipio IS NULL OR municipio = '')", [$mun, $propId]
             );
         }
-        auditar('importar', 'croqui', $propId, 'CAR shapefile · ' . count($pontos) . " pontos · {$areaGps} ha");
+        auditar('importar', 'croqui', $imovelId, 'CAR shapefile · imóvel · ' . count($pontos) . " pontos · {$areaGps} ha");
         json_ok([
             'area_gps' => $areaGps, 'pontos' => count($pontos), 'talhoes_fora' => $fora,
             'car_numero' => $car ?: null,
@@ -668,17 +737,94 @@ class ClientesController
     {
         Permissoes::exigirInterno();
         sync_iniciar($_POST['uuid_offline'] ?? null);
-        $propId = (int) ($_POST['propriedade_id'] ?? 0);
-        $this->propriedadeDaCarteira($propId); // valida a carteira (json_erro se não for)
+        $imovel = $this->imovelAlvo(); // v40: o nº do CAR é do imóvel (valida a carteira)
+        $imovelId = (int) $imovel['id'];
         $car = trim($_POST['car_numero'] ?? '');
         if ($car === '') {
             json_erro('Número do CAR não informado.');
         }
         $car = mb_substr($car, 0, 60);
-        Database::executar('UPDATE propriedades SET car_numero = ? WHERE id = ?', [$car, $propId]);
-        auditar('salvar', 'propriedade', $propId, 'nº do CAR ' . $car . ' (identificado pela base do CAR)');
+        Database::executar('UPDATE imoveis SET car_numero = ? WHERE id = ?', [$car, $imovelId]);
+        auditar('salvar', 'imovel', $imovelId, 'nº do CAR ' . $car . ' (identificado pela base do CAR)');
         sync_confirmar($_POST['uuid_offline'] ?? null);
         json_ok(['car_numero' => $car]);
+    }
+
+    /* ------------------------- imóveis (CAR) — v40 ------------------------- */
+
+    /**
+     * Imóvel alvo de uma requisição: `imovel_id` (preferido) ou `propriedade_id`
+     * (compatibilidade — fila offline/links antigos), que cai no PRIMEIRO imóvel
+     * da propriedade, criando-o se a propriedade ainda não tiver nenhum.
+     */
+    private function imovelAlvo(): array
+    {
+        $imovelId = (int) ($_POST['imovel_id'] ?? $_GET['imovel_id'] ?? 0);
+        if ($imovelId > 0) {
+            return $this->imovelDaCarteira($imovelId);
+        }
+        $propId = (int) ($_POST['propriedade_id'] ?? $_GET['propriedade_id'] ?? 0);
+        $this->propriedadeDaCarteira($propId);
+        return $this->primeiroImovel($propId);
+    }
+
+    /** Garante que o imóvel pertence a uma propriedade de cliente da carteira. */
+    private function imovelDaCarteira(int $imovelId): array
+    {
+        $imovel = Database::um('SELECT * FROM imoveis WHERE id = ?', [$imovelId]);
+        if (!$imovel) {
+            json_erro('Imóvel não encontrado.', 404);
+        }
+        $this->propriedadeDaCarteira((int) $imovel['propriedade_id']);
+        return $imovel;
+    }
+
+    /** Primeiro imóvel da propriedade (cria um se não houver — propriedade antiga/nova). */
+    private function primeiroImovel(int $propId): array
+    {
+        $imovel = Database::um('SELECT * FROM imoveis WHERE propriedade_id = ? ORDER BY ordem, id LIMIT 1', [$propId]);
+        if ($imovel) {
+            return $imovel;
+        }
+        $prop = Database::um('SELECT * FROM propriedades WHERE id = ?', [$propId]);
+        if (!$prop) {
+            json_erro('Propriedade não encontrada.', 404);
+        }
+        Database::executar(
+            'INSERT INTO imoveis (propriedade_id, car_numero, municipio, area_ha, contorno, area_gps)
+             VALUES (?,?,?,?,?,?)',
+            [$propId, $prop['car_numero'] ?? null, $prop['municipio'] ?? null, (float) $prop['area_ha'],
+                $prop['contorno'] ?? null, $prop['area_gps'] ?? null]
+        );
+        return Database::um('SELECT * FROM imoveis WHERE id = ?', [Database::ultimoId()]);
+    }
+
+    /**
+     * Talhões de um imóvel. Talhão legado (imovel_id NULL) conta no PRIMEIRO imóvel
+     * da propriedade. $soComContorno filtra os já desenhados no croqui.
+     */
+    private function talhoesDoImovel(int $imovelId, bool $soComContorno = false): array
+    {
+        $propId = (int) Database::valor('SELECT propriedade_id FROM imoveis WHERE id = ?', [$imovelId]);
+        $primeiroId = (int) Database::valor('SELECT MIN(id) FROM imoveis WHERE propriedade_id = ?', [$propId]);
+        return Database::todos(
+            'SELECT id, nome, contorno, area_gps, area_ha FROM talhoes
+              WHERE propriedade_id = ? AND (imovel_id = ? OR (imovel_id IS NULL AND ? = ?))'
+            . ($soComContorno ? ' AND contorno IS NOT NULL' : '') . ' ORDER BY nome',
+            [$propId, $imovelId, $imovelId, $primeiroId]
+        );
+    }
+
+    /** Nome de exibição do imóvel: apelido, senão nº do CAR, senão "Imóvel". */
+    public static function rotuloImovel(array $imovel): string
+    {
+        if (!empty($imovel['nome'])) {
+            return (string) $imovel['nome'];
+        }
+        if (!empty($imovel['car_numero'])) {
+            return 'CAR ' . $imovel['car_numero'];
+        }
+        return 'Imóvel' . (isset($imovel['ordem']) && (int) $imovel['ordem'] > 0 ? ' ' . (int) $imovel['ordem'] : '');
     }
 
     /** Garante que a propriedade pertence a um cliente da carteira do usuário. */
@@ -816,25 +962,126 @@ class ClientesController
         if ($nome === '') {
             json_erro('Informe o nome da propriedade.');
         }
+        // v40: o nº do CAR saiu da propriedade — fica em cada IMÓVEL (uma propriedade
+        // pode ter vários CARs). Propriedade nova já nasce com 1 imóvel para cadastrar.
         $dados = [
             $nome,
             (float) str_replace(',', '.', $_POST['area_ha'] ?? 0),
             trim($_POST['municipio'] ?? '') ?: null,
-            trim($_POST['car_numero'] ?? '') ? mb_substr(trim($_POST['car_numero']), 0, 60) : null,
         ];
         if ($id > 0) {
             Database::executar(
-                'UPDATE propriedades SET nome=?, area_ha=?, municipio=?, car_numero=? WHERE id=? AND cliente_id=?',
+                'UPDATE propriedades SET nome=?, area_ha=?, municipio=? WHERE id=? AND cliente_id=?',
                 array_merge($dados, [$id, $clienteId])
             );
         } else {
             Database::executar(
-                'INSERT INTO propriedades (nome, area_ha, municipio, car_numero, cliente_id) VALUES (?,?,?,?,?)',
+                'INSERT INTO propriedades (nome, area_ha, municipio, cliente_id) VALUES (?,?,?,?)',
                 array_merge($dados, [$clienteId])
             );
             $id = Database::ultimoId();
+            $this->primeiroImovel($id); // cria o 1º imóvel (CAR) da propriedade
         }
         json_ok(['id' => $id]);
+    }
+
+    /** Salva imóvel rural (CAR) da propriedade — v40 (modal AJAX). */
+    public function salvarImovel(): void
+    {
+        Permissoes::exigirInterno();
+        $propriedadeId = (int) ($_POST['propriedade_id'] ?? 0);
+        $this->propriedadeDaCarteira($propriedadeId);
+        $id = (int) ($_POST['id'] ?? 0);
+        $num = fn ($k) => (float) str_replace(',', '.', $_POST[$k] ?? 0);
+        $areaHa = $num('area_ha');
+        $areaPlantio = $num('area_plantio_ha');
+        if ($areaHa < 0 || $areaPlantio < 0) {
+            json_erro('Área não pode ser negativa.');
+        }
+        if ($areaHa > 0 && $areaPlantio > $areaHa) {
+            json_erro('A área de plantio não pode ser maior que a área total do imóvel.');
+        }
+        $dados = [
+            trim($_POST['nome'] ?? '') ? mb_substr(trim($_POST['nome']), 0, 120) : null,
+            trim($_POST['car_numero'] ?? '') ? mb_substr(trim($_POST['car_numero']), 0, 60) : null,
+            trim($_POST['municipio'] ?? '') ? mb_substr(trim($_POST['municipio']), 0, 120) : null,
+            $areaHa,
+            $areaPlantio,
+        ];
+        if ($id > 0) {
+            Database::executar(
+                'UPDATE imoveis SET nome=?, car_numero=?, municipio=?, area_ha=?, area_plantio_ha=?
+                  WHERE id=? AND propriedade_id=?',
+                array_merge($dados, [$id, $propriedadeId])
+            );
+        } else {
+            $ordem = (int) Database::valor('SELECT COALESCE(MAX(ordem), 0) + 1 FROM imoveis WHERE propriedade_id = ?', [$propriedadeId]);
+            Database::executar(
+                'INSERT INTO imoveis (nome, car_numero, municipio, area_ha, area_plantio_ha, propriedade_id, ordem)
+                 VALUES (?,?,?,?,?,?,?)',
+                array_merge($dados, [$propriedadeId, $ordem])
+            );
+            $id = Database::ultimoId();
+        }
+        auditar('salvar', 'imovel', $id, 'propriedade #' . $propriedadeId);
+        json_ok(['id' => $id]);
+    }
+
+    /** Exclui imóvel sem talhões (com talhões, mova-os antes) — v40. */
+    public function excluirImovel(): void
+    {
+        Permissoes::exigirInterno();
+        $imovel = $this->imovelDaCarteira((int) ($_POST['id'] ?? 0));
+        $qtd = (int) Database::valor('SELECT COUNT(*) FROM talhoes WHERE imovel_id = ?', [(int) $imovel['id']]);
+        if ($qtd > 0) {
+            json_erro("Este imóvel tem {$qtd} talhão(ões). Mova-os para outro imóvel (editar talhão) antes de excluir.");
+        }
+        $restantes = (int) Database::valor('SELECT COUNT(*) FROM imoveis WHERE propriedade_id = ?', [(int) $imovel['propriedade_id']]);
+        if ($restantes <= 1) {
+            json_erro('A propriedade precisa de ao menos um imóvel. Edite este em vez de excluir.');
+        }
+        Database::executar('DELETE FROM imoveis WHERE id = ?', [(int) $imovel['id']]);
+        auditar('excluir', 'imovel', (int) $imovel['id'], self::rotuloImovel($imovel));
+        json_ok();
+    }
+
+    /**
+     * "Plantar a área toda": cria UM talhão cobrindo a área de plantio do imóvel
+     * (mesmo contorno e área), na cultura/finalidade escolhidas — v40 §3.
+     */
+    public function plantarAreaToda(): void
+    {
+        Permissoes::exigirInterno();
+        $imovel = $this->imovelDaCarteira((int) ($_POST['imovel_id'] ?? 0));
+        $imovelId = (int) $imovel['id'];
+        $culturaId = (int) ($_POST['cultura_id'] ?? 0);
+        if (!$culturaId) {
+            json_erro('Escolha a cultura.');
+        }
+        if ((int) Database::valor('SELECT COUNT(*) FROM talhoes WHERE imovel_id = ?', [$imovelId]) > 0) {
+            json_erro('Este imóvel já tem talhões. Edite-os ou exclua-os para plantar a área toda de uma vez.');
+        }
+        $areaPlantio = \App\Services\AreaPlantioService::areaValida($imovel, 'area_plantio_gps', 'area_plantio_ha');
+        $contorno = $imovel['contorno_plantio'] ?: null;
+        if ($areaPlantio <= 0 && !$contorno) {
+            // sem área de plantio: usa o imóvel inteiro (divisa) como área de plantio
+            $areaPlantio = \App\Services\AreaPlantioService::areaValida($imovel, 'area_gps', 'area_ha');
+            $contorno = $imovel['contorno'] ?: null;
+        }
+        if ($areaPlantio <= 0 && !$contorno) {
+            json_erro('Informe a área de plantio (ou desenhe-a no croqui) antes de plantar a área toda.');
+        }
+        $finalidadeId = (int) ($_POST['finalidade_id'] ?? 0) ?: null;
+        $nome = trim($_POST['nome'] ?? '') ?: 'Área toda';
+        Database::executar(
+            'INSERT INTO talhoes (propriedade_id, imovel_id, nome, area_ha, cultura_id, finalidade_id, contorno, area_gps)
+             VALUES (?,?,?,?,?,?,?,?)',
+            [(int) $imovel['propriedade_id'], $imovelId, mb_substr($nome, 0, 120), round($areaPlantio, 2),
+                $culturaId, $finalidadeId, $contorno, $contorno ? round($areaPlantio, 2) : null]
+        );
+        $id = Database::ultimoId();
+        auditar('criar', 'talhao', $id, 'área toda do imóvel #' . $imovelId . " · {$areaPlantio} ha");
+        json_ok(['id' => $id, 'area_ha' => round($areaPlantio, 2)]);
     }
 
     /** Salva talhão (modal AJAX). */
@@ -849,19 +1096,33 @@ class ClientesController
         if ($nome === '') {
             json_erro('Informe o nome do talhão.');
         }
+        // v40: o talhão pertence a um IMÓVEL da propriedade (sem escolha → 1º imóvel) e
+        // tem FINALIDADE (grão, silagem, pastagem...). Mudar o imóvel move o talhão.
+        $imovelId = (int) ($_POST['imovel_id'] ?? 0);
+        if ($imovelId > 0) {
+            $pertence = Database::valor('SELECT 1 FROM imoveis WHERE id = ? AND propriedade_id = ?', [$imovelId, $propriedadeId]);
+            if (!$pertence) {
+                json_erro('O imóvel escolhido não é desta propriedade.');
+            }
+        } else {
+            $imovelId = (int) $this->primeiroImovel($propriedadeId)['id'];
+        }
+        $finalidadeId = (int) ($_POST['finalidade_id'] ?? 0) ?: null;
         $dados = [
             $nome,
             (float) str_replace(',', '.', $_POST['area_ha'] ?? 0),
             (int) ($_POST['cultura_id'] ?? 0) ?: null,
+            $finalidadeId,
+            $imovelId,
         ];
         if ($id > 0) {
             Database::executar(
-                'UPDATE talhoes SET nome=?, area_ha=?, cultura_id=? WHERE id=? AND propriedade_id=?',
+                'UPDATE talhoes SET nome=?, area_ha=?, cultura_id=?, finalidade_id=?, imovel_id=? WHERE id=? AND propriedade_id=?',
                 array_merge($dados, [$id, $propriedadeId])
             );
         } else {
             Database::executar(
-                'INSERT INTO talhoes (nome, area_ha, cultura_id, propriedade_id) VALUES (?,?,?,?)',
+                'INSERT INTO talhoes (nome, area_ha, cultura_id, finalidade_id, imovel_id, propriedade_id) VALUES (?,?,?,?,?,?)',
                 array_merge($dados, [$propriedadeId])
             );
             $id = Database::ultimoId();

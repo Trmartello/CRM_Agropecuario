@@ -170,6 +170,11 @@ $router->registrar('clientes/pre-cadastro', ClientesController::class, 'preCadas
 $router->registrar('clientes/ficha', ClientesController::class, 'ficha');
 $router->registrar('clientes/salvar-propriedade', ClientesController::class, 'salvarPropriedade');
 $router->registrar('clientes/salvar-talhao', ClientesController::class, 'salvarTalhao');
+// v40: imóveis (CAR) dentro da propriedade + área de plantio + "plantar a área toda"
+$router->registrar('clientes/salvar-imovel', ClientesController::class, 'salvarImovel');
+$router->registrar('clientes/excluir-imovel', ClientesController::class, 'excluirImovel');
+$router->registrar('clientes/plantar-area-toda', ClientesController::class, 'plantarAreaToda');
+$router->registrar('configuracoes/salvar-finalidade', \App\Controllers\ConfiguracoesController::class, 'salvarFinalidade');
 $router->registrar('clientes/croqui-dados', ClientesController::class, 'croquiDados');
 $router->registrar('clientes/salvar-croqui', ClientesController::class, 'salvarCroqui');
 $router->registrar('clientes/importar-car', ClientesController::class, 'importarCar');

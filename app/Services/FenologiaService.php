@@ -196,7 +196,7 @@ class FenologiaService
     }
 
     /** Registra o plantio de um talhão (um ativo por vez). */
-    public static function salvarPlantio(int $talhaoId, int $culturaId, string $dataPlantio, ?string $cultivar): int
+    public static function salvarPlantio(int $talhaoId, int $culturaId, string $dataPlantio, ?string $cultivar, ?int $finalidadeId = null): int
     {
         if ($talhaoId <= 0 || $culturaId <= 0) {
             throw new \InvalidArgumentException('Informe o talhão e a cultura do plantio.');
@@ -214,17 +214,23 @@ class FenologiaService
         $safra = ComercialService::safraAtual();
         // INSERT condicionado: fecha a corrida do check-then-insert (toque duplo)
         Database::executar(
-            'INSERT INTO plantios (talhao_id, cultura_id, safra_id, data_plantio, cultivar)
-             SELECT ?,?,?,?,? FROM DUAL
+            'INSERT INTO plantios (talhao_id, cultura_id, finalidade_id, safra_id, data_plantio, cultivar)
+             SELECT ?,?,?,?,?,? FROM DUAL
               WHERE NOT EXISTS (SELECT 1 FROM plantios p2 WHERE p2.talhao_id = ? AND p2.encerrado = 0)',
-            [$talhaoId, $culturaId, $safra ? (int) $safra['id'] : null, $data->format('Y-m-d'), trim((string) $cultivar) ?: null, $talhaoId]
+            [$talhaoId, $culturaId, $finalidadeId, $safra ? (int) $safra['id'] : null, $data->format('Y-m-d'), trim((string) $cultivar) ?: null, $talhaoId]
         );
-        if (Database::ultimoId() === 0) {
+        $plantioId = Database::ultimoId();
+        if ($plantioId === 0) {
             throw new \InvalidArgumentException('Este talhão já tem um plantio em andamento — encerre-o (colheita) antes de registrar outro.');
         }
-        // Mantém a cultura do talhão alinhada ao plantio real
-        Database::executar('UPDATE talhoes SET cultura_id = ? WHERE id = ?', [$culturaId, $talhaoId]);
-        return Database::ultimoId();
+        // Mantém cultura e finalidade do talhão alinhadas ao plantio real (v40:
+        // finalidade só sobrescreve se veio informada — não apaga a do talhão)
+        if ($finalidadeId) {
+            Database::executar('UPDATE talhoes SET cultura_id = ?, finalidade_id = ? WHERE id = ?', [$culturaId, $finalidadeId, $talhaoId]);
+        } else {
+            Database::executar('UPDATE talhoes SET cultura_id = ? WHERE id = ?', [$culturaId, $talhaoId]);
+        }
+        return $plantioId;
     }
 
     /** Encerra o plantio registrando a colheita (produtividade em sc/ha). */
