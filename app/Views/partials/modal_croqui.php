@@ -53,6 +53,13 @@
           <button class="btn btn-sm btn-outline-secondary" onclick="Croqui.irParaArea()" title="Centralizar o mapa nessa região"><i class="bi bi-search me-1"></i>Ir</button>
         </div>
         <div id="croquiPalco" class="croqui-palco flex-grow-1"></div>
+        <?php /* Barra flutuante da TELA CHEIA (só aparece com #modalCroqui.croqui-cheio) */ ?>
+        <div class="croqui-cheio-barra" id="croquiCheioBarra">
+          <span class="croqui-cheio-area" id="croquiCheioArea"></span>
+          <button class="btn btn-sm btn-outline-secondary" onclick="Croqui.desfazer()" title="Desfazer a última ação"><i class="bi bi-arrow-counterclockwise"></i></button>
+          <button class="btn btn-sm btn-success" onclick="Croqui.salvar()"><i class="bi bi-check-lg me-1"></i>Salvar</button>
+          <button class="btn btn-sm btn-outline-dark" onclick="Croqui.telaCheia(false)" title="Voltar à tela normal"><i class="bi bi-fullscreen-exit me-1"></i>Sair</button>
+        </div>
         <div class="d-flex flex-wrap align-items-center gap-3">
           <div class="form-check form-check-sm mb-0">
             <input class="form-check-input" type="checkbox" id="croquiUsarArea" checked>
@@ -65,7 +72,7 @@
           <i class="bi bi-info-circle me-1"></i>No seletor, escolha <strong>Divisa do imóvel (CAR)</strong> para a área total,
           <strong>Área de plantio</strong> para marcar o que dá para plantar dentro dela (verde tracejado), ou um <strong>talhão</strong>
           para a área de cada cultura. <strong>Manual</strong>: toque sobre a imagem de satélite para marcar cada canto (arraste o mapa para navegar,
-          use +/− ou a roda do mouse para o zoom, arraste um ponto para ajustar, dê <strong>dois toques sobre a linha ciano para inserir um ponto</strong> ali e refinar, e <strong>dois toques em um ponto para removê-lo</strong>. A divisa que você desenha/ajusta fica em <strong>ciano</strong>; as linhas do CAR ficam em amarelo (com o <em>CAR no mapa</em> ligado, tocar dentro de um imóvel amarelo adota aquela divisa). <strong>Caminhar a divisa</strong>: ande pelo perímetro —
+          use +/− ou a roda do mouse para o zoom, <strong>⤢ para o mapa ocupar a tela toda</strong>, arraste um ponto para ajustar, dê <strong>dois toques sobre a linha ciano para inserir um ponto</strong> ali e refinar, e <strong>dois toques em um ponto para removê-lo</strong>. A divisa que você desenha/ajusta fica em <strong>ciano</strong>; as linhas do CAR ficam em amarelo (com o <em>CAR no mapa</em> ligado, tocar dentro de um imóvel amarelo adota aquela divisa). <strong>Caminhar a divisa</strong>: ande pelo perímetro —
           o app marca um ponto a cada ~10 m pelo GPS, mesmo sem sinal (o salvar entra na fila).
           <strong>Sem sinal na propriedade?</strong> Antes de sair, com wi-fi, enquadre a área e toque em <strong>Baixar mapa</strong>:
           a imagem de satélite fica guardada no aparelho e o mapa abre no campo mesmo sem internet.

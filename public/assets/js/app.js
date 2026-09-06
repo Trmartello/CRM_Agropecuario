@@ -971,6 +971,9 @@ const Croqui = {
     Croqui.vista = null; // recalcula o enquadramento ao abrir
     new bootstrap.Modal('#modalCroqui').show();
     setTimeout(() => {
+      // Tela cheia lembrada do último uso neste aparelho
+      let cheio = false; try { cheio = localStorage.getItem('croqui_tela_cheia') === '1'; } catch (e) { /* sem storage */ }
+      document.getElementById('modalCroqui').classList.toggle('croqui-cheio', cheio);
       Croqui._enquadrar();
       Croqui.render();
       // Propriedade sem nenhuma referência (nova): mostra o satélite na
@@ -1069,6 +1072,22 @@ const Croqui = {
       z = Math.floor(Math.min(Math.log2(larg * 0.8 / (256 * spanX)), Math.log2(alt * 0.8 / (256 * spanY))));
     }
     Croqui.vista = { z: Math.max(3, Math.min(18, z)), cx, cy };
+  },
+
+  _cheio() { const m = document.getElementById('modalCroqui'); return !!m && m.classList.contains('croqui-cheio'); },
+
+  /**
+   * TELA CHEIA do mapa (pedido do teste de campo): o palco cobre a tela toda e uma
+   * barra flutuante mantém área/Desfazer/Salvar/sair. A escolha fica guardada no
+   * aparelho e volta sozinha ao abrir o próximo croqui.
+   */
+  telaCheia(forcar) {
+    const m = document.getElementById('modalCroqui');
+    if (!m) return;
+    const ativo = typeof forcar === 'boolean' ? forcar : !m.classList.contains('croqui-cheio');
+    m.classList.toggle('croqui-cheio', ativo);
+    try { localStorage.setItem('croqui_tela_cheia', ativo ? '1' : '0'); } catch (e) { /* sem storage */ }
+    Croqui.render(); // o palco mudou de tamanho: reenquadra os tiles e o desenho
   },
 
   zoom(delta) {
@@ -1513,6 +1532,7 @@ const Croqui = {
 
   fechar() {
     Croqui._pararGPS();
+    const m = document.getElementById('modalCroqui'); if (m) m.classList.remove('croqui-cheio');
     if (typeof Clientes !== 'undefined' && Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId);
   },
 
@@ -2153,9 +2173,10 @@ const Croqui = {
     const passo = Math.pow(10, Math.floor(Math.log10(Math.max(1, alvoM))));
     const escalaM = passo * Math.max(1, Math.floor(alvoM / passo));
     const escalaPx = escalaM / mPorPx;
-    svg += `<g class="croqui-escala"><rect x="14" y="${alt - 34}" width="${(escalaPx + 14).toFixed(1)}" height="24" rx="5" fill="#fff" opacity=".75"/>
-      <line x1="20" y1="${alt - 16}" x2="${(20 + escalaPx).toFixed(1)}" y2="${alt - 16}" stroke="#222" stroke-width="2"/>
-      <text x="${(20 + escalaPx / 2).toFixed(1)}" y="${alt - 21}" text-anchor="middle" font-size="11" fill="#222">${escalaM >= 1000 ? (escalaM / 1000) + ' km' : escalaM + ' m'}</text></g>
+    const yEsc = alt - (Croqui._cheio() ? 100 : 0); // tela cheia: acima da barra flutuante
+    svg += `<g class="croqui-escala"><rect x="14" y="${yEsc - 34}" width="${(escalaPx + 14).toFixed(1)}" height="24" rx="5" fill="#fff" opacity=".75"/>
+      <line x1="20" y1="${yEsc - 16}" x2="${(20 + escalaPx).toFixed(1)}" y2="${yEsc - 16}" stroke="#222" stroke-width="2"/>
+      <text x="${(20 + escalaPx / 2).toFixed(1)}" y="${yEsc - 21}" text-anchor="middle" font-size="11" fill="#222">${escalaM >= 1000 ? (escalaM / 1000) + ' km' : escalaM + ' m'}</text></g>
       <g transform="translate(${larg - 26},34)"><circle r="14" fill="#fff" opacity=".75"/><path d="M0,-9 L4,5 L0,2 L-4,5 Z" fill="#222"/><text y="-14" text-anchor="middle" font-size="10" fill="#fff" stroke="#333" stroke-width=".4">N</text></g>`;
 
     if (podeLeve) {
@@ -2169,6 +2190,7 @@ const Croqui = {
         <div class="croqui-zoom">
           <button type="button" class="btn btn-light btn-sm" onclick="Croqui.zoom(1)" title="Aproximar"><i class="bi bi-plus-lg"></i></button>
           <button type="button" class="btn btn-light btn-sm" onclick="Croqui.zoom(-1)" title="Afastar"><i class="bi bi-dash-lg"></i></button>
+          <button type="button" class="btn btn-light btn-sm" onclick="Croqui.telaCheia()" title="${Croqui._cheio() ? 'Voltar à tela normal' : 'Mapa na tela toda'}"><i class="bi ${Croqui._cheio() ? 'bi-fullscreen-exit' : 'bi-arrows-fullscreen'}"></i></button>
         </div>
         ${Croqui.tiles ? `<div class="croqui-atribuicao">${App.escapeHtml(Croqui.tiles.atribuicao || '')}</div>` : ''}`;
       palco.querySelector('#croquiSvg').innerHTML = svg;
@@ -2233,6 +2255,8 @@ const Croqui = {
     }
     const totais = document.getElementById('croquiTotais');
     if (totais) totais.innerHTML = partes.join(' · ');
+    const cheioArea = document.getElementById('croquiCheioArea'); // barra da tela cheia espelha o painel
+    if (cheioArea) cheioArea.innerHTML = document.getElementById('croquiArea').innerHTML;
   },
 
   _prepararEventos() {
