@@ -301,7 +301,69 @@ class CroquiService
                 }
             }
         }
-        return false;
+        // Polígonos IGUAIS (ou um dentro do outro com todos os vértices na borda):
+        // nenhum vértice "dentro" e nenhuma aresta cruza — só um ponto do INTERIOR
+        // de um denuncia que está dentro do outro (bug do piloto: o mesmo talhão
+        // salvo 7 vezes passava como "vizinhos que dividem a linha").
+        $ia = self::pontoInterior($pa, $tolM);
+        if ($ia !== null && self::dentro($ia, $pb) && self::distanciaBordaM($ia, $pb) > $tolM) {
+            return true;
+        }
+        $ib = self::pontoInterior($pb, $tolM);
+        return $ib !== null && self::dentro($ib, $pa) && self::distanciaBordaM($ib, $pa) > $tolM;
+    }
+
+    /**
+     * Mesmo desenho: todo vértice de um está a ≤ $tolM da borda do outro, nos dois
+     * sentidos. Usado para dizer "este talhão já está cadastrado" em vez de
+     * "cobre outro talhão".
+     */
+    public static function mesmoContorno(array $a, array $b, float $tolM = self::TOLERANCIA_SOBREPOSICAO_M): bool
+    {
+        if (count($a) < 3 || count($b) < 3) {
+            return false;
+        }
+        $proj = self::projetar(array_merge($a, $b));
+        $pa = array_slice($proj, 0, count($a));
+        $pb = array_slice($proj, count($a));
+        foreach ($pa as $p) {
+            if (self::distanciaBordaM($p, $pb) > $tolM) {
+                return false;
+            }
+        }
+        foreach ($pb as $p) {
+            if (self::distanciaBordaM($p, $pa) > $tolM) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Um ponto garantidamente no INTERIOR do polígono (em metros), longe da borda
+     * mais que $tolM: centroide; senão o meio entre o centroide e cada vértice;
+     * senão o meio de cada diagonal curta (i, i+2). Null se nada servir (polígono
+     * degenerado/fino).
+     */
+    private static function pontoInterior(array $poligono, float $tolM): ?array
+    {
+        $n = count($poligono);
+        $cx = array_sum(array_column($poligono, 0)) / $n;
+        $cy = array_sum(array_column($poligono, 1)) / $n;
+        $candidatos = [[$cx, $cy]];
+        foreach ($poligono as $p) {
+            $candidatos[] = [($cx + $p[0]) / 2, ($cy + $p[1]) / 2];
+        }
+        for ($i = 0; $i < $n; $i++) {
+            $q = $poligono[($i + 2) % $n];
+            $candidatos[] = [($poligono[$i][0] + $q[0]) / 2, ($poligono[$i][1] + $q[1]) / 2];
+        }
+        foreach ($candidatos as $c) {
+            if (self::dentro($c, $poligono) && self::distanciaBordaM($c, $poligono) > $tolM) {
+                return $c;
+            }
+        }
+        return null;
     }
 
     /** Cruzamento PRÓPRIO de dois segmentos (metros): interseção estritamente no meio dos dois. */

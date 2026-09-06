@@ -864,6 +864,14 @@ class ClientesController
                 $vizinhos[] = ['nome' => $t['nome'], 'pontos' => $pts];
             }
         }
+        // MESMO desenho de um talhão já cadastrado (toque repetido em Salvar, reenvio):
+        // não é "vizinho que divide a linha" — é duplicata. Recusa com o nome.
+        foreach ($vizinhos as $v) {
+            if (\App\Services\CroquiService::mesmoContorno($pontos, $v['pontos'])) {
+                json_erro('Este desenho é o mesmo do talhão "' . $v['nome'] . '", que já está cadastrado. '
+                    . 'Edite o talhão existente em vez de criar outro igual.');
+            }
+        }
         // Desenho que está (quase) todo dentro de um vizinho: recusa antes de expulsar —
         // senão os pontos iriam todos para a borda e sobraria um talhão sem área.
         $metade = (int) ceil(count($pontos) / 2);
@@ -1180,6 +1188,64 @@ class ClientesController
     }
 
     /**
+     * Transforma o DESENHO de um talhão na ÁREA DE PLANTIO do imóvel (pedido do teste
+     * de campo: "cadastrei errado — os talhões eram a área de plantio"). Substitui a
+     * área de plantio atual; opcionalmente exclui o talhão (com as mesmas regras do
+     * excluir-talhao: com visita/lavoura de custo ele fica, avisado).
+     */
+    public function talhaoParaPlantio(): void
+    {
+        Permissoes::exigirInterno();
+        [$filtro, $params] = Permissoes::filtroCarteira();
+        $id = (int) ($_POST['id'] ?? 0);
+        $talhao = Database::um(
+            "SELECT t.* FROM talhoes t JOIN propriedades p ON p.id = t.propriedade_id
+               JOIN clientes c ON c.id = p.cliente_id WHERE t.id = ? AND {$filtro}",
+            array_merge([$id], $params)
+        );
+        if (!$talhao) {
+            json_erro('Talhão não encontrado na sua carteira.', 404);
+        }
+        $pontos = !empty($talhao['contorno']) ? (json_decode((string) $talhao['contorno'], true) ?: []) : [];
+        if (count($pontos) < 3) {
+            json_erro('Este talhão não tem desenho no croqui — não há o que transformar em área de plantio.');
+        }
+        $imovel = $talhao['imovel_id'] !== null
+            ? Database::um('SELECT * FROM imoveis WHERE id = ?', [(int) $talhao['imovel_id']])
+            : $this->primeiroImovel((int) $talhao['propriedade_id']);
+        $imovelId = (int) $imovel['id'];
+        $divisa = !empty($imovel['contorno']) ? (json_decode((string) $imovel['contorno'], true) ?: []) : [];
+        if ($divisa) {
+            // o talhão já nasceu dentro da divisa; repassa pelas mesmas regras por segurança
+            $pontos = \App\Services\CroquiService::prenderNaDivisa($pontos, $divisa);
+            $pontos = \App\Services\CroquiService::margearDivisa($pontos, $divisa);
+            $this->exigirLinhasDentro($pontos, $divisa);
+        }
+        $areaGps = \App\Services\CroquiService::areaHa($pontos);
+        Database::executar(
+            'UPDATE imoveis SET contorno_plantio = ?, area_plantio_gps = ?, area_plantio_ha = ? WHERE id = ?',
+            [json_encode($pontos), $areaGps, $areaGps, $imovelId]
+        );
+        auditar('salvar', 'croqui', $imovelId, 'área de plantio a partir do talhão "' . $talhao['nome'] . "\" · {$areaGps} ha");
+
+        $excluido = false;
+        $aviso = '';
+        if ((int) ($_POST['excluir'] ?? 0) === 1) {
+            $visitas = (int) Database::valor('SELECT COUNT(*) FROM visitas WHERE talhao_id = ?', [$id]);
+            $lavouras = (int) Database::valor('SELECT COUNT(*) FROM lavoura_safra WHERE talhao_id = ?', [$id]);
+            if ($visitas > 0 || $lavouras > 0) {
+                $aviso = 'O talhão "' . $talhao['nome'] . '" tem histórico (' . ($visitas > 0 ? "{$visitas} visita(s)" : "{$lavouras} lavoura(s) de custo")
+                    . ') e foi mantido. A área de plantio foi gravada mesmo assim.';
+            } else {
+                Database::executar('DELETE FROM talhoes WHERE id = ?', [$id]); // plantios vão em cascata
+                auditar('excluir', 'talhao', $id, (string) $talhao['nome'] . ' · virou área de plantio do imóvel #' . $imovelId);
+                $excluido = true;
+            }
+        }
+        json_ok(['imovel_id' => $imovelId, 'area_gps' => $areaGps, 'excluido' => $excluido, 'aviso' => $aviso]);
+    }
+
+    /**
      * Exclui uma propriedade SEM talhões e SEM visitas (os imóveis/CARs vão em cascata).
      * Com talhões ou visitas, o histórico manda: exclua/mova os talhões antes.
      */
@@ -1284,6 +1350,16 @@ class ClientesController
             $imovelId = (int) $this->primeiroImovel($propriedadeId)['id'];
         }
         $finalidadeId = (int) ($_POST['finalidade_id'] ?? 0) ?: null;
+
+        // NÃO ACEITAR SALVAR MAIS DE UMA VEZ (teste de campo: "Morro" gravado 7x por
+        // toques repetidos): nome repetido no mesmo imóvel só vale para EDITAR o existente.
+        $homonimo = Database::um(
+            'SELECT id FROM talhoes WHERE propriedade_id = ? AND imovel_id <=> ? AND LOWER(nome) = LOWER(?) AND id <> ? LIMIT 1',
+            [$propriedadeId, $imovelId, $nome, $id]
+        );
+        if ($homonimo) {
+            json_erro('Já existe um talhão chamado "' . $nome . '" neste imóvel. Edite o talhão existente (lápis na ficha) ou use outro nome.');
+        }
 
         // Talhão DESENHADO no croqui (teste de campo): o contorno vem junto e a área
         // é a MEDIDA — a área digitada só vale para talhão antigo sem desenho.

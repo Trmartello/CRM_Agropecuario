@@ -1042,6 +1042,61 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '42'"
             );
         }
+        if ($versao < 43) {
+            // Teste de campo: toques repetidos em "Salvar" gravaram o mesmo talhão várias
+            // vezes (mesma propriedade/imóvel, mesmo nome, mesmo desenho e área). Remove
+            // as cópias — fica a mais antiga — SÓ quando a cópia não tem histórico
+            // (visita, lavoura de custo ou plantio apontando para ela).
+            try {
+                self::removerTalhoesDuplicados();
+            } catch (\Throwable $e) {
+                error_log('[CRM][migracao v43] limpeza de talhões duplicados falhou: ' . $e->getMessage());
+            }
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '43')
+                 ON DUPLICATE KEY UPDATE valor = '43'"
+            );
+        }
+    }
+
+    /** Apaga cópias idênticas de talhão (mantém a de menor id), poupando as que têm histórico. */
+    private static function removerTalhoesDuplicados(): int
+    {
+        $grupos = Database::todos(
+            'SELECT propriedade_id, imovel_id, nome, contorno, area_ha, MIN(id) AS manter, COUNT(*) AS n
+               FROM talhoes
+              GROUP BY propriedade_id, imovel_id, nome, contorno, area_ha
+             HAVING COUNT(*) > 1'
+        );
+        $removidos = 0;
+        foreach ($grupos as $g) {
+            $copias = Database::todos(
+                'SELECT id FROM talhoes
+                  WHERE propriedade_id = ? AND imovel_id <=> ? AND nome = ? AND contorno <=> ? AND area_ha <=> ? AND id <> ?',
+                [(int) $g['propriedade_id'], $g['imovel_id'], $g['nome'], $g['contorno'], $g['area_ha'], (int) $g['manter']]
+            );
+            foreach ($copias as $c) {
+                $id = (int) $c['id'];
+                $temHistorico = (int) Database::valor('SELECT COUNT(*) FROM visitas WHERE talhao_id = ?', [$id]) > 0
+                    || (int) Database::valor('SELECT COUNT(*) FROM plantios WHERE talhao_id = ?', [$id]) > 0;
+                if (!$temHistorico && self::temTabela('lavoura_safra')) {
+                    try {
+                        $temHistorico = (int) Database::conexaoCusto()->query('SELECT COUNT(*) FROM lavoura_safra WHERE talhao_id = ' . $id)->fetchColumn() > 0;
+                    } catch (\Throwable $e) {
+                        $temHistorico = true; // sem acesso à tabela sob firewall: na dúvida, não apaga
+                    }
+                }
+                if ($temHistorico) {
+                    continue;
+                }
+                Database::executar('DELETE FROM talhoes WHERE id = ?', [$id]);
+                $removidos++;
+            }
+        }
+        if ($removidos > 0) {
+            error_log("[CRM][migracao v43] talhões duplicados removidos: {$removidos}");
+        }
+        return $removidos;
     }
 
     /**

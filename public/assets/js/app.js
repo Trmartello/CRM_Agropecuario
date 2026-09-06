@@ -14,32 +14,58 @@ const App = {
     return dados;
   },
 
-  /** Envia um formulário via AJAX (FormData). */
+  /**
+   * TRAVA DE ENVIO DUPLO (pedido do teste de campo: o mesmo talhão foi gravado
+   * 7 vezes com toques repetidos em "Salvar" na rede lenta). Enquanto um envio
+   * está em voo, o mesmo formulário/rota não sai de novo: os botões de submit
+   * ficam desabilitados e um segundo toque recebe "Aguarde…".
+   */
+  _emVoo: new Set(),
+  _travar(chave, form) {
+    if (App._emVoo.has(chave)) throw new Error('Aguarde — ainda estamos salvando o envio anterior.');
+    App._emVoo.add(chave);
+    const botoes = form && form.querySelectorAll ? [...form.querySelectorAll('button:not([type=button]):not([type=reset])')] : [];
+    botoes.forEach(b => { b.dataset.travado = b.disabled ? '' : '1'; b.disabled = true; });
+    return () => {
+      App._emVoo.delete(chave);
+      botoes.forEach(b => { if (b.dataset.travado === '1') b.disabled = false; delete b.dataset.travado; });
+    };
+  },
+
+  /** Envia um formulário via AJAX (FormData). Um envio por vez por formulário. */
   async enviarForm(form, url) {
-    return App.json(url, { method: 'POST', body: new FormData(form) });
+    const soltar = App._travar('form:' + (form.id || url), form);
+    try {
+      return await App.json(url, { method: 'POST', body: new FormData(form) });
+    } finally { soltar(); }
   },
 
   /**
    * Envia um formulário/FormData com suporte offline: sem conexão (ou se a rede
    * cair no meio), guarda na fila local e devolve { ok:true, offline:true }.
    * Erros de negócio (validação do servidor) continuam sendo lançados.
+   * Um envio por vez por formulário/rota (trava de envio duplo).
    */
   async enviarFormOffline(origem, url, opc = {}) {
     const rota = String(url).replace(/^.*[?&]r=/, '').replace(/&.*$/, '');
-    const fd = origem instanceof FormData ? origem : new FormData(origem);
-    if (!navigator.onLine) {
-      await Offline.enfileirar(rota, fd, opc);
-      return { ok: true, offline: true };
-    }
+    const ehForm = !(origem instanceof FormData);
+    const soltar = App._travar(ehForm ? 'form:' + (origem.id || rota) : 'rota:' + rota, ehForm ? origem : null);
     try {
-      return await App.json(url, { method: 'POST', body: fd });
-    } catch (e) {
-      if (e instanceof TypeError) { // falha de REDE (não de negócio) → enfileira
+      const fd = ehForm ? new FormData(origem) : origem;
+      if (!navigator.onLine) {
         await Offline.enfileirar(rota, fd, opc);
         return { ok: true, offline: true };
       }
-      throw e;
-    }
+      try {
+        return await App.json(url, { method: 'POST', body: fd });
+      } catch (e) {
+        if (e instanceof TypeError) { // falha de REDE (não de negócio) → enfileira
+          await Offline.enfileirar(rota, fd, opc);
+          return { ok: true, offline: true };
+        }
+        throw e;
+      }
+    } finally { soltar(); }
   },
 
   alerta(mensagem, tipo = 'success') {
@@ -800,7 +826,42 @@ const Clientes = {
     form.dataset.origem = 'croqui';
     Clientes._imoveisNoModalTalhao([{ id: Croqui.imovel.id, rotulo: Croqui.imovel.rotulo }], Croqui.imovel.id);
     Clientes._modoTalhaoModal({ croqui: true, medida: Croqui.areaHa(pontos) });
+    document.getElementById('btnTalhaoParaPlantio').classList.add('d-none');
     new bootstrap.Modal('#modalTalhao').show();
+  },
+
+  /**
+   * Cadastrou como TALHÃO o que era a ÁREA DE PLANTIO (pedido do teste de campo):
+   * o desenho do talhão vira a área de plantio do imóvel (substitui a atual) e,
+   * se o usuário quiser, o talhão é excluído (com histórico ele fica, avisado).
+   * Núcleo comum do modal do talhão e do croqui. Devolve a resposta ou null.
+   */
+  async _converterTalhaoEmPlantio(t) {
+    const nome = t.nome || 'este talhão';
+    if (!confirm(`Transformar o desenho do talhão "${nome}" na ÁREA DE PLANTIO do imóvel?\n\nSe o imóvel já tem área de plantio desenhada, ela será substituída por este desenho.`)) return null;
+    const excluir = confirm(`Excluir o talhão "${nome}" depois de virar área de plantio?\n\nOK = excluir (o cadastro estava errado)\nCancelar = manter o talhão também`);
+    try {
+      const fd = new FormData();
+      fd.append('id', t.id);
+      fd.append('excluir', excluir ? '1' : '0');
+      const r = await App.json('index.php?r=clientes/talhao-para-plantio', { method: 'POST', body: fd });
+      App.alerta(`Área de plantio gravada a partir de "${nome}" — ${Number(r.area_gps).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha`
+        + (r.excluido ? '. Talhão excluído.' : (r.aviso ? '. ' + r.aviso : '.')), r.aviso ? 'warning' : 'success');
+      return r;
+    } catch (e) { App.alerta(e.message, 'danger'); return null; }
+  },
+
+  /** Botão "Virar área de plantio" do modal do talhão (só no editar, com desenho). */
+  async talhaoParaPlantio() {
+    const form = document.getElementById('formTalhao');
+    const t = { id: Number(form.querySelector('[name=id]').value), nome: form.querySelector('[name=nome]').value };
+    if (!t.id) return;
+    const r = await Clientes._converterTalhaoEmPlantio(t);
+    if (!r) return;
+    bootstrap.Modal.getInstance('#modalTalhao').hide();
+    const croquiAberto = document.getElementById('modalCroqui') && document.getElementById('modalCroqui').classList.contains('show');
+    if (croquiAberto && typeof Croqui !== 'undefined') await Croqui._recarregar(Croqui.PLANTIO_ID);
+    else if (Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId);
   },
 
   editarTalhao(t, imoveis) {
@@ -818,6 +879,8 @@ const Clientes = {
     // Área digitada só vale para talhão antigo SEM desenho; com desenho, a área é a medida
     Clientes._modoTalhaoModal({ croqui: false, medida: t.contorno ? Number(t.area_gps || t.area_ha) : null });
     document.getElementById('btnExcluirTalhao').classList.remove('d-none');
+    // com desenho, o talhão pode virar a área de plantio do imóvel (cadastro errado)
+    document.getElementById('btnTalhaoParaPlantio').classList.toggle('d-none', !t.contorno);
     new bootstrap.Modal('#modalTalhao').show();
   },
 
@@ -867,6 +930,7 @@ const Clientes = {
         Croqui.pontos = Croqui._contornoDe(r.talhao.id);
         Croqui._dirty = false;
         Croqui._selecionado = null;
+        Croqui._botoesPorAlvo();
         Croqui.render();
         App.alerta(`Talhão "${r.talhao.nome}" criado — ${Number(r.area_gps || r.talhao.area_ha).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha medidos.`);
         return false; // a ficha atualiza ao fechar o croqui (Croqui.fechar)
@@ -1157,6 +1221,7 @@ const Croqui = {
     Croqui._selecionado = null;
     Croqui.carLayer = []; Croqui.carLayerOn = false; Croqui._carLayerCentro = null;
     Croqui._undo = [];
+    Croqui._botoesPorAlvo();
     { const b = document.getElementById('croquiCarMapaBtn'); if (b) b.classList.remove('active'); }
     document.getElementById('croquiUsarArea').checked = true; // o desenho define a área (desmarque só se a oficial for outra)
     document.getElementById('croquiModoManual').checked = true;
@@ -1184,6 +1249,68 @@ const Croqui = {
         if (Croqui.atualId === Croqui.NOVO_ID) App.alerta('Toque nos cantos do talhão sobre o satélite. Ao salvar, você dá o nome, a cultura e a finalidade.', 'info');
       }
     }, 250);
+  },
+
+  /**
+   * Botões que dependem do alvo: talhão → "Virar área de plantio" (o desenho é a
+   * área de plantio, cadastro errado); área de plantio → "Copiar de talhão"
+   * (carrega o desenho de um talhão para ajustar e salvar).
+   */
+  _botoesPorAlvo() {
+    const virar = document.getElementById('croquiVirarPlantioBtn');
+    const copiar = document.getElementById('croquiCopiarTalhaoWrap');
+    const menu = document.getElementById('croquiCopiarTalhaoMenu');
+    if (!virar || !copiar || !menu) return;
+    virar.classList.toggle('d-none', !(Croqui.atualId > 0 && Croqui._contornoDe(Croqui.atualId).length >= 3));
+    const comDesenho = Croqui.talhoes.filter(t => Croqui._contornoDe(t.id).length >= 3);
+    copiar.classList.toggle('d-none', !(Croqui.atualId === Croqui.PLANTIO_ID && comDesenho.length));
+    menu.innerHTML = comDesenho.map(t =>
+      `<li><button type="button" class="dropdown-item" onclick="Croqui.copiarDeTalhao(${Number(t.id)})">${App.escapeHtml(t.nome)}<div class="small text-muted">${Number(t.area_gps || t.area_ha || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha</div></button></li>`).join('');
+  },
+
+  /** Alvo = talhão: o desenho dele vira a ÁREA DE PLANTIO do imóvel (núcleo em Clientes). */
+  async talhaoParaPlantio() {
+    const t = Croqui.talhoes.find(x => Number(x.id) === Croqui.atualId);
+    if (!t) return;
+    if (Croqui._dirty) { App.alerta('Salve (ou desfaça) o ajuste do talhão antes de transformá-lo em área de plantio.', 'warning'); return; }
+    const r = await Clientes._converterTalhaoEmPlantio(t);
+    if (r) await Croqui._recarregar(Croqui.PLANTIO_ID);
+  },
+
+  /** Alvo = área de plantio: carrega o desenho de um talhão para ajustar e salvar. */
+  copiarDeTalhao(id) {
+    if (Croqui.atualId !== Croqui.PLANTIO_ID) return;
+    const t = Croqui.talhoes.find(x => Number(x.id) === Number(id));
+    const pts = Croqui._contornoDe(id);
+    if (!t || pts.length < 3) return;
+    if (Croqui.pontos.length >= 3 && !confirm(`Substituir o desenho atual da área de plantio pelo do talhão "${t.nome}"?`)) return;
+    Croqui._snapshot();
+    Croqui.pontos = pts.map(p => [Number(p[0]), Number(p[1])]);
+    Croqui._selecionado = null;
+    Croqui._dirty = true;
+    Croqui.render();
+    App.alerta(`Desenho do talhão "${t.nome}" carregado como área de plantio. Ajuste os pontos se quiser (arraste; dois toques na linha inserem um ponto) e toque em "Salvar croqui". Depois, exclua o talhão se ele não existe de fato.`, 'info');
+  },
+
+  /** Recarrega os dados do croqui (após conversão/exclusão) mantendo a vista; abre no alvo pedido. */
+  async _recarregar(alvo) {
+    try {
+      const dados = await App.json('index.php?r=clientes/croqui-dados&imovel_id=' + Number(Croqui.imovel.id));
+      Croqui.prop = dados.propriedade;
+      Croqui.imovel = dados.imovel;
+      Croqui.outros = dados.outros || [];
+      Croqui.talhoes = dados.talhoes;
+    } catch (e) { App.alerta(e.message, 'danger'); return; }
+    Croqui._montarSelect(alvo);
+    Croqui.atualId = Number(alvo);
+    Croqui.pontos = Croqui._contornoDe(Croqui.atualId);
+    Croqui._undo = [];
+    Croqui._dirty = false;
+    Croqui._carCod = '';
+    Croqui._selecionado = null;
+    Croqui._carLayerNoLimite(Croqui.atualId === 0);
+    Croqui._botoesPorAlvo();
+    Croqui.render();
   },
 
   /** Monta o seletor de alvos: divisa, área de plantio, talhões e "novo talhão". */
@@ -1322,6 +1449,7 @@ const Croqui = {
     // ao sair da divisa o overlay do CAR desliga (amarelo quase igual à divisa —
     // confundia o técnico); volta sozinho ao editar a divisa de novo.
     Croqui._carLayerNoLimite(alvo === 0);
+    Croqui._botoesPorAlvo();
     const rotulo = document.querySelector('label[for="croquiUsarArea"]');
     if (rotulo) rotulo.textContent = Croqui.atualId === 0
       ? 'Usar a área medida como área oficial do imóvel'
@@ -1966,7 +2094,33 @@ const Croqui = {
         return true;
       }
     }
-    return false;
+    // Polígonos IGUAIS (mesmo desenho salvo de novo): sem vértice dentro e sem
+    // cruzamento — um ponto do INTERIOR de um está dentro do outro (espelho do servidor)
+    const dentroLonge = (xy, pol) => Croqui._dentroXY(xy, pol) && Croqui._posicaoNaBorda(xy, pol).dist > TOL;
+    const ia = Croqui._pontoInterior(pa, TOL);
+    if (ia && dentroLonge(ia, pb)) return true;
+    const ib = Croqui._pontoInterior(pb, TOL);
+    return !!(ib && dentroLonge(ib, pa));
+  },
+
+  /** Ray casting em coordenadas já projetadas (metros). */
+  _dentroXY(p, pol) {
+    let dentro = false;
+    for (let i = 0, j = pol.length - 1; i < pol.length; j = i++) {
+      const [xi, yi] = pol[i], [xj, yj] = pol[j];
+      if ((yi > p[1]) !== (yj > p[1]) && p[0] < (xj - xi) * (p[1] - yi) / ((yj - yi) || 1e-12) + xi) dentro = !dentro;
+    }
+    return dentro;
+  },
+
+  /** Ponto no INTERIOR do polígono (metros), longe da borda mais que tol; null se degenerado. */
+  _pontoInterior(pol, tol) {
+    const n = pol.length;
+    const cx = pol.reduce((s, p) => s + p[0], 0) / n, cy = pol.reduce((s, p) => s + p[1], 0) / n;
+    const cand = [[cx, cy]];
+    pol.forEach(p => cand.push([(cx + p[0]) / 2, (cy + p[1]) / 2]));
+    for (let i = 0; i < n; i++) { const q = pol[(i + 2) % n]; cand.push([(pol[i][0] + q[0]) / 2, (pol[i][1] + q[1]) / 2]); }
+    return cand.find(c => Croqui._dentroXY(c, pol) && Croqui._posicaoNaBorda(c, pol).dist > tol) || null;
   },
 
   /** Distância (m) de um ponto [lat,lng] à borda do polígono [[lat,lng],...]. */
