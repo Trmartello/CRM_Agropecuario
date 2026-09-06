@@ -115,7 +115,18 @@ Login seed: admin@coperdia.com.br / senha definida no seed de `database.sql`. H�
 
 ## Git
 
-- Branch de trabalho: `claude/novo-projeto-w35g2t` (nunca commitar direto na `main`).
-- Push: `git push -u origin claude/novo-projeto-w35g2t`.
-- Commits em português, descritivos, um assunto por commit.
-- **Deploy**: o Railway (produção) sai **direto do branch `claude/novo-projeto-w35g2t`** com auto-deploy a cada push e **"Wait for CI" ligado** — só publica se o CI passar. **CI** (`.github/workflows/ci.yml`): `php -l` em todos os PHP + `node --check` nos JS do app (menos `vendor/`), PHP 8.3 (igual ao Dockerfile). Rode o mesmo lint local antes de commitar; se a sintaxe quebrar, o CI falha e o Railway NÃO publica (protege a produção).
+- **`main` é a branch principal** — contém o projeto completo e é a origem do deploy. **Nunca commitar direto na `main`.**
+- **Fluxo obrigatório: branch → Pull Request → `main`.** Toda alteração nasce numa branch criada a partir da `main` atualizada e entra por PR. Sem exceção, inclusive para correção de uma linha.
+
+```bash
+git fetch origin main
+git checkout -b claude/<assunto> origin/main   # uma branch por assunto
+# ... desenvolver, commitar ...
+git push -u origin claude/<assunto>            # abrir o PR para a main
+```
+
+- Commits em português, descritivos, um assunto por commit. O título do PR descreve a entrega, não o arquivo mexido.
+- **O PR é a última barreira antes da produção**: o merge publica automaticamente. Revise o diff antes de mergear e confirme que o CI passou.
+- **CI** (`.github/workflows/ci.yml`): roda em `push` e em `pull_request` — `php -l` em todos os PHP + `node --check` nos JS do app (menos `vendor/`), PHP 8.3 (igual ao Dockerfile). Rode o mesmo lint local antes de commitar; **PR com CI vermelho não é mergeado**.
+- **Deploy**: o Railway (produção) está conectado à **`main`** (*Settings → Source → Branch connected to production*), com **auto-deploy a cada push/merge** e **"Wait for CI" ligado** — só publica se o CI passar. Na prática: **mergeou o PR, publicou**.
+- **Histórico**: `claude/novo-projeto-w35g2t` foi a branch de desenvolvimento até ser promovida à `main` por fast-forward (194 commits, nada perdido). Mantida só por referência — **não desenvolver mais nela**. `claude/serene-dirac-j528ro` é uma linha antiga, parada no schema v28.

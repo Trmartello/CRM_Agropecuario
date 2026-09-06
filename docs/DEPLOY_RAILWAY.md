@@ -5,7 +5,7 @@ Passo a passo para colocar o CRM no ar para homologação (web responsivo + PWA 
 ## 1. Criar o projeto
 
 1. Acesse [railway.app](https://railway.app) e crie um projeto.
-2. **Add Service → GitHub Repo** → selecione `Trmartello/CRM_Agropecuario` (branch `claude/novo-projeto-w35g2t` ou `main` após o merge).
+2. **Add Service → GitHub Repo** → selecione `Trmartello/CRM_Agropecuario`, branch **`main`** (é dela que sai a produção).
    O Railway detecta o `Dockerfile` automaticamente.
 
 ## 2. Adicionar o banco MySQL

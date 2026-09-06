@@ -28,13 +28,25 @@
     <?php endif; ?>
     <form method="post" action="<?= url('login/salvar-senha') ?>">
       <div class="mb-3">
-        <label class="form-label">Nova senha</label>
-        <input type="password" name="senha" class="form-control form-control-lg" required minlength="8" autofocus autocomplete="new-password">
+        <label class="form-label" for="senha">Nova senha</label>
+        <div class="input-group input-group-lg">
+          <input type="password" name="senha" id="senha" class="form-control" required minlength="8" autofocus autocomplete="new-password">
+          <button class="btn btn-outline-secondary" type="button" data-ver-senha="senha" data-rotulo="a nova senha"
+                  title="Mostrar a nova senha" aria-label="Mostrar a nova senha" aria-pressed="false">
+            <i class="bi bi-eye" aria-hidden="true"></i>
+          </button>
+        </div>
         <div class="form-text">Mínimo de 8 caracteres, misturando letras e números.</div>
       </div>
       <div class="mb-4">
-        <label class="form-label">Confirmar a nova senha</label>
-        <input type="password" name="confirmar" class="form-control form-control-lg" required minlength="8" autocomplete="new-password">
+        <label class="form-label" for="confirmar">Confirmar a nova senha</label>
+        <div class="input-group input-group-lg">
+          <input type="password" name="confirmar" id="confirmar" class="form-control" required minlength="8" autocomplete="new-password">
+          <button class="btn btn-outline-secondary" type="button" data-ver-senha="confirmar" data-rotulo="a confirmação"
+                  title="Mostrar a confirmação" aria-label="Mostrar a confirmação" aria-pressed="false">
+            <i class="bi bi-eye" aria-hidden="true"></i>
+          </button>
+        </div>
       </div>
       <button class="btn btn-success btn-lg w-100"><i class="bi bi-check-lg me-1"></i>Salvar e continuar</button>
     </form>
@@ -43,5 +55,28 @@
     </div>
   </div>
 </div>
+<script>
+  // Mostrar/ocultar cada senha — digitar às cegas duas vezes no celular erra fácil,
+  // e o erro só aparece depois de enviar. Esta tela não carrega o app.js.
+  (function () {
+    document.querySelectorAll('[data-ver-senha]').forEach(function (botao) {
+      const campo = document.getElementById(botao.dataset.verSenha);
+      if (!campo) return;
+      botao.addEventListener('click', function () {
+        const visivel = campo.type === 'text';
+        const cursor = campo.selectionStart;
+        campo.type = visivel ? 'password' : 'text';
+        const rotulo = (visivel ? 'Mostrar ' : 'Ocultar ') + (botao.dataset.rotulo || 'a senha');
+        botao.title = rotulo;
+        botao.setAttribute('aria-label', rotulo);
+        botao.setAttribute('aria-pressed', visivel ? 'false' : 'true');
+        botao.querySelector('i').className = visivel ? 'bi bi-eye' : 'bi bi-eye-slash';
+        // Devolve o foco e o cursor onde estavam (trocar o type reposiciona o caret).
+        campo.focus();
+        if (cursor !== null) { try { campo.setSelectionRange(cursor, cursor); } catch (e) { /* ignora */ } }
+      });
+    });
+  })();
+</script>
 </body>
 </html>
