@@ -391,6 +391,7 @@ const Clientes = {
   novaPropriedade(clienteId) {
     const form = document.getElementById('formPropriedade');
     form.reset();
+    document.getElementById('btnExcluirPropriedade').classList.add('d-none');
     form.querySelector('[name=id]').value = 0;
     form.querySelector('[name=cliente_id]').value = clienteId;
     new bootstrap.Modal('#modalPropriedade').show();
@@ -404,7 +405,23 @@ const Clientes = {
     form.querySelector('[name=nome]').value = p.nome;
     form.querySelector('[name=area_ha]').value = p.area_ha;
     form.querySelector('[name=municipio]').value = p.municipio || '';
+    document.getElementById('btnExcluirPropriedade').classList.remove('d-none');
     new bootstrap.Modal('#modalPropriedade').show(); // v40: o nº do CAR fica no imóvel, não aqui
+  },
+
+  /** Exclui a propriedade (só sem talhões e sem visitas — o servidor confere). */
+  async excluirPropriedade() {
+    const form = document.getElementById('formPropriedade');
+    const id = Number(form.querySelector('[name=id]').value);
+    if (!id || !confirm('Excluir esta propriedade? Os imóveis (CAR) dela vão junto. Só é possível se ela não tiver talhões nem visitas.')) return;
+    try {
+      const fd = new FormData();
+      fd.append('id', id);
+      await App.json('index.php?r=clientes/excluir-propriedade', { method: 'POST', body: fd });
+      bootstrap.Modal.getInstance('#modalPropriedade').hide();
+      App.alerta('Propriedade excluída.');
+      if (Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId);
+    } catch (e) { App.alerta(e.message, 'danger'); }
   },
 
   /** Importa a divisa oficial do CAR (shapefile .zip) e desenha no croqui. */
@@ -617,6 +634,7 @@ const Clientes = {
   novoTalhaoDoCroqui(pontos) {
     const form = document.getElementById('formTalhao');
     form.reset();
+    document.getElementById('btnExcluirTalhao').classList.add('d-none');
     form.querySelector('[name=id]').value = 0;
     form.querySelector('[name=propriedade_id]').value = Croqui.prop.id;
     form.querySelector('[name=contorno]').value = JSON.stringify(pontos);
@@ -640,7 +658,24 @@ const Clientes = {
     Clientes._imoveisNoModalTalhao(imoveis, t.imovel_id);
     // Área digitada só vale para talhão antigo SEM desenho; com desenho, a área é a medida
     Clientes._modoTalhaoModal({ croqui: false, medida: t.contorno ? Number(t.area_gps || t.area_ha) : null });
+    document.getElementById('btnExcluirTalhao').classList.remove('d-none');
     new bootstrap.Modal('#modalTalhao').show();
+  },
+
+  /** Exclui o talhão (com visitas/lavoura de custo o servidor recusa — o histórico aponta para ele). */
+  async excluirTalhao() {
+    const form = document.getElementById('formTalhao');
+    const id = Number(form.querySelector('[name=id]').value);
+    const nome = form.querySelector('[name=nome]').value || 'este talhão';
+    if (!id || !confirm(`Excluir o talhão "${nome}"? O desenho e os plantios registrados nele são apagados. Não dá para excluir talhão com visitas.`)) return;
+    try {
+      const fd = new FormData();
+      fd.append('id', id);
+      await App.json('index.php?r=clientes/excluir-talhao', { method: 'POST', body: fd });
+      bootstrap.Modal.getInstance('#modalTalhao').hide();
+      App.alerta('Talhão excluído.');
+      if (Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId);
+    } catch (e) { App.alerta(e.message, 'danger'); }
   },
 
   /** Mostra/esconde os campos do modal de talhão conforme a origem (croqui × ficha) e se há desenho. */

@@ -42,6 +42,8 @@ Na aba **Propriedades** da ficha:
 
 ---
 
+**Cadastrou errado ou em dobro?** Toque no **lápis** do talhão (ou da propriedade / do imóvel) → **Excluir**. Talhão com visita registrada não se apaga (edite o nome/cultura/desenho); propriedade só se apaga sem talhões.
+
 **Mapa pequeno no celular?** Toque em **⤢** (ao lado do +/−): o mapa ocupa a tela toda, com Salvar e Sair numa barra embaixo. O app lembra a escolha.
 
 **Regras rápidas:** área total = divisa do CAR (não se digita) · área de plantio e talhões só dentro da área do CAR, nenhuma linha para fora · ponto do talhão fora da divisa é puxado para a borda · talhão fora da **área de plantio** só avisa · a divisa não pode deixar talhão para fora · imóvel com talhões não se apaga (mova os talhões antes) · toque duplo na linha ciano insere um ponto, toque duplo no ponto remove.

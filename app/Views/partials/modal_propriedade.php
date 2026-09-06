@@ -29,6 +29,7 @@
         </div>
       </div>
       <div class="modal-footer">
+        <button type="button" class="btn btn-outline-danger me-auto d-none" id="btnExcluirPropriedade" onclick="Clientes.excluirPropriedade()"><i class="bi bi-trash me-1"></i>Excluir</button>
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
         <button class="btn btn-success"><i class="bi bi-check-lg me-1"></i>Salvar</button>
       </div>
