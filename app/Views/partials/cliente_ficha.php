@@ -353,7 +353,7 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
         <div class="px-3 pt-2 pb-1 d-flex justify-content-between align-items-start flex-wrap gap-1 bg-light bg-opacity-50">
           <div>
             <i class="bi bi-geo text-success me-1"></i><strong><?= e($rotuloIm) ?></strong>
-            <span class="text-muted small">· total <?= numero($r['area_total'], 1) ?> ha · plantio <?= numero($r['area_plantio'], 1) ?> ha<?= $r['plantio_origem'] === 'total' ? ' (= total)' : '' ?></span>
+            <span class="text-muted small">· total <?= numero($r['area_total'], 1) ?> ha · plantio <?= numero($r['area_plantio'], 1) ?> ha<?= $r['plantio_origem'] === 'total' ? ' (= total)' : '' ?><?= !empty($im['municipio']) ? ' · ' . e($im['municipio']) . (!empty($im['uf']) ? '/' . e($im['uf']) : '') : '' ?></span>
             <?php if (!empty($im['car_numero'])): ?>
               <div class="small text-muted">CAR: <?= e($im['car_numero']) ?>
                 <a href="https://consultapublica.car.gov.br/publico/imoveis/index" target="_blank" rel="noopener" class="ms-1"
@@ -371,8 +371,8 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
                     onclick="Croqui.abrir(<?= (int) $im['id'] ?>)"><i class="bi bi-bounding-box-circles me-1"></i>Croqui</button>
             <button class="btn btn-sm btn-outline-secondary" title="Editar o imóvel (CAR, áreas)"
                     onclick='Clientes.editarImovel(<?= json_attr($im) ?>)'><i class="bi bi-pencil"></i></button>
-            <button class="btn btn-sm btn-outline-success" title="Novo talhão neste imóvel"
-                    onclick='Clientes.novoTalhao(<?= (int) $p['id'] ?>, <?= (int) $im['id'] ?>, <?= json_attr($imoveisLista) ?>)'><i class="bi bi-plus-lg"></i> Talhão</button>
+            <button class="btn btn-sm btn-outline-success" title="Novo talhão: desenhe a área no croqui deste imóvel (a área é medida, não digitada)"
+                    onclick="Croqui.abrir(<?= (int) $im['id'] ?>, { novoTalhao: true })"><i class="bi bi-plus-lg"></i> Talhão</button>
             <?php if (!$im['talhoes']): ?>
               <button class="btn btn-sm btn-outline-success" title="Toda a área de plantio com uma cultura só: cria um talhão único"
                       onclick='Clientes.plantarAreaToda(<?= (int) $im['id'] ?>, <?= json_attr($rotuloIm) ?>, <?= json_encode($r['area_plantio']) ?>)'><i class="bi bi-grid-1x2 me-1"></i>Área toda</button>

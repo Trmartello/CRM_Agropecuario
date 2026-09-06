@@ -416,9 +416,18 @@ class ClientesController
         } else {
             // Área de plantio e talhão: ponto fora da divisa é PRESO na borda (não
             // recusa — a fila offline nunca falha e o desenho fica sempre válido)
-            if ($divisa) {
-                $pontos = \App\Services\CroquiService::prenderNaDivisa($pontos, $divisa);
+            // REGRA (teste de campo): a área de plantio e os talhões existem DENTRO da
+            // área do CAR — sem divisa não há onde desenhar
+            if (!$divisa) {
+                json_erro('Este imóvel ainda não tem a divisa do CAR. Traga o CAR no croqui (CAR pela sede, CAR no mapa ou o arquivo do SICAR) antes de desenhar a área de plantio ou os talhões.');
             }
+            $pontos = \App\Services\CroquiService::prenderNaDivisa($pontos, $divisa);
+            if ($tipo === 'talhao') {
+                // REGRA (teste de campo): talhão NÃO cobre outro talhão. Ponto dentro de
+                // um vizinho é puxado para a borda dele; se ainda cruzar, recusa.
+                $pontos = $this->semSobreporVizinhos($pontos, $imovelId, $alvoId);
+            }
+            $this->exigirLinhasDentro($pontos, $divisa);
             if ($tipo === 'plantio') {
                 // Talhão fora da área de plantio é AVISO, não bloqueio (§3 da spec)
                 foreach ($this->talhoesDoImovel($imovelId, true) as $t) {
@@ -441,8 +450,10 @@ class ClientesController
         }
         // Divisa vinda do CAR (identificação por GPS) traz o número do imóvel
         if ($tipo === 'imovel' && trim($_POST['car_numero'] ?? '') !== '') {
-            Database::executar('UPDATE imoveis SET car_numero = ? WHERE id = ?',
-                [mb_substr(trim($_POST['car_numero']), 0, 60), $alvoId]);
+            // Divisa adotada do CAR: a área total do imóvel é a medida por ela (oficial)
+            Database::executar('UPDATE imoveis SET car_numero = ?, area_ha = ? WHERE id = ?',
+                [mb_substr(trim($_POST['car_numero']), 0, 60), $areaGps, $alvoId]);
+            $this->municipioDoCar($alvoId, trim($_POST['car_numero'])); // município vem do nº do CAR
         }
         sync_confirmar($_POST['uuid_offline'] ?? null);
         auditar('salvar', 'croqui', $alvoId, $rotulo . ' · ' . count($pontos) . " pontos · {$areaGps} ha");
@@ -496,22 +507,29 @@ class ClientesController
 
         // Número do CAR: usa o que o usuário digitou; senão, o código lido do próprio arquivo (.dbf)
         $car = trim($_POST['car_numero'] ?? '') ?: (string) ($lido['cod'] ?? '');
+        // A divisa do CAR é a verdade oficial: a área total do imóvel passa a ser a MEDIDA por ela
         if ($car !== '') {
             Database::executar(
-                'UPDATE imoveis SET contorno = ?, area_gps = ?, car_numero = ? WHERE id = ?',
-                [json_encode($pontos), $areaGps, mb_substr($car, 0, 60), $imovelId]
+                'UPDATE imoveis SET contorno = ?, area_gps = ?, area_ha = ?, car_numero = ? WHERE id = ?',
+                [json_encode($pontos), $areaGps, $areaGps, mb_substr($car, 0, 60), $imovelId]
             );
         } else {
             Database::executar(
-                'UPDATE imoveis SET contorno = ?, area_gps = ? WHERE id = ?',
-                [json_encode($pontos), $areaGps, $imovelId]
+                'UPDATE imoveis SET contorno = ?, area_gps = ?, area_ha = ? WHERE id = ?',
+                [json_encode($pontos), $areaGps, $areaGps, $imovelId]
             );
         }
-        // Município detectado no arquivo preenche imóvel e propriedade se estiverem vazios
-        if (!empty($lido['municipio'])) {
-            $mun = mb_substr((string) $lido['municipio'], 0, 120);
+        // Município: primeiro pelo nº do CAR (IBGE embutido → lista pré-cadastrada);
+        // na falta, o nome lido do .dbf preenche imóvel e propriedade se estiverem vazios
+        $munCar = $car !== '' ? $this->municipioDoCar($imovelId, $car) : null;
+        if ($munCar === null && !empty($lido['municipio'])) {
+            $codNome = \App\Services\MunicipiosSul::codigoPorNome((string) $lido['municipio'], $lido['uf'] ?? null);
+            $munLista = \App\Services\MunicipiosSul::porCodigo($codNome);
+            $mun = $munLista['nome'] ?? mb_substr((string) $lido['municipio'], 0, 120);
             Database::executar(
-                "UPDATE imoveis SET municipio = ? WHERE id = ? AND (municipio IS NULL OR municipio = '')", [$mun, $imovelId]
+                "UPDATE imoveis SET municipio = ?, cod_ibge = COALESCE(?, cod_ibge), uf = COALESCE(?, uf)
+                  WHERE id = ? AND (municipio IS NULL OR municipio = '')",
+                [$mun, $munLista['ibge'] ?? null, $munLista['uf'] ?? ($lido['uf'] ?? null), $imovelId]
             );
             Database::executar(
                 "UPDATE propriedades SET municipio = ? WHERE id = ? AND (municipio IS NULL OR municipio = '')", [$mun, $propId]
@@ -745,9 +763,10 @@ class ClientesController
         }
         $car = mb_substr($car, 0, 60);
         Database::executar('UPDATE imoveis SET car_numero = ? WHERE id = ?', [$car, $imovelId]);
+        $mun = $this->municipioDoCar($imovelId, $car); // município vem do nº do CAR
         auditar('salvar', 'imovel', $imovelId, 'nº do CAR ' . $car . ' (identificado pela base do CAR)');
         sync_confirmar($_POST['uuid_offline'] ?? null);
-        json_ok(['car_numero' => $car]);
+        json_ok(['car_numero' => $car, 'municipio' => $mun['nome'] ?? null, 'uf' => $mun['uf'] ?? null]);
     }
 
     /* ------------------------- imóveis (CAR) — v40 ------------------------- */
@@ -815,15 +834,75 @@ class ClientesController
         );
     }
 
+    /**
+     * REGRA (teste de campo): talhão não cobre outro talhão do mesmo imóvel.
+     * 1) ponto dentro de um vizinho é PUXADO para a borda dele (desenhar colado
+     *    fica automático); 2) se ainda houver cruzamento, recusa com os nomes.
+     * Devolve os pontos corrigidos.
+     */
+    private function semSobreporVizinhos(array $pontos, int $imovelId, int $ignorarTalhaoId = 0): array
+    {
+        $vizinhos = [];
+        foreach ($this->talhoesDoImovel($imovelId, true) as $t) {
+            if ((int) $t['id'] === $ignorarTalhaoId) {
+                continue;
+            }
+            $pts = json_decode((string) $t['contorno'], true) ?: [];
+            if (count($pts) >= 3) {
+                $vizinhos[] = ['nome' => $t['nome'], 'pontos' => $pts];
+            }
+        }
+        // Desenho que está (quase) todo dentro de um vizinho: recusa antes de expulsar —
+        // senão os pontos iriam todos para a borda e sobraria um talhão sem área.
+        $metade = (int) ceil(count($pontos) / 2);
+        foreach ($vizinhos as $v) {
+            if (count(\App\Services\CroquiService::pontosDentroDe($pontos, $v['pontos'])) >= $metade) {
+                json_erro('O desenho está dentro do talhão "' . $v['nome'] . '". Um talhão não pode ficar por cima de outro — '
+                    . 'desenhe ao lado dele ou edite o talhão existente.');
+            }
+        }
+        foreach ($vizinhos as $v) {
+            $pontos = \App\Services\CroquiService::expulsarDe($pontos, $v['pontos']);
+        }
+        if (\App\Services\CroquiService::areaHa($pontos) < 0.01) {
+            json_erro('Depois de ajustar os pontos para fora dos talhões vizinhos, o talhão ficou sem área. Desenhe em um espaço livre.');
+        }
+        $cruzam = [];
+        foreach ($vizinhos as $v) {
+            if (\App\Services\CroquiService::sobrepoe($pontos, $v['pontos'])) {
+                $cruzam[] = $v['nome'];
+            }
+        }
+        if ($cruzam) {
+            json_erro('O talhão cobre outro talhão: ' . implode(', ', $cruzam)
+                . '. Um talhão não pode passar por cima de outro — ajuste os pontos em vermelho.');
+        }
+        return $pontos;
+    }
+
+    /**
+     * REGRA (teste de campo): NENHUMA LINHA fica fora da área do CAR. Prender os
+     * pontos não basta em divisa côncava; se alguma aresta cruzar ou passar por
+     * fora, recusa apontando quais.
+     */
+    private function exigirLinhasDentro(array $pontos, array $divisa): void
+    {
+        $fora = \App\Services\CroquiService::linhasFora($pontos, $divisa);
+        if ($fora) {
+            $nums = array_map(fn ($i) => ($i + 1) . '→' . (($i + 1) % count($pontos) + 1), $fora);
+            json_erro('Linha fora da área do CAR (entre os pontos ' . implode(', ', $nums)
+                . '). Nenhuma linha pode sair da divisa — acrescente um ponto na linha vermelha e puxe-o para dentro.');
+        }
+    }
+
     /** Nome de exibição do imóvel: apelido, senão nº do CAR, senão "Imóvel". */
     public static function rotuloImovel(array $imovel): string
     {
         if (!empty($imovel['nome'])) {
             return (string) $imovel['nome'];
         }
-        if (!empty($imovel['car_numero'])) {
-            return 'CAR ' . $imovel['car_numero'];
-        }
+        // Sem apelido: "Imóvel" (o nº do CAR fica na linha própria, com o link — no
+        // título ele ocupava três linhas no celular e aparecia duas vezes)
         return 'Imóvel' . (isset($imovel['ordem']) && (int) $imovel['ordem'] > 0 ? ' ' . (int) $imovel['ordem'] : '');
     }
 
@@ -992,39 +1071,66 @@ class ClientesController
         $propriedadeId = (int) ($_POST['propriedade_id'] ?? 0);
         $this->propriedadeDaCarteira($propriedadeId);
         $id = (int) ($_POST['id'] ?? 0);
-        $num = fn ($k) => (float) str_replace(',', '.', $_POST[$k] ?? 0);
-        $areaHa = $num('area_ha');
-        $areaPlantio = $num('area_plantio_ha');
-        if ($areaHa < 0 || $areaPlantio < 0) {
-            json_erro('Área não pode ser negativa.');
-        }
-        if ($areaHa > 0 && $areaPlantio > $areaHa) {
-            json_erro('A área de plantio não pode ser maior que a área total do imóvel.');
-        }
+        // REGRA (teste de campo): as áreas do imóvel NÃO são digitadas. A área total
+        // vem da divisa do CAR e a área de plantio é desenhada dentro dela (croqui).
+        // Este cadastro só guarda nº do CAR, apelido e município.
         $dados = [
             trim($_POST['nome'] ?? '') ? mb_substr(trim($_POST['nome']), 0, 120) : null,
             trim($_POST['car_numero'] ?? '') ? mb_substr(trim($_POST['car_numero']), 0, 60) : null,
-            trim($_POST['municipio'] ?? '') ? mb_substr(trim($_POST['municipio']), 0, 120) : null,
-            $areaHa,
-            $areaPlantio,
         ];
-        if ($id > 0) {
+        // Município: LISTA pré-cadastrada (código IBGE) — nunca texto livre. O nº do CAR
+        // ("UF-IBGE-hash") identifica o município sozinho e prevalece sobre o select.
+        $mun = \App\Services\MunicipiosSul::deCodImovel($dados[1])
+            ?: \App\Services\MunicipiosSul::porCodigo(trim($_POST['cod_ibge'] ?? '') ?: null);
+        $dados = array_merge($dados, [$mun['nome'] ?? null, $mun['ibge'] ?? null, $mun['uf'] ?? null]);
+        $novo = $id <= 0;
+        if (!$novo) {
             Database::executar(
-                'UPDATE imoveis SET nome=?, car_numero=?, municipio=?, area_ha=?, area_plantio_ha=?
-                  WHERE id=? AND propriedade_id=?',
+                'UPDATE imoveis SET nome=?, car_numero=?, municipio=?, cod_ibge=?, uf=? WHERE id=? AND propriedade_id=?',
                 array_merge($dados, [$id, $propriedadeId])
             );
         } else {
             $ordem = (int) Database::valor('SELECT COALESCE(MAX(ordem), 0) + 1 FROM imoveis WHERE propriedade_id = ?', [$propriedadeId]);
             Database::executar(
-                'INSERT INTO imoveis (nome, car_numero, municipio, area_ha, area_plantio_ha, propriedade_id, ordem)
-                 VALUES (?,?,?,?,?,?,?)',
+                'INSERT INTO imoveis (nome, car_numero, municipio, cod_ibge, uf, propriedade_id, ordem) VALUES (?,?,?,?,?,?,?)',
                 array_merge($dados, [$propriedadeId, $ordem])
             );
             $id = Database::ultimoId();
         }
+        if ($mun !== null) {
+            $this->propagarMunicipio($propriedadeId, $mun);
+        }
         auditar('salvar', 'imovel', $id, 'propriedade #' . $propriedadeId);
-        json_ok(['id' => $id]);
+        json_ok(['id' => $id, 'municipio' => $mun['nome'] ?? null, 'uf' => $mun['uf'] ?? null, 'cod_ibge' => $mun['ibge'] ?? null]);
+    }
+
+    /**
+     * Município identificado pelo nº do CAR: grava no imóvel (nome oficial + IBGE + UF)
+     * e propaga à propriedade se ela ainda não tiver município. Devolve o município
+     * ou null quando o número não traz um IBGE conhecido (fora do padrão/da tabela).
+     */
+    private function municipioDoCar(int $imovelId, ?string $car): ?array
+    {
+        $mun = \App\Services\MunicipiosSul::deCodImovel($car);
+        if ($mun === null) {
+            return null;
+        }
+        Database::executar('UPDATE imoveis SET municipio = ?, cod_ibge = ?, uf = ? WHERE id = ?',
+            [$mun['nome'], $mun['ibge'], $mun['uf'], $imovelId]);
+        $propId = (int) Database::valor('SELECT propriedade_id FROM imoveis WHERE id = ?', [$imovelId]);
+        if ($propId > 0) {
+            $this->propagarMunicipio($propId, $mun);
+        }
+        return $mun;
+    }
+
+    /** Propriedade sem município herda o do imóvel (não sobrescreve o que já está lá). */
+    private function propagarMunicipio(int $propId, array $mun): void
+    {
+        Database::executar(
+            "UPDATE propriedades SET municipio = ? WHERE id = ? AND (municipio IS NULL OR municipio = '')",
+            [$mun['nome'], $propId]
+        );
     }
 
     /** Exclui imóvel sem talhões (com talhões, mova-os antes) — v40. */
@@ -1108,9 +1214,32 @@ class ClientesController
             $imovelId = (int) $this->primeiroImovel($propriedadeId)['id'];
         }
         $finalidadeId = (int) ($_POST['finalidade_id'] ?? 0) ?: null;
+
+        // Talhão DESENHADO no croqui (teste de campo): o contorno vem junto e a área
+        // é a MEDIDA — a área digitada só vale para talhão antigo sem desenho.
+        $contornoJson = trim($_POST['contorno'] ?? '');
+        $pontos = null;
+        $areaGps = null;
+        if ($contornoJson !== '' && $contornoJson !== '[]') {
+            try {
+                $pontos = \App\Services\CroquiService::validarContorno($contornoJson);
+            } catch (\InvalidArgumentException $e) {
+                json_erro($e->getMessage());
+            }
+            $imovel = Database::um('SELECT contorno FROM imoveis WHERE id = ?', [$imovelId]);
+            $divisa = !empty($imovel['contorno']) ? (json_decode((string) $imovel['contorno'], true) ?: []) : [];
+            if (!$divisa) {
+                json_erro('Este imóvel ainda não tem a divisa do CAR. Traga o CAR no croqui antes de desenhar talhões.');
+            }
+            $pontos = \App\Services\CroquiService::prenderNaDivisa($pontos, $divisa);
+            $pontos = $this->semSobreporVizinhos($pontos, $imovelId, $id);
+            $this->exigirLinhasDentro($pontos, $divisa);
+            $areaGps = \App\Services\CroquiService::areaHa($pontos);
+        }
+        $areaHa = $areaGps ?? (float) str_replace(',', '.', $_POST['area_ha'] ?? 0);
         $dados = [
             $nome,
-            (float) str_replace(',', '.', $_POST['area_ha'] ?? 0),
+            $areaHa,
             (int) ($_POST['cultura_id'] ?? 0) ?: null,
             $finalidadeId,
             $imovelId,
@@ -1120,14 +1249,31 @@ class ClientesController
                 'UPDATE talhoes SET nome=?, area_ha=?, cultura_id=?, finalidade_id=?, imovel_id=? WHERE id=? AND propriedade_id=?',
                 array_merge($dados, [$id, $propriedadeId])
             );
+            if ($pontos !== null) {
+                Database::executar('UPDATE talhoes SET contorno=?, area_gps=? WHERE id=?', [json_encode($pontos), $areaGps, $id]);
+            }
         } else {
             Database::executar(
-                'INSERT INTO talhoes (nome, area_ha, cultura_id, finalidade_id, imovel_id, propriedade_id) VALUES (?,?,?,?,?,?)',
-                array_merge($dados, [$propriedadeId])
+                'INSERT INTO talhoes (nome, area_ha, cultura_id, finalidade_id, imovel_id, propriedade_id, contorno, area_gps)
+                 VALUES (?,?,?,?,?,?,?,?)',
+                array_merge($dados, [$propriedadeId, $pontos !== null ? json_encode($pontos) : null, $areaGps])
             );
             $id = Database::ultimoId();
         }
-        json_ok(['id' => $id]);
+        if ($pontos !== null) {
+            auditar('salvar', 'croqui', $id, 'talhão desenhado · ' . count($pontos) . " pontos · {$areaGps} ha");
+        }
+        // Devolve o talhão pronto para o croqui (com cultura/finalidade por nome)
+        $talhao = Database::um(
+            'SELECT t.id, t.nome, t.area_ha, t.area_gps, t.contorno, t.imovel_id, t.cultura_id, t.finalidade_id,
+                    cu.nome AS cultura, f.nome AS finalidade
+               FROM talhoes t
+               LEFT JOIN culturas cu ON cu.id = t.cultura_id
+               LEFT JOIN finalidades f ON f.id = t.finalidade_id
+              WHERE t.id = ?',
+            [$id]
+        );
+        json_ok(['id' => $id, 'talhao' => $talhao, 'area_gps' => $areaGps]);
     }
 
     /** Salva plano de safra (intenção de plantio) via modal AJAX. */

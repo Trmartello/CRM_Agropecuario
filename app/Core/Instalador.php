@@ -1008,6 +1008,28 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '40'"
             );
         }
+        if ($versao < 41) {
+            // Município do imóvel vem da LISTA pré-cadastrada (código IBGE de MunicipiosSul)
+            // e é preenchido sozinho pelo nº do CAR ("UF-IBGE-hash"). Backfill: primeiro
+            // pelo nº do CAR já gravado, depois pelo nome digitado (sem acento/caixa).
+            self::adicionarColuna('imoveis', 'cod_ibge', "cod_ibge CHAR(7) NULL COMMENT 'código IBGE do município (MunicipiosSul)'");
+            self::adicionarColuna('imoveis', 'uf', 'uf CHAR(2) NULL');
+            $rows = Database::todos("SELECT id, car_numero, municipio FROM imoveis WHERE cod_ibge IS NULL OR cod_ibge = ''");
+            foreach ($rows as $r) {
+                $m = \App\Services\MunicipiosSul::deCodImovel($r['car_numero'] ?? null);
+                if ($m === null && !empty($r['municipio'])) {
+                    $m = \App\Services\MunicipiosSul::porCodigo(\App\Services\MunicipiosSul::codigoPorNome($r['municipio']));
+                }
+                if ($m !== null) {
+                    Database::executar('UPDATE imoveis SET cod_ibge = ?, uf = ?, municipio = ? WHERE id = ?',
+                        [$m['ibge'], $m['uf'], $m['nome'], (int) $r['id']]);
+                }
+            }
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '41')
+                 ON DUPLICATE KEY UPDATE valor = '41'"
+            );
+        }
     }
 
     /**

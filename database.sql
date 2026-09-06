@@ -171,7 +171,9 @@ CREATE TABLE imoveis (
   propriedade_id INT NOT NULL,
   nome VARCHAR(120) NULL COMMENT 'apelido do imóvel (ex.: Matrícula 1, Área da mãe)',
   car_numero VARCHAR(60) NULL COMMENT 'número de inscrição no CAR (SICAR)',
-  municipio VARCHAR(120) NULL,
+  municipio VARCHAR(120) NULL COMMENT 'nome do município (da lista pré-cadastrada; vem do nº do CAR)',
+  cod_ibge CHAR(7) NULL COMMENT 'código IBGE do município (MunicipiosSul) — extraído do nº do CAR UF-IBGE-hash',
+  uf CHAR(2) NULL,
   area_ha DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT 'área total cadastrada (CAR)',
   contorno TEXT NULL COMMENT 'divisa oficial/desenhada [[lat,lng],...]',
   area_gps DECIMAL(10,2) NULL COMMENT 'área total (ha) medida pela divisa',
@@ -1649,6 +1651,10 @@ INSERT INTO finalidades (nome, ordem) VALUES
 INSERT INTO imoveis (propriedade_id, car_numero, municipio, area_ha, contorno, area_gps)
 SELECT p.id, p.car_numero, p.municipio, p.area_ha, p.contorno, p.area_gps FROM propriedades p;
 UPDATE talhoes t JOIN imoveis i ON i.propriedade_id = t.propriedade_id SET t.imovel_id = i.id;
+-- v41: município do imóvel vem da lista pré-cadastrada (código IBGE, MunicipiosSul) — seed em SC
+UPDATE imoveis SET uf = 'SC', cod_ibge = CASE municipio
+  WHEN 'Concórdia' THEN '4204301' WHEN 'Seara' THEN '4217501' WHEN 'Chapecó' THEN '4204202' END
+ WHERE municipio IN ('Concórdia', 'Seara', 'Chapecó');
 
 -- schema_versao: instalações novas já nascem na versão atual (não re-executam migrações)
 -- ---------------------------------------------------------------------------
@@ -1678,8 +1684,8 @@ CREATE TABLE sync_processados (
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','40')
-  ON DUPLICATE KEY UPDATE valor = '39';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','41')
+  ON DUPLICATE KEY UPDATE valor = '41';
 
 -- ============================================================================
 -- SEED — Mapa Territorial: 5 imóveis fictícios (Concórdia/SC), vínculos e talhões
