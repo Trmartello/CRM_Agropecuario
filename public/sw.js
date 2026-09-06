@@ -2,7 +2,12 @@
  * Cache do app e assets para abrir sem conexão (offline básico da Fase 1).
  */
 
-const CACHE = 'crm-coperdia-v34';
+const CACHE = 'crm-coperdia-v35';
+
+// Tiles do mapa (satélite e rótulos) ficam num cache PRÓPRIO: eles são caros de
+// baixar no campo e não têm nada a ver com a versão do app, então não podem ser
+// apagados a cada deploy junto com os assets.
+const CACHE_MAPA = 'crm-mapa-v1';
 
 const ARQUIVOS_APP = [
   'assets/vendor/bootstrap.min.css',
@@ -39,7 +44,7 @@ self.addEventListener('install', ev => {
 self.addEventListener('activate', ev => {
   ev.waitUntil(
     caches.keys().then(chaves =>
-      Promise.all(chaves.filter(c => c !== CACHE).map(c => caches.delete(c)))
+      Promise.all(chaves.filter(c => c !== CACHE && c !== CACHE_MAPA).map(c => caches.delete(c)))
     ).then(() => self.clients.claim())
   );
 });
@@ -163,8 +168,42 @@ self.addEventListener('sync', ev => {
 self.addEventListener('fetch', ev => {
   const url = new URL(ev.request.url);
 
-  // Só tratamos GET do próprio domínio
-  if (ev.request.method !== 'GET' || url.origin !== location.origin) return;
+  if (ev.request.method !== 'GET') return;
+
+  // Tiles do mapa: vêm de OUTRO domínio (provedor configurável). Cache primeiro —
+  // sem isso cada arrastar/zoom rebaixava a área inteira da internet (lento no
+  // campo, com 3G ruim) e offline o satélite ficava em branco. O app só carrega
+  // imagem de terceiro para o mapa, então destination === 'image' identifica o
+  // tile sem depender do domínio do provedor.
+  if (url.origin !== location.origin) {
+    if (ev.request.destination !== 'image') return;
+    ev.respondWith((async () => {
+      const cache = await caches.open(CACHE_MAPA);
+      const guardado = await cache.match(ev.request);
+      if (guardado) return guardado;
+      try {
+        // Buscamos com CORS de propósito: a resposta de um <img> comum é OPACA, e
+        // o navegador contabiliza resposta opaca na cota com uma folga enorme —
+        // algumas centenas de tiles opacos dão QuotaExceededError e o aparelho
+        // para de guardar mapa. Com CORS guarda o tamanho real. Provedor sem CORS
+        // cai de volta no pedido original (opaco), que ao menos desenha.
+        let net = null;
+        try {
+          const comCors = await fetch(ev.request.url, { mode: 'cors', credentials: 'omit' });
+          if (comCors && comCors.ok) net = comCors;
+        } catch (e) { /* provedor não libera CORS */ }
+        if (!net) net = await fetch(ev.request);
+        if (net && (net.ok || net.type === 'opaque')) {
+          // Cota cheia não pode derrubar o mapa: guarda se der, desenha de qualquer jeito.
+          try { await cache.put(ev.request, net.clone()); } catch (e) { /* sem espaço */ }
+        }
+        return net;
+      } catch (e) {
+        return Response.error(); // sem sinal e sem o tile: o onerror do <img> remove
+      }
+    })());
+    return;
+  }
 
   // Assets: cache primeiro, guardando em runtime o que baixar (inclusive os
   // versionados por ?v=<filemtime>) — assim resolvem offline na próxima vez, e o

@@ -22,6 +22,8 @@
                   title="Puxar a divisa oficial do CAR pela posição da sede (sem GPS) — para preparar a divisa no escritório, antes de ir à propriedade"><i class="bi bi-house-door me-1"></i>CAR pela sede</button>
           <button id="croquiCarMapaBtn" class="btn btn-sm btn-outline-warning" onclick="Croqui.toggleCarLayer()"
                   title="Mostrar os imóveis do CAR no mapa e tocar na área do produtor para adotar a divisa"><i class="bi bi-grid-3x3-gap me-1"></i>CAR no mapa</button>
+          <button id="croquiBaixarMapaBtn" class="btn btn-sm btn-outline-dark" onclick="Croqui.baixarMapa()"
+                  title="Guardar a imagem de satélite desta área no aparelho — no escritório, com wi-fi — para o mapa abrir sem sinal na propriedade"><i class="bi bi-cloud-arrow-down me-1"></i>Baixar mapa</button>
           <div class="ms-auto d-flex flex-wrap gap-2 align-items-center">
             <span class="small" id="croquiArea"></span>
             <button class="btn btn-sm btn-outline-secondary" onclick="Croqui.desfazer()" title="Remover o último ponto"><i class="bi bi-arrow-counterclockwise"></i> Desfazer</button>
@@ -52,7 +54,9 @@
           <i class="bi bi-info-circle me-1"></i>Escolha <strong>Propriedade</strong> para marcar a divisa (área total) ou um talhão para a
           área de plantio. <strong>Manual</strong>: toque sobre a imagem de satélite para marcar cada canto (arraste o mapa para navegar,
           use +/− ou a roda do mouse para o zoom, arraste um ponto para ajustar, dê <strong>dois toques sobre a linha ciano para inserir um ponto</strong> ali e refinar, e <strong>dois toques em um ponto para removê-lo</strong>. A divisa que você desenha/ajusta fica em <strong>ciano</strong>; as linhas do CAR ficam em amarelo (com o <em>CAR no mapa</em> ligado, tocar dentro de um imóvel amarelo adota aquela divisa). <strong>Caminhar a divisa</strong>: ande pelo perímetro —
-          o app marca um ponto a cada ~10 m pelo GPS, mesmo sem sinal (a imagem some, o desenho continua; o salvar entra na fila).
+          o app marca um ponto a cada ~10 m pelo GPS, mesmo sem sinal (o salvar entra na fila).
+          <strong>Sem sinal na propriedade?</strong> Antes de sair, com wi-fi, enquadre a área e toque em <strong>Baixar mapa</strong>:
+          a imagem de satélite fica guardada no aparelho e o mapa abre no campo mesmo sem internet.
         </div>
       </div>
     </div>
