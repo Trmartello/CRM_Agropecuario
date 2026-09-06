@@ -120,6 +120,36 @@
     </div>
   </div>
 
+  <!-- Finalidades de cultura (v40): grão, silagem, pastagem... -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header d-flex align-items-center">
+        <i class="bi bi-tags me-2 text-success"></i><strong>Finalidades de cultura</strong>
+        <button class="btn btn-sm btn-success ms-auto" onclick="Config.novaFinalidade()"><i class="bi bi-plus-lg me-1"></i>Nova finalidade</button>
+      </div>
+      <div class="card-body">
+        <p class="text-muted small">A finalidade separa, nos totais de área de plantio, o mesmo cultivo com usos diferentes — <strong>milho silagem</strong> de <strong>milho grão</strong>, por exemplo. Aparece no cadastro do talhão e no registro de plantio. Finalidade em uso não pode ser apagada: <strong>inative</strong> para tirá-la das listas.</p>
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-light"><tr><th style="width:70px">Ordem</th><th>Finalidade</th><th>Situação</th><th class="text-end">Talhões</th><th></th></tr></thead>
+            <tbody>
+              <?php foreach (($finalidades ?? []) as $f): ?>
+              <tr>
+                <td class="text-muted"><?= (int) $f['ordem'] ?></td>
+                <td class="fw-semibold"><?= e($f['nome']) ?></td>
+                <td><span class="badge text-bg-<?= $f['ativo'] ? 'success' : 'secondary' ?>"><?= $f['ativo'] ? 'Ativa' : 'Inativa' ?></span></td>
+                <td class="text-end"><?= (int) $f['qtd_talhoes'] ?></td>
+                <td class="text-end"><button class="btn btn-sm btn-outline-secondary" onclick='Config.editarFinalidade(<?= json_attr($f) ?>)'><i class="bi bi-pencil"></i></button></td>
+              </tr>
+              <?php endforeach; ?>
+              <?php if (empty($finalidades)): ?><tr><td colspan="5" class="text-muted text-center py-3">Nenhuma finalidade cadastrada.</td></tr><?php endif; ?>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Backup do banco -->
   <div class="col-12">
     <div class="card">
@@ -285,6 +315,26 @@
   </div>
 </div>
 
+<!-- Modal: finalidade de cultura (v40) -->
+<div class="modal fade" id="modalFinalidade" tabindex="-1">
+  <div class="modal-dialog modal-fullscreen-sm-down">
+    <form class="modal-content" id="formFinalidade" onsubmit="return Config.salvarFinalidade(event)">
+      <div class="modal-header"><h5 class="modal-title"><i class="bi bi-tags me-2 text-success"></i><span id="modalFinalidadeTitulo">Nova finalidade</span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <input type="hidden" name="id" value="0">
+        <div class="mb-3"><label class="form-label">Nome *</label><input name="nome" class="form-control" required maxlength="60" placeholder="Ex.: Silagem"></div>
+        <div class="row g-3">
+          <div class="col-6"><label class="form-label">Ordem na lista</label><input type="number" min="0" name="ordem" class="form-control" value="0"></div>
+          <div class="col-6"><label class="form-label">Situação</label><select name="ativo" class="form-select"><option value="1">Ativa</option><option value="0">Inativa</option></select></div>
+        </div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-success"><i class="bi bi-check-lg me-1"></i>Salvar</button></div>
+    </form>
+  </div>
+</div>
+
 <!-- Modal: categoria de reembolso -->
 <div class="modal fade" id="modalCategoria" tabindex="-1">
   <div class="modal-dialog modal-fullscreen-sm-down">
@@ -360,6 +410,34 @@ const Config = {
       await App.json('index.php?r=configuracoes/salvar-ajustes', { method: 'POST', body: new FormData(ev.target) });
       App.alerta('Ajustes salvos — a logo já aparece no novo tamanho.');
       setTimeout(() => location.reload(), 700);
+    } catch (e) { App.alerta(e.message, 'danger'); }
+    return false;
+  },
+  // ---- Finalidades de cultura (v40) ----
+  novaFinalidade() {
+    const form = document.getElementById('formFinalidade');
+    form.reset();
+    form.querySelector('[name=id]').value = 0;
+    document.getElementById('modalFinalidadeTitulo').textContent = 'Nova finalidade';
+    new bootstrap.Modal('#modalFinalidade').show();
+  },
+  editarFinalidade(f) {
+    const form = document.getElementById('formFinalidade');
+    form.reset();
+    form.querySelector('[name=id]').value = f.id;
+    form.querySelector('[name=nome]').value = f.nome;
+    form.querySelector('[name=ordem]').value = f.ordem;
+    form.querySelector('[name=ativo]').value = f.ativo;
+    document.getElementById('modalFinalidadeTitulo').textContent = 'Editar finalidade';
+    new bootstrap.Modal('#modalFinalidade').show();
+  },
+  async salvarFinalidade(ev) {
+    ev.preventDefault();
+    try {
+      await App.json('index.php?r=configuracoes/salvar-finalidade', { method: 'POST', body: new FormData(ev.target) });
+      bootstrap.Modal.getInstance('#modalFinalidade').hide();
+      App.alerta('Finalidade salva.');
+      setTimeout(() => location.reload(), 600);
     } catch (e) { App.alerta(e.message, 'danger'); }
     return false;
   },

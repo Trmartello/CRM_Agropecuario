@@ -282,76 +282,152 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
       <button class="btn btn-sm btn-outline-success" onclick="Clientes.novaPropriedade(<?= $cliente['id'] ?>)"><i class="bi bi-plus-lg"></i> Propriedade</button>
     </div>
     <?php if (!$propriedades): ?><p class="text-muted small">Nenhuma propriedade cadastrada.</p><?php endif; ?>
+    <?php
+      // v40: barra de área de plantio por cultura × finalidade (docs/specs/propriedade-imoveis-plantio.md §5)
+      $cores = \App\Services\CroquiService::CORES;
+      $barraPlantio = function (array $r, bool $compacta = false) use ($cores): string {
+          if ($r['area_plantio'] <= 0 && $r['soma'] <= 0) {
+              return '';
+          }
+          $base = max($r['area_plantio'], $r['soma'], 0.01);
+          $html = '<div class="progress mt-2" style="height:14px" role="img" aria-label="Área de plantio por cultura">';
+          $itens = [];
+          foreach ($r['grupos'] as $i => $g) {
+              $cor = $cores[$i % count($cores)];
+              $pct = round($g['area'] / $base * 100, 2);
+              $rot = $g['cultura'] . ($g['finalidade'] ? ' · ' . $g['finalidade'] : '');
+              $html .= '<div class="progress-bar" style="width:' . $pct . '%;background:' . $cor . '" title="' . e($rot) . ': ' . numero($g['area'], 1) . ' ha"></div>';
+              $itens[] = '<span class="me-2"><span class="croqui-cor" style="background:' . $cor . '"></span>' . e($rot)
+                  . ' <strong>' . numero($g['area'], 1) . ' ha</strong> <span class="text-muted">(' . numero($g['pct'], 0) . '%)</span></span>';
+          }
+          if ($r['nao_mapeado'] > 0) {
+              $pct = round($r['nao_mapeado'] / $base * 100, 2);
+              $html .= '<div class="progress-bar bg-light border-start" style="width:' . $pct . '%" title="Sem talhão: ' . numero($r['nao_mapeado'], 1) . ' ha"></div>';
+              $itens[] = '<span class="me-2 text-muted"><span class="croqui-cor" style="background:#e9ecef;border:1px solid #ccc"></span>Sem talhão <strong>' . numero($r['nao_mapeado'], 1) . ' ha</strong></span>';
+          }
+          $html .= '</div>';
+          if ($r['excedente'] > 0) {
+              $itens[] = '<span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill me-1"></i>Talhões somam '
+                  . numero($r['excedente'], 1) . ' ha a mais que a área de plantio</span>';
+          }
+          if ($r['plantio_origem'] === 'total' && !$compacta) {
+              $itens[] = '<span class="text-muted"><i class="bi bi-info-circle me-1"></i>Sem área de plantio informada — usando a área total</span>';
+          }
+          return $html . '<div class="small mt-1 d-flex flex-wrap">' . implode('', $itens) . '</div>';
+      };
+    ?>
+
+    <?php if ($propriedades && ($resumoProdutor['area_plantio'] > 0 || $resumoProdutor['soma'] > 0)): ?>
+    <div class="card mb-2 border-success-subtle bg-success-subtle bg-opacity-25">
+      <div class="card-body py-2">
+        <div class="d-flex flex-wrap gap-3 small">
+          <span><i class="bi bi-person-vcard me-1 text-success"></i><strong>Total do produtor</strong></span>
+          <span>Área total <strong><?= numero($resumoProdutor['area_total'], 1) ?> ha</strong></span>
+          <span>Área de plantio <strong><?= numero($resumoProdutor['area_plantio'], 1) ?> ha</strong></span>
+          <span>Talhões <strong><?= (int) $resumoProdutor['qtd_talhoes'] ?></strong></span>
+        </div>
+        <?= $barraPlantio($resumoProdutor, true) ?>
+      </div>
+    </div>
+    <?php endif; ?>
+
     <?php foreach ($propriedades as $p): ?>
+    <?php $imoveisLista = array_map(fn ($i) => ['id' => (int) $i['id'], 'rotulo' => \App\Controllers\ClientesController::rotuloImovel($i)], $p['imoveis']); ?>
     <div class="card mb-2">
       <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-1">
         <div>
-          <strong><?= e($p['nome']) ?></strong> <span class="text-muted small"><?= numero($p['area_ha'], 0) ?> ha · <?= e($p['municipio'] ?? '—') ?></span>
-          <?php if (!empty($p['car_numero'])): ?>
-            <div class="small text-muted"><i class="bi bi-geo me-1"></i>CAR: <?= e($p['car_numero']) ?>
-              <a href="https://consultapublica.car.gov.br/publico/imoveis/index" target="_blank" rel="noopener" class="ms-1"
-                 title="Abrir a consulta pública do CAR — o número é copiado para você colar na busca"
-                 onclick='Clientes.copiarCar(<?= json_attr($p['car_numero']) ?>)'>abrir no CAR <i class="bi bi-box-arrow-up-right"></i></a>
-            </div>
-          <?php endif; ?>
+          <strong><?= e($p['nome']) ?></strong>
+          <span class="text-muted small"><?= numero($p['resumo']['area_total'] ?: $p['area_ha'], 0) ?> ha · <?= e($p['municipio'] ?? '—') ?>
+            · <?= count($p['imoveis']) ?> <?= count($p['imoveis']) === 1 ? 'imóvel' : 'imóveis' ?> (CAR)</span>
         </div>
         <div class="btn-group">
-          <button class="btn btn-sm btn-outline-success" title="Importar a divisa oficial do CAR (shapefile .zip) e desenhar no croqui"
-                  onclick="Clientes.importarCar(<?= (int) $p['id'] ?>)"><i class="bi bi-cloud-download me-1"></i>CAR</button>
-          <button class="btn btn-sm btn-outline-success" title="Croqui da propriedade: marcar os contornos dos talhões no campo"
-                  onclick="Croqui.abrir(<?= (int) $p['id'] ?>)"><i class="bi bi-bounding-box-circles me-1"></i>Croqui</button>
-          <button class="btn btn-sm btn-outline-secondary" onclick='Clientes.editarPropriedade(<?= json_attr($p) ?>)'><i class="bi bi-pencil"></i></button>
-          <button class="btn btn-sm btn-outline-success" onclick="Clientes.novoTalhao(<?= $p['id'] ?>)"><i class="bi bi-plus-lg"></i> Talhão</button>
+          <button class="btn btn-sm btn-outline-secondary" title="Editar a propriedade" onclick='Clientes.editarPropriedade(<?= json_attr($p) ?>)'><i class="bi bi-pencil"></i></button>
+          <button class="btn btn-sm btn-outline-success" title="Adicionar outro imóvel (CAR) a esta propriedade"
+                  onclick="Clientes.novoImovel(<?= (int) $p['id'] ?>)"><i class="bi bi-plus-lg"></i> Imóvel (CAR)</button>
         </div>
       </div>
-      <?php if ($p['talhoes']): ?>
-      <ul class="list-group list-group-flush">
-        <?php foreach ($p['talhoes'] as $t): ?>
-        <?php $pa = $plantiosAtivos[(int) $t['id']] ?? null; $co = $colheitas[(int) $t['id']] ?? null; ?>
-        <li class="list-group-item py-1 d-flex justify-content-between align-items-center flex-wrap gap-1">
-          <span><i class="bi bi-grid-3x3-gap me-1 text-muted"></i><?= e($t['nome']) ?>
-            <span class="text-muted small">· <?= numero($t['area_ha'], 0) ?> ha<?= $t['cultura'] ? ' · ' . e($t['cultura']) : '' ?></span>
-            <?php if ($pa): ?>
-              <span class="badge text-bg-success ms-1" title="<?= e($pa['cultura']) ?> plantado em <?= data_br($pa['data_plantio']) ?><?= $pa['cultivar'] ? ' (' . e($pa['cultivar']) . ')' : '' ?>">
-                <i class="bi bi-flower1 me-1"></i><?= e($pa['fase'] ?? 'Em ciclo') ?> · <?= (int) $pa['dap'] ?> d
-              </span>
-            <?php elseif ($co): ?>
-              <span class="badge text-bg-light border text-dark ms-1" title="Colhido em <?= data_br($co['colhido_em']) ?>">
-                <i class="bi bi-check2-circle me-1"></i>Colhido<?= $co['produtividade'] ? ': ' . numero($co['produtividade'], 1) . ' sc/ha' : '' ?>
-              </span>
-            <?php endif; ?>
-          </span>
-          <span class="btn-group">
-            <?php /* nome via json_attr: entidades de e() são decodificadas antes do JS rodar (XSS em onclick) */ ?>
-            <?php if ($pa): ?>
-              <button class="btn btn-sm btn-outline-success" title="Encerrar plantio registrando a colheita"
-                      onclick="Plantios.colheita(<?= (int) $pa['id'] ?>, <?= json_attr($t['nome']) ?>)"><i class="bi bi-basket me-1"></i>Colheita</button>
+
+      <?php foreach ($p['imoveis'] as $im): ?>
+      <?php $r = $im['resumo']; $rotuloIm = \App\Controllers\ClientesController::rotuloImovel($im); ?>
+      <div class="border-top">
+        <div class="px-3 pt-2 pb-1 d-flex justify-content-between align-items-start flex-wrap gap-1 bg-light bg-opacity-50">
+          <div>
+            <i class="bi bi-geo text-success me-1"></i><strong><?= e($rotuloIm) ?></strong>
+            <span class="text-muted small">· total <?= numero($r['area_total'], 1) ?> ha · plantio <?= numero($r['area_plantio'], 1) ?> ha<?= $r['plantio_origem'] === 'total' ? ' (= total)' : '' ?></span>
+            <?php if (!empty($im['car_numero'])): ?>
+              <div class="small text-muted">CAR: <?= e($im['car_numero']) ?>
+                <a href="https://consultapublica.car.gov.br/publico/imoveis/index" target="_blank" rel="noopener" class="ms-1"
+                   title="Abrir a consulta pública do CAR — o número é copiado para você colar na busca"
+                   onclick='Clientes.copiarCar(<?= json_attr($im['car_numero']) ?>)'>abrir no CAR <i class="bi bi-box-arrow-up-right"></i></a>
+              </div>
             <?php else: ?>
-              <button class="btn btn-sm btn-outline-success" title="Registrar plantio (ativa a linha do tempo da cultura)"
-                      onclick="Plantios.abrir(<?= (int) $t['id'] ?>, <?= (int) ($t['cultura_id'] ?? 0) ?>, <?= json_attr($t['nome']) ?>)"><i class="bi bi-calendar-plus me-1"></i>Plantio</button>
+              <div class="small text-warning-emphasis"><i class="bi bi-exclamation-circle me-1"></i>Sem nº do CAR — edite o imóvel ou use "CAR aqui" no croqui.</div>
             <?php endif; ?>
-            <button class="btn btn-sm btn-outline-secondary" onclick='Clientes.editarTalhao(<?= json_attr($t) ?>)'><i class="bi bi-pencil"></i></button>
-          </span>
-        </li>
-        <?php endforeach; ?>
-      </ul>
-      <?php endif; ?>
-      <?php $croquiSvg = \App\Services\CroquiService::svg($p['talhoes'] ?? [], 340, 240, $p); ?>
-      <?php if ($croquiSvg !== ''): ?>
-        <div class="card-body pt-2 pb-3 text-center">
-          <?= $croquiSvg ?>
-          <?php
-            $plantioTotal = array_sum(array_map(
-                fn ($t) => (float) ($t['area_gps'] ?? 0) ?: (float) $t['area_ha'],
-                array_filter($p['talhoes'] ?? [], fn ($t) => !empty($t['contorno']))
-            ));
-          ?>
-          <div class="small text-muted mt-1">
-            <?php if (!empty($p['area_gps'])): ?>Propriedade (divisa medida): <strong><?= numero((float) $p['area_gps'], 1) ?> ha</strong> · <?php endif; ?>
-            <?php if ($plantioTotal > 0): ?>Área de plantio mapeada: <strong><?= numero($plantioTotal, 1) ?> ha</strong><?php endif; ?>
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-sm btn-outline-success" title="Importar a divisa oficial do CAR (shapefile .zip) deste imóvel"
+                    onclick="Clientes.importarCar(<?= (int) $im['id'] ?>)"><i class="bi bi-cloud-download me-1"></i>CAR</button>
+            <button class="btn btn-sm btn-outline-success" title="Croqui do imóvel: divisa, área de plantio e talhões"
+                    onclick="Croqui.abrir(<?= (int) $im['id'] ?>)"><i class="bi bi-bounding-box-circles me-1"></i>Croqui</button>
+            <button class="btn btn-sm btn-outline-secondary" title="Editar o imóvel (CAR, áreas)"
+                    onclick='Clientes.editarImovel(<?= json_attr($im) ?>)'><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-sm btn-outline-success" title="Novo talhão neste imóvel"
+                    onclick='Clientes.novoTalhao(<?= (int) $p['id'] ?>, <?= (int) $im['id'] ?>, <?= json_attr($imoveisLista) ?>)'><i class="bi bi-plus-lg"></i> Talhão</button>
+            <?php if (!$im['talhoes']): ?>
+              <button class="btn btn-sm btn-outline-success" title="Toda a área de plantio com uma cultura só: cria um talhão único"
+                      onclick='Clientes.plantarAreaToda(<?= (int) $im['id'] ?>, <?= json_attr($rotuloIm) ?>, <?= json_encode($r['area_plantio']) ?>)'><i class="bi bi-grid-1x2 me-1"></i>Área toda</button>
+            <?php endif; ?>
           </div>
         </div>
-      <?php endif; ?>
+
+        <?php if ($im['talhoes']): ?>
+        <ul class="list-group list-group-flush">
+          <?php foreach ($im['talhoes'] as $t): ?>
+          <?php $pa = $plantiosAtivos[(int) $t['id']] ?? null; $co = $colheitas[(int) $t['id']] ?? null; ?>
+          <li class="list-group-item py-1 d-flex justify-content-between align-items-center flex-wrap gap-1">
+            <span><i class="bi bi-grid-3x3-gap me-1 text-muted"></i><?= e($t['nome']) ?>
+              <span class="text-muted small">· <?= numero(\App\Services\AreaPlantioService::areaValida($t, 'area_gps', 'area_ha'), 1) ?> ha<?= $t['cultura'] ? ' · ' . e($t['cultura']) : '' ?><?= !empty($t['finalidade']) ? ' <span class="badge text-bg-light border text-dark">' . e($t['finalidade']) . '</span>' : '' ?></span>
+              <?php if (empty($t['contorno'])): ?><span class="badge text-bg-light border text-muted ms-1" title="Sem contorno no croqui">não desenhado</span><?php endif; ?>
+              <?php if ($pa): ?>
+                <span class="badge text-bg-success ms-1" title="<?= e($pa['cultura']) ?> plantado em <?= data_br($pa['data_plantio']) ?><?= $pa['cultivar'] ? ' (' . e($pa['cultivar']) . ')' : '' ?>">
+                  <i class="bi bi-flower1 me-1"></i><?= e($pa['fase'] ?? 'Em ciclo') ?> · <?= (int) $pa['dap'] ?> d
+                </span>
+              <?php elseif ($co): ?>
+                <span class="badge text-bg-light border text-dark ms-1" title="Colhido em <?= data_br($co['colhido_em']) ?>">
+                  <i class="bi bi-check2-circle me-1"></i>Colhido<?= $co['produtividade'] ? ': ' . numero($co['produtividade'], 1) . ' sc/ha' : '' ?>
+                </span>
+              <?php endif; ?>
+            </span>
+            <span class="btn-group">
+              <?php /* nome via json_attr: entidades de e() são decodificadas antes do JS rodar (XSS em onclick) */ ?>
+              <?php if ($pa): ?>
+                <button class="btn btn-sm btn-outline-success" title="Encerrar plantio registrando a colheita"
+                        onclick="Plantios.colheita(<?= (int) $pa['id'] ?>, <?= json_attr($t['nome']) ?>)"><i class="bi bi-basket me-1"></i>Colheita</button>
+              <?php else: ?>
+                <button class="btn btn-sm btn-outline-success" title="Registrar plantio (ativa a linha do tempo da cultura)"
+                        onclick="Plantios.abrir(<?= (int) $t['id'] ?>, <?= (int) ($t['cultura_id'] ?? 0) ?>, <?= json_attr($t['nome']) ?>, <?= (int) ($t['finalidade_id'] ?? 0) ?>)"><i class="bi bi-calendar-plus me-1"></i>Plantio</button>
+              <?php endif; ?>
+              <button class="btn btn-sm btn-outline-secondary" onclick='Clientes.editarTalhao(<?= json_attr($t) ?>, <?= json_attr($imoveisLista) ?>)'><i class="bi bi-pencil"></i></button>
+            </span>
+          </li>
+          <?php endforeach; ?>
+        </ul>
+        <?php endif; ?>
+
+        <?php $croquiSvg = \App\Services\CroquiService::svg($im['talhoes'], 340, 240, $im); ?>
+        <?php if ($croquiSvg !== '' || $r['area_plantio'] > 0 || $r['soma'] > 0): ?>
+          <div class="px-3 pt-2 pb-3">
+            <?php if ($croquiSvg !== ''): ?><div class="text-center"><?= $croquiSvg ?></div><?php endif; ?>
+            <div class="small text-muted mt-1">
+              <?php if (!empty($im['area_gps'])): ?>Divisa medida: <strong><?= numero((float) $im['area_gps'], 1) ?> ha</strong> · <?php endif; ?>
+              <?php if (!empty($im['area_plantio_gps'])): ?>Área de plantio desenhada: <strong><?= numero((float) $im['area_plantio_gps'], 1) ?> ha</strong> · <?php endif; ?>
+              Talhões: <strong><?= numero($r['soma'], 1) ?> ha</strong> de <strong><?= numero($r['area_plantio'], 1) ?> ha</strong> de plantio
+            </div>
+            <?= $barraPlantio($r) ?>
+          </div>
+        <?php endif; ?>
+      </div>
+      <?php endforeach; ?>
     </div>
     <?php endforeach; ?>
 

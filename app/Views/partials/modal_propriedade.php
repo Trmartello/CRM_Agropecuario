@@ -22,10 +22,9 @@
             <label class="form-label">Município</label>
             <input name="municipio" class="form-control">
           </div>
-          <div class="col-12">
-            <label class="form-label">Número do CAR <span class="text-muted small">(SICAR — opcional)</span></label>
-            <input name="car_numero" class="form-control" placeholder="Ex.: SC-4204202-XXXX...">
-            <div class="form-text">Permite abrir o imóvel na consulta pública e importar a divisa oficial (shapefile) no croqui.</div>
+          <div class="col-12 form-text">
+            O <strong>número do CAR</strong> fica em cada <strong>imóvel</strong> da propriedade (uma propriedade pode ter vários CARs).
+            A propriedade nova já nasce com um imóvel: depois de salvar, edite-o para informar o CAR e a área de plantio.
           </div>
         </div>
       </div>

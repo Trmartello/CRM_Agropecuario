@@ -404,19 +404,18 @@ const Clientes = {
     form.querySelector('[name=nome]').value = p.nome;
     form.querySelector('[name=area_ha]').value = p.area_ha;
     form.querySelector('[name=municipio]').value = p.municipio || '';
-    form.querySelector('[name=car_numero]').value = p.car_numero || '';
-    new bootstrap.Modal('#modalPropriedade').show();
+    new bootstrap.Modal('#modalPropriedade').show(); // v40: o nº do CAR fica no imóvel, não aqui
   },
 
   /** Importa a divisa oficial do CAR (shapefile .zip) e desenha no croqui. */
-  importarCar(propId) {
+  importarCar(imovelId) { // v40: a divisa do CAR é do IMÓVEL
     const inp = document.createElement('input');
     inp.type = 'file';
     inp.accept = '.zip,application/zip';
     inp.onchange = async () => {
       if (!inp.files || !inp.files.length) return;
       const fd = new FormData();
-      fd.append('propriedade_id', propId);
+      fd.append('imovel_id', imovelId);
       fd.append('arquivo', inp.files[0]);
       App.alerta('Lendo o shapefile do CAR…', 'info');
       try {
@@ -456,15 +455,98 @@ const Clientes = {
     return false;
   },
 
-  novoTalhao(propriedadeId) {
+  /* ---- v40: imóveis (CAR) da propriedade ---- */
+  novoImovel(propriedadeId) {
+    const form = document.getElementById('formImovel');
+    form.reset();
+    form.querySelector('[name=id]').value = 0;
+    form.querySelector('[name=propriedade_id]').value = propriedadeId;
+    document.getElementById('modalImovelTitulo').textContent = 'Novo imóvel (CAR)';
+    document.getElementById('btnExcluirImovel').classList.add('d-none');
+    new bootstrap.Modal('#modalImovel').show();
+  },
+
+  editarImovel(im) {
+    const form = document.getElementById('formImovel');
+    form.reset();
+    form.querySelector('[name=id]').value = im.id;
+    form.querySelector('[name=propriedade_id]').value = im.propriedade_id;
+    form.querySelector('[name=nome]').value = im.nome || '';
+    form.querySelector('[name=car_numero]').value = im.car_numero || '';
+    form.querySelector('[name=municipio]').value = im.municipio || '';
+    form.querySelector('[name=area_ha]').value = im.area_ha || '';
+    form.querySelector('[name=area_plantio_ha]').value = Number(im.area_plantio_ha) > 0 ? im.area_plantio_ha : '';
+    document.getElementById('modalImovelTitulo').textContent = 'Editar imóvel (CAR)';
+    document.getElementById('btnExcluirImovel').classList.remove('d-none');
+    new bootstrap.Modal('#modalImovel').show();
+  },
+
+  async salvarImovel(ev) {
+    ev.preventDefault();
+    try {
+      await App.enviarForm(ev.target, 'index.php?r=clientes/salvar-imovel');
+      bootstrap.Modal.getInstance('#modalImovel').hide();
+      App.alerta('Imóvel salvo.');
+      if (Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId);
+    } catch (e) { App.alerta(e.message, 'danger'); }
+    return false;
+  },
+
+  async excluirImovel() {
+    const form = document.getElementById('formImovel');
+    const id = Number(form.querySelector('[name=id]').value);
+    if (!id || !confirm('Excluir este imóvel (CAR)? Só é possível se ele não tiver talhões.')) return;
+    try {
+      const fd = new FormData();
+      fd.append('id', id);
+      await App.json('index.php?r=clientes/excluir-imovel', { method: 'POST', body: fd });
+      bootstrap.Modal.getInstance('#modalImovel').hide();
+      App.alerta('Imóvel excluído.');
+      if (Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId);
+    } catch (e) { App.alerta(e.message, 'danger'); }
+  },
+
+  /** "Plantar a área toda": um talhão único cobrindo a área de plantio do imóvel. */
+  plantarAreaToda(imovelId, rotulo, areaPlantio) {
+    const form = document.getElementById('formPlantarArea');
+    form.reset();
+    form.querySelector('[name=imovel_id]').value = imovelId;
+    document.getElementById('plantarAreaImovel').textContent = rotulo || '';
+    document.getElementById('plantarAreaHa').textContent = Number(areaPlantio || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+    new bootstrap.Modal('#modalPlantarArea').show();
+  },
+
+  async salvarPlantarArea(ev) {
+    ev.preventDefault();
+    try {
+      const r = await App.enviarForm(ev.target, 'index.php?r=clientes/plantar-area-toda');
+      bootstrap.Modal.getInstance('#modalPlantarArea').hide();
+      App.alerta(`Talhão criado com ${Number(r.area_ha || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ha — a área de plantio inteira.`);
+      if (Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId);
+    } catch (e) { App.alerta(e.message, 'danger'); }
+    return false;
+  },
+
+  /** Preenche o seletor de imóvel do modal de talhão com os imóveis da propriedade. */
+  _imoveisNoModalTalhao(imoveis, selecionado) {
+    const sel = document.getElementById('talhaoImovel');
+    if (!sel) return;
+    const lista = Array.isArray(imoveis) ? imoveis : [];
+    sel.innerHTML = lista.map(i => `<option value="${Number(i.id)}">${App.escapeHtml(i.rotulo || ('Imóvel ' + i.id))}</option>`).join('');
+    if (selecionado && lista.some(i => Number(i.id) === Number(selecionado))) sel.value = selecionado;
+    else if (lista.length) sel.value = lista[0].id;
+  },
+
+  novoTalhao(propriedadeId, imovelId, imoveis) {
     const form = document.getElementById('formTalhao');
     form.reset();
     form.querySelector('[name=id]').value = 0;
     form.querySelector('[name=propriedade_id]').value = propriedadeId;
+    Clientes._imoveisNoModalTalhao(imoveis, imovelId);
     new bootstrap.Modal('#modalTalhao').show();
   },
 
-  editarTalhao(t) {
+  editarTalhao(t, imoveis) {
     const form = document.getElementById('formTalhao');
     form.reset();
     form.querySelector('[name=id]').value = t.id;
@@ -472,6 +554,8 @@ const Clientes = {
     form.querySelector('[name=nome]').value = t.nome;
     form.querySelector('[name=area_ha]').value = t.area_ha;
     if (t.cultura_id) form.querySelector('[name=cultura_id]').value = t.cultura_id;
+    if (t.finalidade_id) form.querySelector('[name=finalidade_id]').value = t.finalidade_id;
+    Clientes._imoveisNoModalTalhao(imoveis, t.imovel_id);
     new bootstrap.Modal('#modalTalhao').show();
   },
 
@@ -634,12 +718,15 @@ const FenologiaArte = {
 /* ============================== PLANTIOS (Fase 6E) ============================== */
 
 const Plantios = {
-  abrir(talhaoId, culturaId, nomeTalhao) {
+  abrir(talhaoId, culturaId, nomeTalhao, finalidadeId) {
     const form = document.getElementById('formPlantio');
     if (!form) return;
     form.reset();
     form.querySelector('[name=talhao_id]').value = talhaoId;
     if (culturaId) form.querySelector('[name=cultura_id]').value = culturaId;
+    // v40: sugere a finalidade atual do talhão (grão, silagem...) — pode trocar nesta safra
+    const fin = form.querySelector('[name=finalidade_id]');
+    if (fin && finalidadeId) fin.value = finalidadeId;
     document.getElementById('plantioTalhaoNome').textContent = nomeTalhao || '';
     new bootstrap.Modal('#modalPlantio').show();
   },
@@ -685,11 +772,15 @@ const Plantios = {
 const Croqui = {
   CORES: ['#2e7d32', '#c05e11', '#00695c', '#9a7d0a', '#5d4037', '#455a64'],
   COR_PROP: '#e6b400',
+  COR_PLANTIO: '#7cb342', // verde: ÁREA DE PLANTIO do imóvel (o que dá para plantar dentro da divisa) — v40
   COR_EDICAO: '#00e5ff', // ciano: a divisa que VOCÊ desenha/ajusta (contrasta com o amarelo do CAR)
-  prop: null,
+  prop: null,          // propriedade (nome, sede lat/lng, município/UF/linha p/ "Ir para")
+  imovel: null,        // v40: IMÓVEL (CAR) em edição — divisa, área de plantio, nº do CAR
+  outros: [],          // v40: divisas dos OUTROS imóveis da mesma propriedade (só contexto, não editáveis)
   talhoes: [],
   tiles: null,
-  atualId: 0,          // 0 = divisa da PROPRIEDADE; >0 = talhão
+  atualId: 0,          // 0 = divisa do IMÓVEL (CAR); -1 = ÁREA DE PLANTIO do imóvel; >0 = talhão
+  PLANTIO_ID: -1,
   pontos: [],
   vista: null,         // {z, cx, cy} em coordenadas de mundo Web Mercator (0..1); z pode ser fracionário (pinça)
   watchId: null,
@@ -726,28 +817,35 @@ const Croqui = {
     return this._geo(this.vista.cx + (x - larg / 2) / e, this.vista.cy + (y - alt / 2) / e);
   },
 
-  async abrir(propId) {
+  // v40: o croqui é por IMÓVEL (CAR). Abre com a divisa do imóvel; o seletor tem
+  // também a ÁREA DE PLANTIO e os talhões desse imóvel.
+  async abrir(imovelId) {
     let dados;
     try {
-      dados = await App.json('index.php?r=clientes/croqui-dados&propriedade_id=' + Number(propId));
+      dados = await App.json('index.php?r=clientes/croqui-dados&imovel_id=' + Number(imovelId));
     } catch (e) {
       App.alerta(navigator.onLine ? e.message : 'Abra o croqui com conexão ao menos uma vez — depois a marcação por GPS funciona sem sinal.', 'warning');
       return;
     }
     Croqui.prop = dados.propriedade;
+    Croqui.imovel = dados.imovel;
+    Croqui.outros = dados.outros || [];
     Croqui.talhoes = dados.talhoes;
     Croqui.tiles = dados.tiles && dados.tiles.url ? dados.tiles : null;
     Croqui._dirty = false;
     // Garante a base do CAR do município no aparelho para o "CAR aqui" offline
     if (typeof Offline !== 'undefined') Offline.baixarCarMunicipio();
-    document.getElementById('croquiPropNome').textContent = dados.propriedade.nome;
+    document.getElementById('croquiPropNome').textContent = dados.propriedade.nome
+      + (Croqui.outros.length || dados.imovel.nome || dados.imovel.car_numero ? ' · ' + dados.imovel.rotulo : '');
     // pré-preenche o "Ir para" com o endereço do produtor (município/UF/linha)
     { const s = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
-      s('croquiIrMun', dados.propriedade.municipio); s('croquiIrUf', dados.propriedade.estado); s('croquiIrLinha', dados.propriedade.linha); }
+      s('croquiIrMun', dados.imovel.municipio || dados.propriedade.municipio); s('croquiIrUf', dados.propriedade.estado); s('croquiIrLinha', dados.propriedade.linha); }
     const sel = document.getElementById('croquiTalhao');
-    sel.innerHTML = '<option value="0">🏠 Propriedade — área total</option>' + Croqui.talhoes.map(t =>
-      `<option value="${Number(t.id)}">${App.escapeHtml(t.nome)}${t.cultura ? ' (' + App.escapeHtml(t.cultura) + ')' : ''}</option>`).join('');
-    Croqui.atualId = 0; // começa pela divisa da propriedade (área total)
+    sel.innerHTML = '<option value="0">🏠 Divisa do imóvel (CAR) — área total</option>'
+      + `<option value="${Croqui.PLANTIO_ID}">🌱 Área de plantio</option>`
+      + Croqui.talhoes.map(t =>
+      `<option value="${Number(t.id)}">▪ ${App.escapeHtml(t.nome)}${t.cultura ? ' (' + App.escapeHtml(t.cultura) + (t.finalidade ? ' · ' + App.escapeHtml(t.finalidade) : '') + ')' : ''}</option>`).join('');
+    Croqui.atualId = 0; // começa pela divisa do imóvel (área total)
     Croqui.pontos = Croqui._contornoDe(0);
     Croqui._carCod = '';
     Croqui._selecionado = null;
@@ -798,18 +896,28 @@ const Croqui = {
     }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 10000 });
   },
 
+  // Contorno GRAVADO de um alvo: 0 = divisa do imóvel, -1 = área de plantio, >0 = talhão
   _contornoDe(id) {
-    const fonte = Number(id) === 0 ? Croqui.prop : Croqui.talhoes.find(x => Number(x.id) === Number(id));
-    try { return fonte && fonte.contorno ? JSON.parse(fonte.contorno) : []; } catch (e) { return []; }
+    id = Number(id);
+    let json = null;
+    if (id === 0) json = Croqui.imovel && Croqui.imovel.contorno;
+    else if (id === Croqui.PLANTIO_ID) json = Croqui.imovel && Croqui.imovel.contorno_plantio;
+    else { const t = Croqui.talhoes.find(x => Number(x.id) === id); json = t && t.contorno; }
+    try { return json ? JSON.parse(json) : []; } catch (e) { return []; }
+  },
+
+  /** Contorno ATUAL de um alvo: o que está sendo editado, senão o gravado. */
+  _contornoAtual(id) {
+    return Number(id) === Croqui.atualId ? Croqui.pontos : Croqui._contornoDe(id);
   },
 
   _todosPontosBase() {
     const todos = [];
-    const divisa = Croqui.atualId === 0 ? Croqui.pontos : Croqui._contornoDe(0);
-    todos.push(...divisa);
-    Croqui.talhoes.forEach(t => {
-      todos.push(...(Number(t.id) === Croqui.atualId ? Croqui.pontos : Croqui._contornoDe(t.id)));
-    });
+    todos.push(...Croqui._contornoAtual(0));
+    todos.push(...Croqui._contornoAtual(Croqui.PLANTIO_ID));
+    Croqui.talhoes.forEach(t => todos.push(...Croqui._contornoAtual(t.id)));
+    // outros imóveis da propriedade entram no enquadramento (o técnico vê a fazenda inteira)
+    Croqui.outros.forEach(o => { try { todos.push(...(JSON.parse(o.contorno) || [])); } catch (e) { /* ignora */ } });
     if (!todos.length && Croqui.prop.latitude !== null) todos.push([Croqui.prop.latitude, Croqui.prop.longitude]);
     return todos;
   },
@@ -852,15 +960,17 @@ const Croqui = {
     Croqui._selecionado = null;
     const rotulo = document.querySelector('label[for="croquiUsarArea"]');
     if (rotulo) rotulo.textContent = Croqui.atualId === 0
-      ? 'Usar a área medida como área oficial da propriedade'
-      : 'Usar a área medida como área oficial do talhão';
+      ? 'Usar a área medida como área oficial do imóvel'
+      : (Croqui.atualId === Croqui.PLANTIO_ID
+        ? 'Usar a área medida como área de plantio oficial do imóvel'
+        : 'Usar a área medida como área oficial do talhão');
     Croqui.render();
   },
 
   /** Só faz sentido puxar a divisa do CAR sobre a divisa da PROPRIEDADE (área total). */
   _podeCar() {
     if (Croqui.atualId !== 0) {
-      App.alerta('Selecione "🏠 Propriedade" no seletor para trazer a divisa do CAR.', 'warning');
+      App.alerta('Selecione "🏠 Divisa do imóvel (CAR)" no seletor para trazer a divisa do CAR.', 'warning');
       return false;
     }
     return true;
@@ -946,7 +1056,7 @@ const Croqui = {
     // Grava o nº do CAR no cadastro assim que identifica (match EXATO, alta confiança),
     // sem depender de "Salvar croqui". Aproximado NÃO grava sozinho (pode ser vizinho).
     let gravouCar = false;
-    if (!imovel.aproximado && imovel.cod && imovel.cod !== (Croqui.prop.car_numero || '')) {
+    if (!imovel.aproximado && imovel.cod && imovel.cod !== (Croqui.imovel.car_numero || '')) {
       gravouCar = true;
       Croqui._persistirCarNumero(imovel.cod);
     }
@@ -961,12 +1071,12 @@ const Croqui = {
   /** Grava o nº do CAR no cadastro da propriedade assim que identificado (online, ou fila offline). */
   async _persistirCarNumero(cod) {
     const fd = new FormData();
-    fd.append('propriedade_id', Croqui.prop.id);
+    fd.append('imovel_id', Croqui.imovel.id); // v40: o nº do CAR é do imóvel
     fd.append('car_numero', cod);
     try {
       await App.enviarFormOffline(fd, 'index.php?r=clientes/salvar-car-numero',
-        { modulo: 'Croqui', rotulo: 'Nº do CAR — ' + (Croqui.prop.nome || '') });
-      Croqui.prop.car_numero = cod; // reflete local p/ não regravar no mesmo croqui
+        { modulo: 'Croqui', rotulo: 'Nº do CAR — ' + (Croqui.prop.nome || '') + ' · ' + (Croqui.imovel.rotulo || '') });
+      Croqui.imovel.car_numero = cod; // reflete local p/ não regravar no mesmo croqui
     } catch (e) { /* silencioso: o nº ainda vai junto ao "Salvar croqui" */ }
   },
 
@@ -1058,7 +1168,7 @@ const Croqui = {
 
   /** Adota o imóvel do CAR escolhido no mapa como divisa da propriedade. */
   _selecionarCarDoMapa(im) {
-    if (Croqui.atualId !== 0) { App.alerta('Selecione "🏠 Propriedade" no seletor para adotar a divisa do CAR.', 'warning'); return; }
+    if (Croqui.atualId !== 0) { App.alerta('Selecione "🏠 Divisa do imóvel (CAR)" no seletor para adotar a divisa do CAR.', 'warning'); return; }
     if (Croqui.pontos.length >= 3 && !confirm('Substituir a divisa atual pela área do CAR escolhida?')) return;
     Croqui.pontos = Croqui._maiorAnel(im.contorno); // divisa da propriedade = 1 anel (a maior parte)
     Croqui._selecionado = null;
@@ -1066,7 +1176,7 @@ const Croqui = {
     Croqui._dirty = true;
     Croqui.render();
     // o técnico escolheu explicitamente a área => grava o nº do CAR na hora
-    if (im.cod && im.cod !== (Croqui.prop.car_numero || '')) Croqui._persistirCarNumero(im.cod);
+    if (im.cod && im.cod !== (Croqui.imovel.car_numero || '')) Croqui._persistirCarNumero(im.cod);
     App.alerta('Área do CAR adotada' + (im.cod ? ' (' + App.escapeHtml(im.cod) + ')' : '')
       + (im.cod ? '. Nº do CAR gravado no cadastro' : '') + '. Confira e toque em "Salvar croqui".', 'success');
   },
@@ -1368,19 +1478,40 @@ const Croqui = {
   },
 
   /** Situação da regra para o desenho atual: {fora: [índices], talhoesFora: [nomes]} */
+  /**
+   * Regras (v40, spec §3): área de plantio e talhão ficam DENTRO da divisa do
+   * imóvel (ponto fora = bloqueio); a divisa nova não pode deixar para fora nem
+   * talhões nem a área de plantio (bloqueio); talhão fora da ÁREA DE PLANTIO é
+   * só AVISO. Devolve {fora, talhoesFora, avisos}.
+   */
   _validarRegra() {
+    const avisos = [];
     if (Croqui.atualId !== 0) {
-      return { fora: Croqui._pontosFora(Croqui.pontos, Croqui._contornoDe(0)), talhoesFora: [] };
+      const fora = Croqui._pontosFora(Croqui.pontos, Croqui._contornoDe(0));
+      if (Croqui.atualId === Croqui.PLANTIO_ID && Croqui.pontos.length >= 3) {
+        // desenhando a área de plantio: avisa os talhões que ficariam fora dela
+        Croqui.talhoes.forEach(t => {
+          const pts = Croqui._contornoDe(t.id);
+          if (pts.length >= 3 && Croqui._pontosFora(pts, Croqui.pontos).length) avisos.push(t.nome);
+        });
+      } else if (Croqui.atualId > 0 && Croqui.pontos.length >= 3) {
+        // desenhando um talhão: avisa se sai da área de plantio (se ela existir)
+        const plantio = Croqui._contornoDe(Croqui.PLANTIO_ID);
+        if (plantio.length >= 3 && Croqui._pontosFora(Croqui.pontos, plantio).length) avisos.push('fora da área de plantio');
+      }
+      return { fora, talhoesFora: [], avisos };
     }
-    // Editando a divisa: nenhum talhão já desenhado pode ficar para fora
+    // Editando a divisa: nenhum talhão já desenhado (nem a área de plantio) pode ficar para fora
     const talhoesFora = [];
     if (Croqui.pontos.length >= 3) {
       Croqui.talhoes.forEach(t => {
         const pts = Croqui._contornoDe(t.id);
         if (pts.length >= 3 && Croqui._pontosFora(pts, Croqui.pontos).length) talhoesFora.push(t.nome);
       });
+      const plantio = Croqui._contornoDe(Croqui.PLANTIO_ID);
+      if (plantio.length >= 3 && Croqui._pontosFora(plantio, Croqui.pontos).length) talhoesFora.push('Área de plantio');
     }
-    return { fora: [], talhoesFora };
+    return { fora: [], talhoesFora, avisos };
   },
 
   /** HTML de uma camada de tiles (satélite OU rótulos) para a vista atual. */
@@ -1562,13 +1693,34 @@ const Croqui = {
       }
       legenda.push('<span><span class="croqui-cor" style="background:#ffd400"></span>Imóveis do CAR (toque p/ adotar)</span>');
     }
-    // Divisa da propriedade (amarela tracejada) — por baixo dos talhões
-    const divisa = Croqui.atualId === 0 ? Croqui.pontos : Croqui._contornoDe(0);
+    // Outros imóveis (CAR) da mesma propriedade — contexto apagado, não editáveis (v40)
+    if (Croqui.outros.length) {
+      Croqui.outros.forEach(o => {
+        let pts = []; try { pts = JSON.parse(o.contorno) || []; } catch (e) { /* ignora */ }
+        if (pts.length < 3) return;
+        const tela = pts.map(p => Croqui._paraTela(p, larg, alt));
+        svg += `<polygon points="${tela.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ')}"
+                  fill="${Croqui.COR_PROP}" fill-opacity=".03" stroke="${Croqui.COR_PROP}" stroke-opacity=".45" stroke-width="2" stroke-dasharray="3 6"/>`;
+        const cx = tela.reduce((s, p) => s + p[0], 0) / tela.length, cy = tela.reduce((s, p) => s + p[1], 0) / tela.length;
+        svg += `<text x="${cx.toFixed(1)}" y="${cy.toFixed(1)}" text-anchor="middle" class="croqui-rotulo" opacity=".7">${App.escapeHtml(o.rotulo || 'outro imóvel')}</text>`;
+      });
+      legenda.push(`<span><span class="croqui-cor" style="background:${Croqui.COR_PROP};opacity:.45"></span>Outros imóveis</span>`);
+    }
+    // Divisa do imóvel (amarela tracejada) — por baixo de tudo que é dele
+    const divisa = Croqui._contornoAtual(0);
     if (Croqui.atualId !== 0 && divisa.length >= 3) {
       const tela = divisa.map(p => Croqui._paraTela(p, larg, alt));
       svg += `<polygon points="${tela.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ')}"
                 fill="${Croqui.COR_PROP}" fill-opacity=".06" stroke="${Croqui.COR_PROP}" stroke-width="3" stroke-dasharray="9 6"/>`;
-      legenda.push(`<span><span class="croqui-cor" style="background:${Croqui.COR_PROP}"></span>Propriedade</span>`);
+      legenda.push(`<span><span class="croqui-cor" style="background:${Croqui.COR_PROP}"></span>Divisa do imóvel</span>`);
+    }
+    // Área de plantio (verde tracejado) — entre a divisa e os talhões (v40)
+    const plantioPts = Croqui._contornoAtual(Croqui.PLANTIO_ID);
+    if (Croqui.atualId !== Croqui.PLANTIO_ID && plantioPts.length >= 3) {
+      const tela = plantioPts.map(p => Croqui._paraTela(p, larg, alt));
+      svg += `<polygon points="${tela.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ')}"
+                fill="${Croqui.COR_PLANTIO}" fill-opacity=".10" stroke="${Croqui.COR_PLANTIO}" stroke-width="2.5" stroke-dasharray="4 4"/>`;
+      legenda.push(`<span><span class="croqui-cor" style="background:${Croqui.COR_PLANTIO}"></span>Área de plantio</span>`);
     }
     Croqui.talhoes.forEach((tal, i) => {
       const cor = Croqui.CORES[i % Croqui.CORES.length];
@@ -1645,32 +1797,57 @@ const Croqui = {
   },
 
   _atualizarArea() {
-    const ehProp = Croqui.atualId === 0;
-    const alvo = ehProp ? Croqui.prop : (Croqui.talhoes.find(x => Number(x.id) === Croqui.atualId) || {});
+    const ehImovel = Croqui.atualId === 0, ehPlantio = Croqui.atualId === Croqui.PLANTIO_ID;
+    const alvo = ehImovel || ehPlantio ? (Croqui.imovel || {}) : (Croqui.talhoes.find(x => Number(x.id) === Croqui.atualId) || {});
     const medida = Croqui.areaHa(Croqui.pontos);
-    const rotuloAlvo = ehProp ? 'Propriedade (área total)' : 'Talhão';
+    const rotuloAlvo = ehImovel ? 'Imóvel (área total)' : (ehPlantio ? 'Área de plantio' : 'Talhão');
+    const cadastrada = Number((ehPlantio ? alvo.area_plantio_ha : alvo.area_ha) || 0);
     const regra = Croqui._validarRegra();
+    const fmt = (v, d = 1) => Number(v).toLocaleString('pt-BR', { maximumFractionDigits: d });
     let alerta = '';
     if (regra.fora.length) {
-      alerta = ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> ${regra.fora.length} ponto(s) fora da divisa da propriedade</span>`;
+      alerta = ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> ${regra.fora.length} ponto(s) fora da divisa do imóvel</span>`;
     } else if (regra.talhoesFora.length) {
       alerta = ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> divisa deixa fora: ${App.escapeHtml(regra.talhoesFora.join(', '))}</span>`;
+    } else if (regra.avisos.length) {
+      alerta = ` <span class="text-warning-emphasis"><i class="bi bi-exclamation-circle"></i> ${ehPlantio ? 'talhões fora da área de plantio: ' + App.escapeHtml(regra.avisos.join(', ')) : App.escapeHtml(regra.avisos.join(', '))}</span>`;
     }
     document.getElementById('croquiArea').innerHTML = (Croqui.pontos.length >= 3
-      ? `<strong>${rotuloAlvo}: ${medida.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha</strong>
-         <span class="text-muted">(cadastrada: ${Number(alvo.area_ha || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ha)</span>`
+      ? `<strong>${rotuloAlvo}: ${fmt(medida, 2)} ha</strong> <span class="text-muted">(cadastrada: ${fmt(cadastrada)} ha)</span>`
       : `<span class="text-muted">${Croqui.pontos.length} ponto(s) — marque pelo menos 3 para fechar a área</span>`) + alerta;
-    // Resumo: divisa da propriedade × soma dos talhões mapeados
-    const areaProp = ehProp && Croqui.pontos.length >= 3 ? medida : Number(Croqui.prop.area_gps || 0);
-    let plantio = 0;
+
+    // Resumo (v40): divisa × área de plantio × talhões POR CULTURA E FINALIDADE
+    const areaDe = (id, gravada) => {
+      if (Number(id) === Croqui.atualId) return Croqui.pontos.length >= 3 ? medida : 0;
+      return Number(gravada || 0);
+    };
+    const areaImovel = areaDe(0, Croqui.imovel && (Croqui.imovel.area_gps || Croqui.imovel.area_ha));
+    let areaPlantio = areaDe(Croqui.PLANTIO_ID, Croqui.imovel && (Croqui.imovel.area_plantio_gps || Croqui.imovel.area_plantio_ha));
+    const plantioEhTotal = areaPlantio <= 0;
+    if (plantioEhTotal) areaPlantio = areaImovel;
+    const grupos = new Map();
+    let soma = 0;
     Croqui.talhoes.forEach(t => {
-      const pts = Number(t.id) === Croqui.atualId ? Croqui.pontos : Croqui._contornoDe(t.id);
-      if (pts.length >= 3) plantio += Number(t.id) === Croqui.atualId ? medida : Number(t.area_gps || t.area_ha || 0);
+      const a = areaDe(t.id, t.area_gps || t.area_ha);
+      if (a <= 0) return;
+      const chave = (t.cultura || 'Sem cultura') + (t.finalidade ? ' · ' + t.finalidade : '');
+      grupos.set(chave, (grupos.get(chave) || 0) + a);
+      soma += a;
     });
+    const partes = [];
+    if (areaImovel > 0) partes.push(`Imóvel <strong>${fmt(areaImovel)} ha</strong>`);
+    if (areaPlantio > 0) partes.push(`Plantio <strong>${fmt(areaPlantio)} ha</strong>${plantioEhTotal ? ' <span class="text-muted">(= total)</span>' : ''}`);
+    [...grupos.entries()].sort((a, b) => b[1] - a[1]).forEach(([k, v]) => {
+      const pct = areaPlantio > 0 ? ` (${fmt(v / areaPlantio * 100, 0)}%)` : '';
+      partes.push(`${App.escapeHtml(k)} <strong>${fmt(v)} ha</strong>${pct}`);
+    });
+    if (areaPlantio > 0 && soma > areaPlantio + 0.05) {
+      partes.push(`<span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> talhões passam ${fmt(soma - areaPlantio)} ha da área de plantio</span>`);
+    } else if (areaPlantio > 0 && areaPlantio - soma > 0.05 && soma > 0) {
+      partes.push(`<span class="text-muted">sem talhão ${fmt(areaPlantio - soma)} ha</span>`);
+    }
     const totais = document.getElementById('croquiTotais');
-    if (totais) totais.innerHTML =
-      (areaProp > 0 ? `Propriedade: <strong>${areaProp.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ha</strong>` : '') +
-      (plantio > 0 ? `${areaProp > 0 ? ' · ' : ''}Plantio mapeado: <strong>${plantio.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ha</strong>` : '');
+    if (totais) totais.innerHTML = partes.join(' · ');
   },
 
   _prepararEventos() {
@@ -1870,35 +2047,46 @@ const Croqui = {
       App.alerta('Marque pelo menos 3 pontos para fechar a área (ou Limpar para remover o croqui).', 'warning');
       return;
     }
-    // REGRA: talhão dentro da divisa da propriedade (o servidor também valida)
+    // REGRAS (v40): área de plantio e talhão dentro da divisa do imóvel; a divisa
+    // não deixa nada para fora (o servidor também valida)
     const regra = Croqui._validarRegra();
     if (regra.fora.length) {
-      App.alerta(`O talhão deve ficar DENTRO da divisa da propriedade — ajuste os ${regra.fora.length} ponto(s) em vermelho.`, 'danger');
+      App.alerta(`${Croqui.atualId === Croqui.PLANTIO_ID ? 'A área de plantio' : 'O talhão'} deve ficar DENTRO da divisa do imóvel — ajuste os ${regra.fora.length} ponto(s) em vermelho.`, 'danger');
       return;
     }
     if (regra.talhoesFora.length) {
-      App.alerta('A divisa deixaria talhão(ões) para fora: ' + regra.talhoesFora.join(', ') + '. Amplie a divisa.', 'danger');
+      App.alerta('A divisa deixaria para fora: ' + regra.talhoesFora.join(', ') + '. Amplie a divisa.', 'danger');
       return;
     }
-    const ehProp = Croqui.atualId === 0;
-    const alvo = ehProp ? Croqui.prop : Croqui.talhoes.find(x => Number(x.id) === Croqui.atualId);
+    const ehImovel = Croqui.atualId === 0, ehPlantio = Croqui.atualId === Croqui.PLANTIO_ID;
+    const alvo = ehImovel || ehPlantio ? Croqui.imovel : Croqui.talhoes.find(x => Number(x.id) === Croqui.atualId);
+    const tipo = ehImovel ? 'imovel' : (ehPlantio ? 'plantio' : 'talhao');
     const fd = new FormData();
-    fd.append('tipo', ehProp ? 'propriedade' : 'talhao');
-    fd.append(ehProp ? 'propriedade_id' : 'talhao_id', ehProp ? Croqui.prop.id : Croqui.atualId);
+    fd.append('tipo', tipo);
+    fd.append(tipo === 'talhao' ? 'talhao_id' : 'imovel_id', tipo === 'talhao' ? Croqui.atualId : Croqui.imovel.id);
     fd.append('contorno', JSON.stringify(Croqui.pontos.map(p => [Number(Number(p[0]).toFixed(7)), Number(Number(p[1]).toFixed(7))])));
     fd.append('usar_area', document.getElementById('croquiUsarArea').checked ? '1' : '0');
     // Divisa veio do CAR (identificação por GPS): grava o nº do imóvel junto
-    if (ehProp && Croqui._carCod) fd.append('car_numero', Croqui._carCod);
+    if (ehImovel && Croqui._carCod) fd.append('car_numero', Croqui._carCod);
+    const rotuloAlvo = ehImovel ? 'divisa · ' + (Croqui.imovel.rotulo || '') : (ehPlantio ? 'área de plantio · ' + (Croqui.imovel.rotulo || '') : (alvo ? alvo.nome : 'talhão'));
     try {
       const r = await App.enviarFormOffline(fd, 'index.php?r=clientes/salvar-croqui',
-        { modulo: 'Croqui', rotulo: 'Croqui — ' + (ehProp ? 'propriedade ' + Croqui.prop.nome : (alvo ? alvo.nome : 'talhão')) });
-      alvo.contorno = Croqui.pontos.length ? JSON.stringify(Croqui.pontos) : null;
-      alvo.area_gps = r.area_gps ?? Croqui.areaHa(Croqui.pontos).toFixed(2);
-      if (document.getElementById('croquiUsarArea').checked && Croqui.pontos.length >= 3) alvo.area_ha = alvo.area_gps;
+        { modulo: 'Croqui', rotulo: 'Croqui — ' + Croqui.prop.nome + ' · ' + rotuloAlvo });
+      const json = Croqui.pontos.length ? JSON.stringify(Croqui.pontos) : null;
+      const area = r.area_gps ?? Croqui.areaHa(Croqui.pontos).toFixed(2);
+      const usar = document.getElementById('croquiUsarArea').checked && Croqui.pontos.length >= 3;
+      if (ehPlantio) {
+        alvo.contorno_plantio = json; alvo.area_plantio_gps = area;
+        if (usar) alvo.area_plantio_ha = area;
+      } else {
+        alvo.contorno = json; alvo.area_gps = area;
+        if (usar) alvo.area_ha = area;
+      }
       Croqui._dirty = false;
-      App.alerta(r.offline ? 'Sem sinal: croqui salvo na fila — será enviado ao reconectar.'
-        : (Croqui.pontos.length ? `Croqui salvo — ${Number(alvo.area_gps).toLocaleString('pt-BR')} ha medidos.` : 'Croqui removido.'),
-        r.offline ? 'info' : 'success');
+      let msg = r.offline ? 'Sem sinal: croqui salvo na fila — será enviado ao reconectar.'
+        : (Croqui.pontos.length ? `Croqui salvo — ${Number(area).toLocaleString('pt-BR')} ha medidos.` : 'Croqui removido.');
+      if (r.talhoes_fora && r.talhoes_fora.length) msg += ' Atenção: talhão(ões) fora da área de plantio: ' + r.talhoes_fora.join(', ') + '.';
+      App.alerta(msg, r.offline ? 'info' : (r.talhoes_fora && r.talhoes_fora.length ? 'warning' : 'success'));
       Croqui.render();
     } catch (e) { App.alerta(e.message, 'danger'); }
   },
