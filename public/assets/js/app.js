@@ -1602,6 +1602,10 @@ const Croqui = {
       prox.disabled = !pode;
       prox.title = pode ? '' : (Croqui.etapa === 1 ? 'Salve a divisa para seguir' : 'Salve ao menos uma área de plantio para seguir');
     }
+    // Varinha mágica só na etapa 2 (áreas de não plantio); sai da etapa → desliga
+    const varWrap = document.getElementById('croquiVarinhaWrap');
+    if (varWrap) varWrap.classList.toggle('d-none', Croqui.etapa !== 2 || !Croqui.tiles);
+    if (Croqui.etapa !== 2 && Croqui.varinha) Croqui.toggleVarinha(false);
     const grupoCar = document.getElementById('croquiCarGrupo');
     if (grupoCar) grupoCar.classList.toggle('d-none', Croqui.etapa !== 1);
   },
@@ -2812,7 +2816,8 @@ const Croqui = {
   },
 
   /** HTML de uma camada de tiles (satélite OU rótulos) para a vista atual. */
-  _tilesHtml(url, larg, alt) {
+  /** Grade de tiles que cobre a vista: [{u, left, top, size}] (usada pelo HTML e pela varinha). */
+  _tilesGrade(url, larg, alt) {
     const e = Croqui._escala();
     const zTile = Math.max(3, Math.min(19, Math.round(Croqui.vista.z))); // pinça usa o nível inteiro mais próximo
     const ts = 256 * Math.pow(2, Croqui.vista.z - zTile);
@@ -2820,16 +2825,242 @@ const Croqui = {
     const px0 = Croqui.vista.cx * e - larg / 2, py0 = Croqui.vista.cy * e - alt / 2;
     const tx0 = Math.floor(px0 / ts), tx1 = Math.floor((px0 + larg) / ts);
     const ty0 = Math.max(0, Math.floor(py0 / ts)), ty1 = Math.min(n - 1, Math.floor((py0 + alt) / ts));
-    let html = '';
+    const grade = [];
     for (let tx = tx0; tx <= tx1; tx++) {
       for (let ty = ty0; ty <= ty1; ty++) {
         const txn = ((tx % n) + n) % n; // dá a volta no antimeridiano
-        const u = url.replace('{z}', zTile).replace('{x}', txn).replace('{y}', ty);
-        html += `<img src="${App.escapeHtml(u)}" class="croqui-tile" loading="lazy" alt=""
-          style="left:${(tx * ts - px0).toFixed(1)}px;top:${(ty * ts - py0).toFixed(1)}px;width:${ts.toFixed(2)}px;height:${ts.toFixed(2)}px" onerror="this.remove()">`;
+        grade.push({ u: url.replace('{z}', zTile).replace('{x}', txn).replace('{y}', ty), left: tx * ts - px0, top: ty * ts - py0, size: ts });
       }
     }
-    return html;
+    return grade;
+  },
+
+  _tilesHtml(url, larg, alt) {
+    return Croqui._tilesGrade(url, larg, alt).map(t =>
+      `<img src="${App.escapeHtml(t.u)}" class="croqui-tile" loading="lazy" alt=""
+          style="left:${t.left.toFixed(1)}px;top:${t.top.toFixed(1)}px;width:${t.size.toFixed(2)}px;height:${t.size.toFixed(2)}px" onerror="this.remove()">`).join('');
+  },
+
+  // ---- Varinha mágica (pedido do teste de campo: "tocar na mancha de mato e marcar como APP") ----
+  // Toque num ponto do satélite → o app lê a cor ali, cresce a seleção pelos pixels de tom
+  // parecido (limitada à divisa), transforma a borda em polígono e abre como NOVA área de
+  // não plantio para escolher o tipo, ajustar e salvar. Só com imagem legível (CORS) —
+  // o Esri libera; offline usa o tile guardado com CORS pelo "Baixar mapa".
+  varinha: false,
+  VARINHA_TOL: 32,      // distância de cor (RGB) padrão — o controle "Sensibilidade" ajusta
+  VARINHA_ZOOM_MIN: 15, // afastado demais a mancha vira poucos pixels
+  VARINHA_MAX_PONTOS: 150,
+
+  toggleVarinha(forcar) {
+    const ativo = typeof forcar === 'boolean' ? forcar : !Croqui.varinha;
+    if (ativo && !Croqui.tiles) { App.alerta('A varinha precisa da imagem de satélite (provedor de mapa configurado).', 'warning'); return; }
+    Croqui.varinha = ativo;
+    const btn = document.getElementById('croquiVarinhaBtn'), tol = document.getElementById('croquiVarinhaTolWrap'), palco = document.getElementById('croquiPalco');
+    if (btn) btn.classList.toggle('active', ativo);
+    if (tol) { tol.classList.toggle('d-none', !ativo); tol.classList.toggle('d-inline-flex', ativo); }
+    if (palco) palco.classList.toggle('croqui-varinha', ativo);
+    if (ativo) App.alerta('Varinha ligada: aproxime o zoom e toque NO MEIO da mancha (mato, açude, sede). O app desenha o contorno pela imagem e abre como área de não plantio.', 'info');
+  },
+
+  /** Imagem de satélite da vista atual (ImageData) — tiles do cache CORS ou baixados com CORS. */
+  async _imagemDaVista(larg, alt) {
+    const W = Math.round(larg), H = Math.round(alt);
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const grade = Croqui._tilesGrade(Croqui.tiles.url, larg, alt);
+    const bitmaps = await Promise.all(grade.map(t => Croqui._tileBitmap(t.u).catch(() => null)));
+    let ok = 0;
+    grade.forEach((t, i) => { if (bitmaps[i]) { ctx.drawImage(bitmaps[i], t.left, t.top, t.size, t.size); ok++; } });
+    if (!ok) throw new Error('sem tiles legíveis');
+    return ctx.getImageData(0, 0, W, H);
+  },
+
+  /** Um tile como ImageBitmap: primeiro o cache do "Baixar mapa" (só resposta CORS), senão a rede com CORS. */
+  async _tileBitmap(url) {
+    let resp = null;
+    try {
+      const c = await caches.open(Croqui.CACHE_MAPA);
+      const r = await c.match(url);
+      if (r && r.ok && r.type !== 'opaque') resp = r;
+    } catch (e) { /* sem Cache API */ }
+    if (!resp) resp = await fetch(url, { mode: 'cors', credentials: 'omit' });
+    if (!resp.ok) throw new Error('tile ' + resp.status);
+    return createImageBitmap(await resp.blob());
+  },
+
+  /** Máscara (Uint8Array W×H) dos pixels dentro do polígono de tela [[x,y],...] (scanline). */
+  _rasterizar(pol, W, H) {
+    const m = new Uint8Array(W * H);
+    if (pol.length < 3) return m;
+    const n = pol.length;
+    for (let y = 0; y < H; y++) {
+      const yc = y + 0.5, xs = [];
+      for (let i = 0, j = n - 1; i < n; j = i++) {
+        const [xi, yi] = pol[i], [xj, yj] = pol[j];
+        if ((yi > yc) !== (yj > yc)) xs.push(xi + (yc - yi) * (xj - xi) / (yj - yi));
+      }
+      xs.sort((a, b) => a - b);
+      for (let k = 0; k + 1 < xs.length; k += 2) {
+        const x0 = Math.max(0, Math.ceil(xs[k] - 0.5)), x1 = Math.min(W - 1, Math.floor(xs[k + 1] - 0.5));
+        for (let x = x0; x <= x1; x++) m[y * W + x] = 1;
+      }
+    }
+    return m;
+  },
+
+  /** Crescimento de região a partir do pixel (sx,sy): pixels de cor parecida (RGB ≤ tol), 4-conexos, dentro do limite. */
+  _floodFill(img, W, H, sx, sy, tol, limite) {
+    const d = img.data, mask = new Uint8Array(W * H);
+    // cor semente = média 3×3 (menos ruído de um pixel isolado)
+    let r0 = 0, g0 = 0, b0 = 0, c = 0;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const x = sx + dx, y = sy + dy;
+      if (x < 0 || y < 0 || x >= W || y >= H) continue;
+      const i = (y * W + x) * 4; r0 += d[i]; g0 += d[i + 1]; b0 += d[i + 2]; c++;
+    }
+    r0 /= c; g0 /= c; b0 /= c;
+    const tol2 = tol * tol;
+    const pilha = [sy * W + sx];
+    mask[sy * W + sx] = 1;
+    let n = 0;
+    while (pilha.length) {
+      const p = pilha.pop(); n++;
+      const x = p % W, y = (p - x) / W;
+      const viz = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
+      for (const [nx, ny] of viz) {
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const q = ny * W + nx;
+        if (mask[q] || (limite && !limite[q])) continue;
+        const i = q * 4, dr = d[i] - r0, dg = d[i + 1] - g0, db = d[i + 2] - b0;
+        if (dr * dr + dg * dg + db * db <= tol2) { mask[q] = 1; pilha.push(q); }
+      }
+    }
+    return { mask, n };
+  },
+
+  /** Abertura morfológica (erode + dilata 1 px) e refill da componente da semente — tira pontes finas e "cabelos". */
+  _abrirMascara(mask, W, H, sx, sy) {
+    const er = new Uint8Array(W * H), di = new Uint8Array(W * H);
+    const at = (m, x, y) => (x < 0 || y < 0 || x >= W || y >= H) ? 0 : m[y * W + x];
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (mask[y * W + x] && at(mask, x + 1, y) && at(mask, x - 1, y) && at(mask, x, y + 1) && at(mask, x, y - 1)) er[y * W + x] = 1;
+    }
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (er[y * W + x] || at(er, x + 1, y) || at(er, x - 1, y) || at(er, x, y + 1) || at(er, x, y - 1)) di[y * W + x] = 1;
+    }
+    if (!di[sy * W + sx]) return mask; // semente ficou fora (mancha muito fina): mantém a original
+    const out = new Uint8Array(W * H), pilha = [sy * W + sx];
+    out[sy * W + sx] = 1;
+    while (pilha.length) {
+      const p = pilha.pop(), x = p % W, y = (p - x) / W;
+      for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const q = ny * W + nx;
+        if (di[q] && !out[q]) { out[q] = 1; pilha.push(q); }
+      }
+    }
+    return out;
+  },
+
+  /** Contorno externo da máscara (traçado de Moore, vizinhança 8) em pixels [[x,y],...]. */
+  _contornoMascara(mask, W, H) {
+    const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H) ? 0 : mask[y * W + x];
+    let s = -1;
+    for (let i = 0; i < mask.length && s < 0; i++) if (mask[i]) s = i;
+    if (s < 0) return [];
+    const sx = s % W, sy = (s - sx) / W;
+    const dirs = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]]; // horário a partir do leste
+    const dirDe = (dx, dy) => dirs.findIndex(d => d[0] === dx && d[1] === dy);
+    const out = [[sx, sy]];
+    // Moore com "backtrack": b é o vizinho de fundo examinado antes de achar c; a busca
+    // seguinte começa em b e gira em sentido horário ao redor de c
+    let cx = sx, cy = sy, bx = sx - 1, by = sy; // à esquerda do 1º pixel da varredura sempre é fundo
+    const max = W * H * 2;
+    for (let passo = 0; passo < max; passo++) {
+      const inicio = dirDe(bx - cx, by - cy);
+      let achou = false;
+      for (let k = 1; k <= 8; k++) {
+        const nd = (inicio + k) % 8;
+        const nx = cx + dirs[nd][0], ny = cy + dirs[nd][1];
+        if (at(nx, ny)) {
+          const pd = (nd + 7) % 8; // o vizinho examinado logo antes vira o novo backtrack
+          bx = cx + dirs[pd][0]; by = cy + dirs[pd][1];
+          cx = nx; cy = ny; achou = true;
+          break;
+        }
+      }
+      if (!achou) break; // pixel isolado
+      if (cx === sx && cy === sy) break;
+      out.push([cx, cy]);
+    }
+    return out;
+  },
+
+  /** Douglas-Peucker em pixels. */
+  _simplificar(pts, eps) {
+    if (pts.length < 3) return pts;
+    const dist = (p, a, b) => {
+      const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy;
+      const t = l2 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2)) : 0;
+      return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
+    };
+    const keep = new Uint8Array(pts.length); keep[0] = 1; keep[pts.length - 1] = 1;
+    const pilha = [[0, pts.length - 1]];
+    while (pilha.length) {
+      const [i, j] = pilha.pop();
+      let md = 0, mi = -1;
+      for (let k = i + 1; k < j; k++) { const dd = dist(pts[k], pts[i], pts[j]); if (dd > md) { md = dd; mi = k; } }
+      if (mi >= 0 && md > eps) { keep[mi] = 1; pilha.push([i, mi], [mi, j]); }
+    }
+    return pts.filter((_, i) => keep[i]);
+  },
+
+  /** A varinha em si: toque em (x,y) da tela → nova área de não plantio com o contorno da mancha. */
+  async _varinha(x, y, larg, alt) {
+    if (!Croqui.tiles || !Croqui.vista) return;
+    if (!Croqui._temDivisa()) { App.alerta('Traga e salve a divisa do imóvel (etapa 1) antes de usar a varinha.', 'warning'); return; }
+    if (Croqui.vista.z < Croqui.VARINHA_ZOOM_MIN) { App.alerta('Aproxime o zoom: a mancha precisa aparecer grande na tela para a varinha ler a imagem.', 'warning'); return; }
+    const W = Math.round(larg), H = Math.round(alt), sx = Math.min(W - 1, Math.max(0, Math.round(x))), sy = Math.min(H - 1, Math.max(0, Math.round(y)));
+    const limite = Croqui._rasterizar(Croqui._contornoDe(0).map(p => Croqui._paraTela(p, larg, alt)), W, H);
+    if (!limite[sy * W + sx]) { App.alerta('Toque dentro da divisa do imóvel (laranja).', 'warning'); return; }
+    let img;
+    try {
+      img = await Croqui._imagemDaVista(larg, alt);
+    } catch (e) {
+      App.alerta('Não consegui ler a imagem de satélite (provedor sem CORS ou sem sinal e sem mapa baixado). Desenhe a mancha à mão.', 'danger');
+      return;
+    }
+    const tolEl = document.getElementById('croquiVarinhaTol');
+    const tol = Number(tolEl && tolEl.value) || Croqui.VARINHA_TOL;
+    const { mask } = Croqui._floodFill(img, W, H, sx, sy, tol, limite);
+    const aberta = Croqui._abrirMascara(mask, W, H, sx, sy);
+    let n = 0, naBorda = false;
+    for (let i = 0; i < aberta.length; i++) if (aberta[i]) { n++; const px = i % W, py = (i - px) / W; if (px === 0 || py === 0 || px === W - 1 || py === H - 1) naBorda = true; }
+    if (n < 40) { App.alerta('Não achei uma mancha nesse ponto. Toque no meio da mancha, aproxime o zoom ou aumente a sensibilidade.', 'warning'); return; }
+    if (n > W * H * 0.6) { App.alerta('A seleção tomou a tela quase toda — diminua a sensibilidade ou toque numa parte mais contrastada da mancha.', 'warning'); return; }
+    let cont = Croqui._contornoMascara(aberta, W, H);
+    let eps = 2;
+    let simp = Croqui._simplificar(cont, eps);
+    while (simp.length > Croqui.VARINHA_MAX_PONTOS && eps < 12) { eps += 1.5; simp = Croqui._simplificar(cont, eps); }
+    if (simp.length < 3) { App.alerta('A mancha ficou pequena demais para virar um polígono — aproxime o zoom.', 'warning'); return; }
+    const geo = simp.map(([px, py]) => Croqui._paraGeo(px + 0.5, py + 0.5, larg, alt)).map(p => [Number(p[0].toFixed(7)), Number(p[1].toFixed(7))]);
+    // vira NOVA área de não plantio (o tipo é escolhido no seletor ao lado)
+    if (!Croqui._ehExclusao(Croqui.atualId)) {
+      if (Croqui._dirty && !confirm('Há pontos não salvos — descartar e criar a área de não plantio pela varinha?')) return;
+      Croqui._dirty = false;
+      Croqui.irEtapa(2, Croqui.EXCLUSAO_ID);
+    } else {
+      Croqui._snapshot();
+    }
+    Croqui.pontos = geo.map(p => Croqui._prender(p));
+    Croqui._margearDivisa();
+    Croqui._dirty = true;
+    Croqui._selecionado = null;
+    Croqui.toggleVarinha(false);
+    Croqui.render();
+    const ha = Croqui.areaHa(Croqui.pontos).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+    App.alerta(`Mancha selecionada: ${ha} ha. Escolha o tipo (mata, APP, açude…), ajuste os pontos se precisar e toque em "Salvar croqui".` + (naBorda ? ' A mancha encosta na borda da tela — afaste um pouco o zoom e refaça se ela continuar fora.' : ''), naBorda ? 'warning' : 'success');
   },
 
   // ---- Mapa offline ------------------------------------------------------
@@ -3395,6 +3626,8 @@ const Croqui = {
         if (arrastou) Croqui._agendarRecargaCar(); // moveu o mapa: recarrega o CAR da nova área
         if (foiClique && Croqui.vista && !ev.target.closest('.croqui-zoom')) {
           const [x, y, w, h] = pos(ev);
+          // Varinha mágica ligada: o toque seleciona a mancha pela imagem (não marca ponto)
+          if (Croqui.varinha) { Croqui._ultimoTap = null; Croqui._varinha(x, y, w, h); return; }
           const geo = Croqui._paraGeo(x, y, w, h);
           // PRIORIDADE: se o toque cai SOBRE a linha ciano que você edita, é edição da
           // divisa — nunca "adotar CAR" (mesmo com o overlay do CAR ligado). Assim, dois

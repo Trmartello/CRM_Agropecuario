@@ -35,6 +35,15 @@
             </ul>
           </div>
           <span id="croquiGpsStatus" class="badge text-bg-light border d-none"></span>
+          <?php /* VARINHA MÁGICA (etapa 2): toque na mancha (mato, açude) e o app desenha o contorno pela imagem de satélite */ ?>
+          <div class="btn-group btn-group-sm d-none" id="croquiVarinhaWrap" role="group">
+            <button type="button" class="btn btn-outline-primary" id="croquiVarinhaBtn" onclick="Croqui.toggleVarinha()"
+                    title="Varinha mágica: toque no meio de uma mancha (mato, açude, sede) e o app desenha o contorno pela imagem de satélite, como área de não plantio">🪄 Varinha</button>
+          </div>
+          <span class="d-none align-items-center gap-1 small text-muted" id="croquiVarinhaTolWrap" title="Quanto maior, mais tons parecidos entram na seleção">
+            <label for="croquiVarinhaTol" class="mb-0">Sensibilidade</label>
+            <input type="range" id="croquiVarinhaTol" min="12" max="70" value="32" style="width:90px">
+          </span>
           <?php /* CAR: "CAR no mapa" é o principal (fica ativo sozinho quando há base na região); os demais no menu. */ ?>
           <div class="btn-group btn-group-sm" role="group" title="Divisa oficial do CAR" id="croquiCarGrupo">
             <button type="button" id="croquiCarMapaBtn" class="btn btn-outline-warning" onclick="Croqui.toggleCarLayer()"
@@ -103,7 +112,7 @@
         </div>
         <div class="small text-muted">
           <i class="bi bi-info-circle me-1"></i>O croqui segue <strong>três etapas presas uma à outra</strong>: a divisa do CAR ajustada por você é o limite das áreas de plantio, e cada área de plantio é o limite dos seus talhões — pontos fora são puxados para a borda e nenhuma linha atravessa o limite (laranja).
-          <strong>Mato, açude, sede ou estrada no meio da lavoura?</strong> Na etapa 2, marque como <em>área de não plantio</em> (hachurada): ela é descontada da área de plantio e dos talhões que a contêm — não precisa contornar com a linha.
+          <strong>Mato, açude, sede ou estrada no meio da lavoura?</strong> Na etapa 2, marque como <em>área de não plantio</em> (hachurada): ela é descontada da área de plantio e dos talhões que a contêm — não precisa contornar com a linha. Com a <strong>🪄 Varinha</strong> ligada, toque no meio da mancha e o app desenha o contorno sozinho pela imagem de satélite (precisa de sinal ou do mapa baixado).
           <strong>Manual</strong>: toque sobre a imagem de satélite para marcar cada canto (arraste o mapa para navegar,
           use +/− ou a roda do mouse para o zoom, <strong>⤢ para o mapa ocupar a tela toda</strong>, arraste um ponto para ajustar, dê <strong>dois toques sobre a linha ciano para inserir um ponto</strong> ali e refinar, e <strong>dois toques em um ponto para removê-lo</strong>). O que você desenha fica em <strong>ciano</strong>; as linhas do CAR ficam em amarelo (na etapa 1, com o <em>CAR no mapa</em> ligado, tocar dentro de um imóvel amarelo adota aquela divisa). <strong>Caminhar a divisa</strong>: ande pelo perímetro —
           o app marca um ponto a cada ~10 m pelo GPS, mesmo sem sinal (o salvar entra na fila).

@@ -265,6 +265,7 @@ textarea.auto-crescer { resize: vertical; overflow: hidden; min-height: 38px; li
   min-height: 300px; touch-action: none; cursor: crosshair; position: relative;
 }
 .croqui-palco svg { display: block; position: relative; z-index: 2; }
+.croqui-palco.croqui-varinha { cursor: cell; outline: 3px solid #0d6efd; outline-offset: -3px; }
 .croqui-tiles { position: absolute; inset: 0; z-index: 1; }
 .croqui-tiles img.croqui-tile { position: absolute; width: 256px; height: 256px; user-select: none; pointer-events: none; }
 /* Camada de rótulos (nomes de cidades/localidades/ruas) sobre o satélite, sob o desenho */
