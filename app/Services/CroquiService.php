@@ -141,14 +141,90 @@ class CroquiService
             if (!self::linhasFora([$pontos[$i], $pontos[($i + 1) % $n]], $divisa)) {
                 continue; // a reta já fica dentro: não muda
             }
-            foreach (self::caminhoDentro($poligono, $xy[$i], $xy[($i + 1) % $n], $tolM) as $v) {
-                $saida[] = $desproj($v);
+            $a = $xy[$i];
+            $b = $xy[($i + 1) % $n];
+            // 1ª camada: recorte pela borda (cruzamentos → caminho da divisa)
+            $cadeia = array_merge([$a], self::caminhoDentro($poligono, $a, $b, $tolM), [$b]);
+            // 2ª camada (pedido do teste de campo: "se precisar criar novos pontos, ajuste"):
+            // trecho que AINDA sair é dividido ao meio com o meio preso na borda, até fechar
+            for ($k = 0; $k < count($cadeia) - 1; $k++) {
+                if ($k > 0) {
+                    $saida[] = $desproj($cadeia[$k]);
+                }
+                foreach (self::dividirNaBorda($poligono, $cadeia[$k], $cadeia[$k + 1], $tolM) as $v) {
+                    $saida[] = $desproj($v);
+                }
             }
         }
         if ($n === 2) {
             $saida[] = $pontos[1];
         }
         return $saida;
+    }
+
+    /**
+     * Trecho A→B (metros) fora do polígono? Cruza a borda de verdade ou o meio
+     * cai fora além de $tolM (mesma regra de linhasFora, já em metros).
+     */
+    private static function trechoFora(array $poligono, array $a, array $b, float $tolM): bool
+    {
+        $n = count($poligono);
+        for ($j = 0; $j < $n; $j++) {
+            if (self::segmentosCruzam($a, $b, $poligono[$j], $poligono[($j + 1) % $n], $tolM)) {
+                return true;
+            }
+        }
+        $meio = [($a[0] + $b[0]) / 2, ($a[1] + $b[1]) / 2];
+        return !self::dentro($meio, $poligono) && self::distanciaBordaM($meio, $poligono) > $tolM;
+    }
+
+    /**
+     * Rede de segurança da correção automática: pontos (metros) a inserir entre
+     * A e B quando o trecho ainda sai do limite — o meio da reta é PRESO na borda
+     * e cada metade é tratada de novo (até 5 níveis, ≤ 31 pontos). Nunca pede
+     * ao técnico para criar o ponto à mão. Espelho de Croqui._dividirNaBorda.
+     */
+    public static function dividirNaBorda(array $poligono, array $a, array $b, float $tolM, int $nivel = 0): array
+    {
+        if (!self::trechoFora($poligono, $a, $b, $tolM)) {
+            return [];
+        }
+        // As duas pontas já na borda: o trecho segue a própria borda (converge de uma vez)
+        $pa = self::posicaoNaBorda($a, $poligono);
+        $pb = self::posicaoNaBorda($b, $poligono);
+        if ($pa['dist'] <= $tolM && $pb['dist'] <= $tolM) {
+            $caminho = self::caminhoBorda($poligono, $pa, $pb);
+            if ($caminho) {
+                return $caminho;
+            }
+        }
+        if ($nivel >= 5) {
+            return [];
+        }
+        $meio = [($a[0] + $b[0]) / 2, ($a[1] + $b[1]) / 2];
+        if (!self::dentro($meio, $poligono) || self::distanciaBordaM($meio, $poligono) <= $tolM) {
+            // ponto da borda mais próximo que NÃO seja uma das pontas (senão não avança)
+            $melhor = null;
+            $menor = INF;
+            $n = count($poligono);
+            for ($i = 0; $i < $n; $i++) {
+                $c = self::pontoMaisProximoBorda($meio, [$poligono[$i], $poligono[($i + 1) % $n]]);
+                $d = hypot($meio[0] - $c[0], $meio[1] - $c[1]);
+                if ($d < $menor && hypot($c[0] - $a[0], $c[1] - $a[1]) >= 0.5 && hypot($c[0] - $b[0], $c[1] - $b[1]) >= 0.5) {
+                    $menor = $d;
+                    $melhor = $c;
+                }
+            }
+            if ($melhor === null) {
+                return [];
+            }
+            $meio = $melhor;
+        }
+        return array_merge(
+            self::dividirNaBorda($poligono, $a, $meio, $tolM, $nivel + 1),
+            [$meio],
+            self::dividirNaBorda($poligono, $meio, $b, $tolM, $nivel + 1)
+        );
     }
 
     /**

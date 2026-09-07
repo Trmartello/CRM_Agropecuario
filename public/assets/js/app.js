@@ -2361,14 +2361,69 @@ const Croqui = {
     const desproj = q => [Number((-q[1] / mLat).toFixed(7)), Number((q[0] / mLng).toFixed(7))];
     const arestas = n >= 3 ? n : n - 1, saida = [];
     let mudou = false;
+    const tol = Croqui.SNAP_DIVISA_M;
     for (let i = 0; i < arestas; i++) {
       saida.push(pts[i]);
       if (!Croqui._linhasFora([pts[i], pts[(i + 1) % n]], divisa).length) continue;
-      for (const v of Croqui._caminhoDentro(pol, xy[i], xy[(i + 1) % n], Croqui.SNAP_DIVISA_M)) { saida.push(desproj(v)); mudou = true; }
+      const a = xy[i], b = xy[(i + 1) % n];
+      // 1ª camada: recorte pela borda; 2ª camada: trecho que AINDA sair é dividido ao
+      // meio com o meio preso na borda (cria os pontos sozinho — pedido do teste de campo)
+      const cadeia = [a, ...Croqui._caminhoDentro(pol, a, b, tol), b];
+      for (let k = 0; k < cadeia.length - 1; k++) {
+        if (k > 0) { saida.push(desproj(cadeia[k])); mudou = true; }
+        for (const v of Croqui._dividirNaBorda(pol, cadeia[k], cadeia[k + 1], tol)) { saida.push(desproj(v)); mudou = true; }
+      }
     }
     if (n === 2) saida.push(pts[1]);
     if (mudou) Croqui.pontos = saida;
     return mudou;
+  },
+
+  /** Trecho A→B (metros) sai do polígono? Cruza a borda de verdade ou o meio cai fora além de tol. */
+  _trechoFora(pol, A, B, tol) {
+    const n = pol.length;
+    const orient = (o, q, r) => (q[0] - o[0]) * (r[1] - o[1]) - (q[1] - o[1]) * (r[0] - o[0]);
+    for (let j = 0; j < n; j++) {
+      const q1 = pol[j], q2 = pol[(j + 1) % n];
+      const d1 = orient(q1, q2, A), d2 = orient(q1, q2, B), d3 = orient(A, B, q1), d4 = orient(A, B, q2);
+      if (!((d1 > 0) !== (d2 > 0)) || !((d3 > 0) !== (d4 > 0))) continue;
+      const t = d1 / (d1 - d2), x = A[0] + t * (B[0] - A[0]), y = A[1] + t * (B[1] - A[1]);
+      if ([A, B, q1, q2].some(pt => Math.hypot(x - pt[0], y - pt[1]) <= tol)) continue; // só encostou
+      return true;
+    }
+    const meio = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2];
+    return !Croqui._dentroXY(meio, pol) && Croqui._posicaoNaBorda(meio, pol).dist > tol;
+  },
+
+  /**
+   * Rede de segurança da correção automática (espelho de CroquiService::dividirNaBorda):
+   * trecho que ainda sai do limite ganha o meio PRESO na borda e cada metade é
+   * tratada de novo (até 5 níveis). Nunca pede ao técnico para criar o ponto à mão.
+   */
+  _dividirNaBorda(pol, A, B, tol, nivel = 0) {
+    if (!Croqui._trechoFora(pol, A, B, tol)) return [];
+    // As duas pontas já na borda: o trecho segue a própria borda (converge de uma vez)
+    const pa = Croqui._posicaoNaBorda(A, pol), pb = Croqui._posicaoNaBorda(B, pol);
+    if (pa.dist <= tol && pb.dist <= tol) {
+      const caminho = Croqui._caminhoBorda(pol, pa, pb);
+      if (caminho.length) return caminho;
+    }
+    if (nivel >= 5) return [];
+    let meio = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2];
+    if (!Croqui._dentroXY(meio, pol) || Croqui._posicaoNaBorda(meio, pol).dist <= tol) {
+      // ponto da borda mais próximo que NÃO seja uma das pontas (senão não avança)
+      let melhor = null, menor = Infinity;
+      for (let i = 0; i < pol.length; i++) {
+        const [ax, ay] = pol[i], [bx, by] = pol[(i + 1) % pol.length];
+        const abx = bx - ax, aby = by - ay, len2 = abx * abx + aby * aby;
+        const t = len2 > 0 ? Math.max(0, Math.min(1, ((meio[0] - ax) * abx + (meio[1] - ay) * aby) / len2)) : 0;
+        const c = [ax + t * abx, ay + t * aby], d = Math.hypot(meio[0] - c[0], meio[1] - c[1]);
+        if (d < menor && Math.hypot(c[0] - A[0], c[1] - A[1]) >= 0.5 && Math.hypot(c[0] - B[0], c[1] - B[1]) >= 0.5) { menor = d; melhor = c; }
+      }
+      if (!melhor) return [];
+      meio = melhor;
+    }
+    return [...Croqui._dividirNaBorda(pol, A, meio, tol, nivel + 1), meio, ...Croqui._dividirNaBorda(pol, meio, B, tol, nivel + 1)];
   },
 
   /**
