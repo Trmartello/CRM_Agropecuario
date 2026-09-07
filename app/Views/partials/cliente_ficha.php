@@ -411,6 +411,8 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
                   <?php endforeach; ?>
                 </ul>
               </details>
+            <?php elseif (!empty($im['contorno'])): ?>
+              <div class="small text-muted"><i class="bi bi-map me-1"></i>Camadas ambientais (APP, reserva, vegetação, nascentes): ainda não importadas — use o botão <strong>CAR</strong> e envie o zip do SICAR para trazê-las ao mapa.</div>
             <?php endif; ?>
             <?php if (!empty($im['car_numero'])): ?>
               <div class="small text-muted">CAR: <?= e($im['car_numero']) ?>
@@ -491,7 +493,8 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
               . '<span><i class="bi bi-grid-3x3-gap me-1 text-muted"></i>' . e($t['nome'])
               . '<span class="text-muted small">· ' . numero(\App\Services\AreaPlantioService::areaLiquidaTalhao($t, $exclusoesPol), 1) . ' ha'
               . ($t['cultura'] ? ' · ' . e($t['cultura']) : '') . (!empty($t['cultivar']) ? ' <span class="text-body-secondary">' . e($t['cultivar']) . '</span>' : '')
-              . (!empty($t['finalidade']) ? ' <span class="badge text-bg-light border text-dark">' . e($t['finalidade']) . '</span>' : '') . '</span>'
+              . (!empty($t['finalidade']) ? ' <span class="badge text-bg-light border text-dark">' . e($t['finalidade']) . '</span>' : '')
+              . (!empty($t['safra']) ? ' <span class="badge text-bg-light border text-success-emphasis" title="Safra do plantio"><i class="bi bi-calendar3 me-1"></i>' . e($t['safra']) . '</span>' : '') . '</span>'
               . (empty($t['contorno']) ? '<span class="badge text-bg-light border text-muted ms-1" title="Sem contorno no croqui">não desenhado</span>' : '');
           if ($pa) {
               $h .= '<span class="badge text-bg-success ms-1" title="' . e($pa['cultura']) . ' plantado em ' . data_br($pa['data_plantio']) . ($pa['cultivar'] ? ' (' . e($pa['cultivar']) . ')' : '') . '">'
@@ -505,7 +508,7 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
           if ($pa) {
               $h .= '<button class="btn btn-sm btn-outline-success" title="Encerrar plantio registrando a colheita" onclick="Plantios.colheita(' . (int) $pa['id'] . ', ' . json_attr($t['nome']) . ')"><i class="bi bi-basket me-1"></i>Colheita</button>';
           } else {
-              $h .= '<button class="btn btn-sm btn-outline-success" title="Registrar plantio (ativa a linha do tempo da cultura)" onclick="Plantios.abrir(' . (int) $t['id'] . ', ' . (int) ($t['cultura_id'] ?? 0) . ', ' . json_attr($t['nome']) . ', ' . (int) ($t['finalidade_id'] ?? 0) . ', ' . json_attr((string) ($t['cultivar'] ?? '')) . ')"><i class="bi bi-calendar-plus me-1"></i>Plantio</button>';
+              $h .= '<button class="btn btn-sm btn-outline-success" title="Registrar plantio (ativa a linha do tempo da cultura)" onclick="Plantios.abrir(' . (int) $t['id'] . ', ' . (int) ($t['cultura_id'] ?? 0) . ', ' . json_attr($t['nome']) . ', ' . (int) ($t['finalidade_id'] ?? 0) . ', ' . json_attr((string) ($t['cultivar'] ?? '')) . ', ' . json_attr((string) ($t['safra'] ?? '')) . ')"><i class="bi bi-calendar-plus me-1"></i>Plantio</button>';
           }
           $h .= '<button class="btn btn-sm btn-outline-secondary" title="Editar o talhão" onclick=\'Clientes.editarTalhao(' . json_attr($t) . ', ' . json_attr($imoveisLista) . ')\'><i class="bi bi-pencil"></i></button>';
           return $h . '</span></li>';

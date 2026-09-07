@@ -196,8 +196,10 @@ class FenologiaService
     }
 
     /** Registra o plantio de um talhão (um ativo por vez). */
-    public static function salvarPlantio(int $talhaoId, int $culturaId, string $dataPlantio, ?string $cultivar, ?int $finalidadeId = null): int
+    public static function salvarPlantio(int $talhaoId, int $culturaId, string $dataPlantio, ?string $cultivar, ?int $finalidadeId = null, ?string $safraTexto = null): int
     {
+        // v51: safra informada ("2025/2026"); inválida → sugerida pela data do plantio
+        $safraTexto = safra_valida($safraTexto) ? $safraTexto : safra_sugerida($dataPlantio);
         if ($talhaoId <= 0 || $culturaId <= 0) {
             throw new \InvalidArgumentException('Informe o talhão e a cultura do plantio.');
         }
@@ -214,10 +216,10 @@ class FenologiaService
         $safra = ComercialService::safraAtual();
         // INSERT condicionado: fecha a corrida do check-then-insert (toque duplo)
         Database::executar(
-            'INSERT INTO plantios (talhao_id, cultura_id, finalidade_id, safra_id, data_plantio, cultivar)
-             SELECT ?,?,?,?,?,? FROM DUAL
+            'INSERT INTO plantios (talhao_id, cultura_id, finalidade_id, safra_id, safra, data_plantio, cultivar)
+             SELECT ?,?,?,?,?,?,? FROM DUAL
               WHERE NOT EXISTS (SELECT 1 FROM plantios p2 WHERE p2.talhao_id = ? AND p2.encerrado = 0)',
-            [$talhaoId, $culturaId, $finalidadeId, $safra ? (int) $safra['id'] : null, $data->format('Y-m-d'), trim((string) $cultivar) ?: null, $talhaoId]
+            [$talhaoId, $culturaId, $finalidadeId, $safra ? (int) $safra['id'] : null, $safraTexto, $data->format('Y-m-d'), trim((string) $cultivar) ?: null, $talhaoId]
         );
         $plantioId = Database::ultimoId();
         if ($plantioId === 0) {
@@ -226,9 +228,9 @@ class FenologiaService
         // Mantém cultura e finalidade do talhão alinhadas ao plantio real (v40:
         // finalidade só sobrescreve se veio informada — não apaga a do talhão)
         if ($finalidadeId) {
-            Database::executar('UPDATE talhoes SET cultura_id = ?, finalidade_id = ? WHERE id = ?', [$culturaId, $finalidadeId, $talhaoId]);
+            Database::executar('UPDATE talhoes SET cultura_id = ?, finalidade_id = ?, safra = ? WHERE id = ?', [$culturaId, $finalidadeId, $safraTexto, $talhaoId]);
         } else {
-            Database::executar('UPDATE talhoes SET cultura_id = ? WHERE id = ?', [$culturaId, $talhaoId]);
+            Database::executar('UPDATE talhoes SET cultura_id = ?, safra = ? WHERE id = ?', [$culturaId, $safraTexto, $talhaoId]);
         }
         return $plantioId;
     }

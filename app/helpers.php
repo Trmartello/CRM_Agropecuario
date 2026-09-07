@@ -251,3 +251,53 @@ function select_municipios(string $name, string $id, string $valorPor = 'nome', 
     }
     return $html . '</select>';
 }
+
+/**
+ * v51 — SAFRA DO PLANTIO no formato "AAAA/AAAA" (pedido do teste de campo): 2025/2025 é a
+ * safra de inverno/safrinha do ano, 2025/2026 a de verão. Opções em torno do ano atual
+ * (2026 → 2025/2025, 2025/2026, 2026/2026, 2026/2027), mais a já gravada, se for outra.
+ * Espelho de App.opcoesSafra / App.safraSugerida no app.js.
+ */
+function opcoes_safra(?string $incluir = null): array
+{
+    $y = (int) date('Y');
+    $lista = [($y - 1) . '/' . ($y - 1), ($y - 1) . '/' . $y, $y . '/' . $y, $y . '/' . ($y + 1)];
+    if ($incluir !== null && safra_valida($incluir) && !in_array($incluir, $lista, true)) {
+        $lista[] = $incluir;
+        sort($lista);
+    }
+    return $lista;
+}
+
+/** "AAAA/AAAA" com o 2º ano igual ao 1º ou o seguinte. */
+function safra_valida(?string $safra): bool
+{
+    return $safra !== null && preg_match('/^(\d{4})\/(\d{4})$/', $safra, $m) === 1
+        && ((int) $m[2] === (int) $m[1] || (int) $m[2] === (int) $m[1] + 1);
+}
+
+/** Safra sugerida pela data (hoje, se vazia): jan–fev → verão que termina; mar–ago → inverno/safrinha; set–dez → verão que começa. */
+function safra_sugerida(?string $data = null): string
+{
+    $t = ($data !== null && $data !== '' ? date_create($data) : null) ?: date_create('today');
+    $y = (int) $t->format('Y');
+    $m = (int) $t->format('n');
+    if ($m <= 2) {
+        return ($y - 1) . '/' . $y;
+    }
+    if ($m <= 8) {
+        return $y . '/' . $y;
+    }
+    return $y . '/' . ($y + 1);
+}
+
+/** Select de safra (opções de opcoes_safra, sugerida marcada). */
+function select_safra(string $name, string $id, ?string $valor = null, string $classe = 'form-select', string $extra = ''): string
+{
+    $sel = $valor !== null && safra_valida($valor) ? $valor : safra_sugerida();
+    $html = '<select name="' . e($name) . '" id="' . e($id) . '" class="' . e($classe) . '" ' . $extra . '>';
+    foreach (opcoes_safra($sel) as $s) {
+        $html .= '<option value="' . e($s) . '"' . ($s === $sel ? ' selected' : '') . '>' . e($s) . '</option>';
+    }
+    return $html . '</select>';
+}

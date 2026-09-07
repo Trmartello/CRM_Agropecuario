@@ -43,7 +43,12 @@
             <label class="form-label">Cultivar / híbrido</label>
             <input name="cultivar" class="form-control" id="talhaoCultivar" maxlength="80" placeholder="Ex.: 58I60 IPRO, P3016">
           </div>
-          <div class="col-12">
+          <div class="col-6">
+            <label class="form-label">Safra *</label>
+            <?= select_safra('safra', 'talhaoSafra', null, 'form-select', 'required') ?>
+            <div class="form-text">2026/2026 = inverno/safrinha; 2025/2026 = verão.</div>
+          </div>
+          <div class="col-6">
             <label class="form-label">Finalidade (objetivo)</label>
             <select name="finalidade_id" class="form-select" id="talhaoFinalidade">
               <option value="">—</option>
