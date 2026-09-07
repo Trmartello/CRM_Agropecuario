@@ -20,7 +20,8 @@ class PlantiosController
                 (int) ($_POST['cultura_id'] ?? 0),
                 trim($_POST['data_plantio'] ?? ''),
                 $_POST['cultivar'] ?? null,
-                (int) ($_POST['finalidade_id'] ?? 0) ?: null // v40: grão, silagem, pastagem...
+                (int) ($_POST['finalidade_id'] ?? 0) ?: null, // v40: grão, silagem, pastagem...
+                trim($_POST['safra'] ?? '') ?: null // v51: "2025/2026"
             );
         } catch (\InvalidArgumentException $e) {
             json_erro($e->getMessage());

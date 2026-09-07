@@ -1778,6 +1778,7 @@ class ClientesController
         }
         $finalidadeId = (int) ($_POST['finalidade_id'] ?? 0) ?: null;
         $cultivar = mb_substr(trim($_POST['cultivar'] ?? ''), 0, 80) ?: null;
+        $safra = safra_valida(trim($_POST['safra'] ?? '')) ? trim($_POST['safra']) : safra_sugerida(); // v51
         $nome = trim($_POST['nome'] ?? '') ?: 'Área toda';
         $areas = \App\Services\AreaPlantioService::areasDoImovel($imovelId);
         // v48 (aba Talhões): "Toda a área" de UMA área de plantio — o talhão cobre a área inteira
@@ -1817,10 +1818,10 @@ class ClientesController
         $total = 0.0;
         foreach ($lotes as $l) {
             Database::executar(
-                'INSERT INTO talhoes (propriedade_id, imovel_id, nome, area_ha, cultura_id, cultivar, finalidade_id, contorno, area_gps, area_plantio_id)
-                 VALUES (?,?,?,?,?,?,?,?,?,?)',
+                'INSERT INTO talhoes (propriedade_id, imovel_id, nome, area_ha, cultura_id, cultivar, safra, finalidade_id, contorno, area_gps, area_plantio_id)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?)',
                 [(int) $imovel['propriedade_id'], $imovelId, mb_substr($l['nome'], 0, 120), round($l['area'], 2),
-                    $culturaId, $cultivar, $finalidadeId, $l['contorno'], $l['contorno'] ? round($l['area'], 2) : null, $l['area_id']]
+                    $culturaId, $cultivar, $safra, $finalidadeId, $l['contorno'], $l['contorno'] ? round($l['area'], 2) : null, $l['area_id']]
             );
             $ids[] = Database::ultimoId();
             $total += $l['area'];
@@ -1891,17 +1892,19 @@ class ClientesController
             $areaGps = \App\Services\CroquiService::areaHa($pontos);
         }
         $areaHa = $areaGps ?? (float) str_replace(',', '.', $_POST['area_ha'] ?? 0);
+        $safraPost = trim($_POST['safra'] ?? '');
         $dados = [
             $nome,
             $areaHa,
             (int) ($_POST['cultura_id'] ?? 0) ?: null,
             mb_substr(trim($_POST['cultivar'] ?? ''), 0, 80) ?: null, // v48
+            safra_valida($safraPost) ? $safraPost : ($id > 0 ? null : safra_sugerida()), // v51 ("2025/2026"); editar sem informar mantém
             $finalidadeId,
             $imovelId,
         ];
         if ($id > 0) {
             Database::executar(
-                'UPDATE talhoes SET nome=?, area_ha=?, cultura_id=?, cultivar=?, finalidade_id=?, imovel_id=? WHERE id=? AND propriedade_id=?',
+                'UPDATE talhoes SET nome=?, area_ha=?, cultura_id=?, cultivar=?, safra=COALESCE(?, safra), finalidade_id=?, imovel_id=? WHERE id=? AND propriedade_id=?',
                 array_merge($dados, [$id, $propriedadeId])
             );
             if ($pontos !== null) {
@@ -1910,8 +1913,8 @@ class ClientesController
             }
         } else {
             Database::executar(
-                'INSERT INTO talhoes (nome, area_ha, cultura_id, cultivar, finalidade_id, imovel_id, propriedade_id, contorno, area_gps, area_plantio_id)
-                 VALUES (?,?,?,?,?,?,?,?,?,?)',
+                'INSERT INTO talhoes (nome, area_ha, cultura_id, cultivar, safra, finalidade_id, imovel_id, propriedade_id, contorno, area_gps, area_plantio_id)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?)',
                 array_merge($dados, [$propriedadeId, $pontos !== null ? json_encode($pontos) : null, $areaGps,
                     $pontos !== null ? (int) $hostTalhao['id'] : null])
             );
@@ -1924,7 +1927,7 @@ class ClientesController
         }
         // Devolve o talhão pronto para o croqui (com cultura/finalidade por nome)
         $talhao = Database::um(
-            'SELECT t.id, t.nome, t.area_ha, t.area_gps, t.contorno, t.imovel_id, t.area_plantio_id, t.cultura_id, t.cultivar, t.finalidade_id,
+            'SELECT t.id, t.nome, t.area_ha, t.area_gps, t.contorno, t.imovel_id, t.area_plantio_id, t.cultura_id, t.cultivar, t.safra, t.finalidade_id,
                     cu.nome AS cultura, f.nome AS finalidade
                FROM talhoes t
                LEFT JOIN culturas cu ON cu.id = t.cultura_id

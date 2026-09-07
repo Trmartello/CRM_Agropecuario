@@ -19,7 +19,12 @@
         </div>
         <div class="col-md-6">
           <label class="form-label">Data do plantio *</label>
-          <input type="date" name="data_plantio" class="form-control" required max="<?= date('Y-m-d') ?>">
+          <input type="date" name="data_plantio" class="form-control" required max="<?= date('Y-m-d') ?>" onchange="Plantios.safraPelaData(this)">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Safra *</label>
+          <?= select_safra('safra', 'plantioSafra', null, 'form-select', 'required') ?>
+          <div class="form-text">Sugerida pela data: 2026/2026 = inverno/safrinha; 2025/2026 = verão.</div>
         </div>
         <div class="col-md-6">
           <label class="form-label">Finalidade</label>

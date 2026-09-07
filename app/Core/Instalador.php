@@ -1242,6 +1242,21 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '50'"
             );
         }
+        if ($versao < 51) {
+            // Safra do plantio (pedido do teste de campo: "precisamos informar qual a safra o
+            // plantio pertence — 2025/2025, 2025/2026, 2026/2026, 2026/2027"): texto AAAA/AAAA no
+            // talhão (uso atual) e no registro de plantio; a safra_id comercial segue à parte.
+            if (!self::temColuna('talhoes', 'safra')) {
+                Database::executar('ALTER TABLE talhoes ADD COLUMN safra VARCHAR(9) NULL AFTER cultivar');
+            }
+            if (!self::temColuna('plantios', 'safra')) {
+                Database::executar('ALTER TABLE plantios ADD COLUMN safra VARCHAR(9) NULL AFTER safra_id');
+            }
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '51')
+                 ON DUPLICATE KEY UPDATE valor = '51'"
+            );
+        }
     }
 
     /** Apaga cópias idênticas de talhão (mantém a de menor id), poupando as que têm histórico. */

@@ -33,6 +33,30 @@ const App = {
   },
 
   /** Envia um formulário via AJAX (FormData). Um envio por vez por formulário. */
+  /* v51 — SAFRA DO PLANTIO "AAAA/AAAA" (espelho de opcoes_safra/safra_sugerida em helpers.php) */
+  opcoesSafra(incluir) {
+    const y = new Date().getFullYear();
+    const lista = [`${y - 1}/${y - 1}`, `${y - 1}/${y}`, `${y}/${y}`, `${y}/${y + 1}`];
+    if (incluir && /^\d{4}\/\d{4}$/.test(incluir) && !lista.includes(incluir)) { lista.push(incluir); lista.sort(); }
+    return lista;
+  },
+  safraSugerida(data) {
+    const d = data ? new Date(data + (String(data).length === 10 ? 'T12:00:00' : '')) : new Date();
+    const t = isNaN(d.getTime()) ? new Date() : d;
+    const y = t.getFullYear(), m = t.getMonth() + 1;
+    return m <= 2 ? `${y - 1}/${y}` : (m <= 8 ? `${y}/${y}` : `${y}/${y + 1}`);
+  },
+  /** Seleciona a safra no select, criando a opção se ela não estiver na lista (registro antigo). */
+  safraNoSelect(sel, safra) {
+    if (!sel || !safra) return;
+    if (![...sel.options].some(o => o.value === safra)) {
+      const o = document.createElement('option'); o.value = safra; o.textContent = safra;
+      const depois = [...sel.options].find(x => x.value > safra);
+      if (depois) sel.insertBefore(o, depois); else sel.appendChild(o);
+    }
+    sel.value = safra;
+  },
+
   async enviarForm(form, url) {
     const soltar = App._travar('form:' + (form.id || url), form);
     try {
@@ -927,6 +951,7 @@ const Clientes = {
     form.querySelector('[name=area_plantio_id]').value = t.area_plantio_id || 0;
     if (t.cultura_id) form.querySelector('[name=cultura_id]').value = t.cultura_id;
     form.querySelector('[name=cultivar]').value = t.cultivar || ''; // v48
+    App.safraNoSelect(form.querySelector('[name=safra]'), t.safra || App.safraSugerida()); // v51
     if (t.finalidade_id) form.querySelector('[name=finalidade_id]').value = t.finalidade_id;
     Clientes._imoveisNoModalTalhao(imoveis, t.imovel_id);
     // Área digitada só vale para talhão antigo SEM desenho; com desenho, a área é a medida
@@ -1152,11 +1177,13 @@ const FenologiaArte = {
 /* ============================== PLANTIOS (Fase 6E) ============================== */
 
 const Plantios = {
-  abrir(talhaoId, culturaId, nomeTalhao, finalidadeId, cultivar) {
+  abrir(talhaoId, culturaId, nomeTalhao, finalidadeId, cultivar, safra) {
     const form = document.getElementById('formPlantio');
     if (!form) return;
     form.reset();
     form.querySelector('[name=talhao_id]').value = talhaoId;
+    // v51: safra do talhão vem sugerida (senão a sugerida pela data de hoje, já marcada no select)
+    App.safraNoSelect(form.querySelector('[name=safra]'), safra || App.safraSugerida());
     if (culturaId) form.querySelector('[name=cultura_id]').value = culturaId;
     // v48: o cultivar cadastrado no talhão vem sugerido (pode trocar nesta safra)
     const cv = form.querySelector('[name=cultivar]');
@@ -1179,6 +1206,12 @@ const Plantios = {
       App.alerta(navigator.onLine ? e.message : 'Sem conexão — registre o plantio quando estiver online.', 'warning');
     }
     return false;
+  },
+
+  /** v51: a data do plantio sugere a safra (mar–ago = inverno/safrinha AAAA/AAAA; set–fev = verão). */
+  safraPelaData(input) {
+    const form = input.closest('form');
+    if (form && input.value) App.safraNoSelect(form.querySelector('[name=safra]'), App.safraSugerida(input.value));
   },
 
   colheita(plantioId, nomeTalhao) {
@@ -1290,8 +1323,14 @@ const Croqui = {
   _montarCamadasCar() {
     const wrap = document.getElementById('croquiCamadasCarWrap'), lista = document.getElementById('croquiCamadasCarLista'), qtd = document.getElementById('croquiCamadasCarQtd');
     if (!wrap || !lista) return;
-    if (!Croqui.camadasCar.length) { wrap.classList.add('d-none'); return; }
     wrap.classList.remove('d-none');
+    if (!Croqui.camadasCar.length) {
+      // v51: o botão fica visível mesmo sem camadas — explica de onde elas vêm e leva à importação
+      if (qtd) qtd.textContent = '';
+      lista.innerHTML = '<div class="text-muted">Nenhuma camada ambiental guardada para este imóvel. Elas vêm do <strong>zip do SICAR</strong> (APP, reserva legal, vegetação nativa, nascentes, área consolidada…): importe o arquivo pelo botão <strong>CAR</strong> da ficha.</div>'
+        + '<button type="button" class="btn btn-sm btn-outline-success mt-2" onclick="Croqui.importarCarDaqui()"><i class="bi bi-cloud-download me-1"></i>Importar o zip do SICAR</button>';
+      return;
+    }
     const vis = Croqui._camadasCarVisiveis();
     const grupos = new Map();
     Croqui.camadasCar.forEach(c => {
@@ -1308,6 +1347,15 @@ const Croqui = {
         return `<div class="form-check mb-1"><input class="form-check-input" type="checkbox" id="croquiCamadaCar_${k}" ${vis.has(k) ? 'checked' : ''} onchange="Croqui.toggleCamadaCar('${k}', this.checked)">
           <label class="form-check-label" for="croquiCamadaCar_${k}" title="${App.escapeHtml([...g.temas].join(' | '))}"><span class="croqui-cor" style="background:${d.cor}"></span>${d.icone} ${App.escapeHtml(d.rotulo)} <span class="text-muted">· ${g.pontos ? g.pontos + ' ponto(s)' : fmt(g.ha) + ' ha'}${g.n > 1 && !g.pontos ? ' · ' + g.n + ' registros' : ''}</span></label></div>`;
       }).join('');
+  },
+  /** Sai do croqui e abre o modal de importação do CAR deste imóvel (as camadas vêm do zip). */
+  importarCarDaqui() {
+    if (Croqui._dirty && !confirm('Há pontos não salvos — sair do croqui para importar o CAR?')) return;
+    const imovelId = Croqui.imovel ? Number(Croqui.imovel.id) : 0;
+    const qtdAreas = Croqui.areasPlantio.length;
+    Croqui._dirty = false;
+    Croqui.fechar();
+    if (imovelId && typeof Clientes !== 'undefined') setTimeout(() => Clientes.importarCar(imovelId, qtdAreas), 400);
   },
   /** SVG das camadas do CAR ligadas (polígonos, linhas e pontos) + entradas de legenda. */
   _svgCamadasCar(larg, alt, legenda) {

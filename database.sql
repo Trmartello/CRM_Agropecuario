@@ -261,6 +261,7 @@ CREATE TABLE talhoes (
   area_ha DECIMAL(10,2) NOT NULL DEFAULT 0,
   cultura_id INT,
   cultivar VARCHAR(80) NULL COMMENT 'v48: cultivar/híbrido plantado no talhão (ex.: 58I60 IPRO)',
+  safra VARCHAR(9) NULL COMMENT 'v51: safra do plantio atual, AAAA/AAAA (2025/2025 inverno/safrinha, 2025/2026 verão)',
   finalidade_id INT NULL COMMENT 'uso atual: grão, silagem, pastagem... (v40)',
   contorno TEXT NULL COMMENT 'croqui: vértices [[lat,lng],...] marcados no campo (Fase 6A)',
   area_gps DECIMAL(10,2) NULL COMMENT 'área (ha) calculada pelo contorno GPS',
@@ -794,6 +795,7 @@ CREATE TABLE plantios (
   cultura_id INT NOT NULL,
   finalidade_id INT NULL COMMENT 'finalidade desta safra: grão, silagem... (v40, histórico)',
   safra_id INT,
+  safra VARCHAR(9) NULL COMMENT 'v51: safra informada pelo técnico, AAAA/AAAA (a safra_id é a comercial)',
   data_plantio DATE NOT NULL,
   cultivar VARCHAR(120),
   encerrado TINYINT(1) NOT NULL DEFAULT 0,
@@ -1753,8 +1755,8 @@ UPDATE propriedades p SET area_ha = (
   SELECT COALESCE(SUM(CASE WHEN i.area_gps IS NOT NULL AND i.area_gps > 0 THEN i.area_gps ELSE i.area_ha END), 0)
     FROM imoveis i WHERE i.propriedade_id = p.id)
  WHERE EXISTS (SELECT 1 FROM imoveis i2 WHERE i2.propriedade_id = p.id AND COALESCE(i2.area_gps, i2.area_ha) > 0);
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','50')
-  ON DUPLICATE KEY UPDATE valor = '50';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','51')
+  ON DUPLICATE KEY UPDATE valor = '51';
 
 -- ============================================================================
 -- SEED — Mapa Territorial: 5 imóveis fictícios (Concórdia/SC), vínculos e talhões
