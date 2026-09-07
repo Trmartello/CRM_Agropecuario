@@ -180,6 +180,7 @@ CREATE TABLE imoveis (
   area_plantio_ha DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT 'área disponível para plantio (digitada)',
   contorno_plantio TEXT NULL COMMENT 'área de plantio desenhada no croqui [[lat,lng],...]',
   area_plantio_gps DECIMAL(10,2) NULL COMMENT 'área de plantio (ha) medida pelo contorno',
+  nao_plantio_ha DECIMAL(10,2) NULL COMMENT 'v49: cache da UNIÃO das áreas de não plantio (ha) — camadas do CAR se sobrepõem; NULL = calcular',
   ordem INT NOT NULL DEFAULT 0,
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_imoveis_prop (propriedade_id),
@@ -198,6 +199,7 @@ CREATE TABLE areas_plantio (
   cultura_id INT NULL COMMENT 'v47: cultura da área (perene/reflorestamento)',
   contorno TEXT NOT NULL COMMENT 'polígono [[lat,lng],...] dentro da divisa do imóvel',
   area_gps DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT 'área (ha) medida pelo contorno',
+  area_liquida DECIMAL(10,2) NULL COMMENT 'v49: cache da área líquida (medida − não plantio, por união); NULL = calcular',
   ordem INT NOT NULL DEFAULT 0,
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_areas_plantio_imovel (imovel_id),
@@ -212,12 +214,33 @@ CREATE TABLE areas_nao_plantio (
   id INT AUTO_INCREMENT PRIMARY KEY,
   imovel_id INT NOT NULL,
   nome VARCHAR(120) NOT NULL DEFAULT 'Área de não plantio',
-  tipo VARCHAR(20) NOT NULL DEFAULT 'mata' COMMENT 'mata|app|acude|sede|estrada|outro',
+  tipo VARCHAR(20) NOT NULL DEFAULT 'mata' COMMENT 'mata|reserva|app|acude|sede|estrada|outro',
   contorno TEXT NOT NULL COMMENT 'polígono [[lat,lng],...] dentro da divisa do imóvel',
   area_gps DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT 'área (ha) medida pelo contorno',
+  origem VARCHAR(10) NOT NULL DEFAULT 'manual' COMMENT 'v49: manual (desenhada/varinha) | car (camada ambiental importada do zip do SICAR — pode se sobrepor a outras)',
+  tema VARCHAR(160) NULL COMMENT 'v49: tema da camada do CAR (ex.: APP Total, Reserva Legal Total, Remanescente de Vegetação Nativa)',
   ordem INT NOT NULL DEFAULT 0,
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_areas_nao_plantio_imovel (imovel_id),
+  FOREIGN KEY (imovel_id) REFERENCES imoveis(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- v50: TODAS as feições ambientais do zip do SICAR do imóvel (APP por tipo, banhado, curso
+-- d'água, nascente, reserva proposta/total, vegetação nativa, área consolidada, não
+-- classificada, servidão, área líquida...) — só referência no mapa do croqui e na ficha
+-- (o desconto vem de areas_nao_plantio). Reimportar o CAR substitui tudo.
+DROP TABLE IF EXISTS imovel_camadas_car;
+CREATE TABLE imovel_camadas_car (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  imovel_id INT NOT NULL,
+  camada VARCHAR(60) NOT NULL COMMENT 'arquivo de origem (area_de_preservacao_permanente, reserva_legal, cobertura_do_solo...)',
+  classe VARCHAR(30) NOT NULL COMMENT 'ShapefileService::CLASSES: app, app_recompor, app_total, banhado, hidrografia, nascente, reserva, reserva_total, vegetacao, consolidada, nao_classificada, servidao, servidao_total, area_liquida, uso_restrito, pousio, outro',
+  tema VARCHAR(160) NULL COMMENT 'tema do .dbf, como veio',
+  geom_tipo VARCHAR(10) NOT NULL DEFAULT 'poligono' COMMENT 'poligono | linha | ponto',
+  geometria MEDIUMTEXT NOT NULL COMMENT 'JSON: lista de partes, cada parte [[lat,lng],...] (ponto = uma parte com um ponto)',
+  area_ha DECIMAL(10,2) NULL COMMENT 'área declarada no .dbf',
+  ordem INT NOT NULL DEFAULT 0,
+  INDEX idx_imovel_camadas_car (imovel_id),
   FOREIGN KEY (imovel_id) REFERENCES imoveis(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
@@ -237,6 +260,7 @@ CREATE TABLE talhoes (
   nome VARCHAR(120) NOT NULL,
   area_ha DECIMAL(10,2) NOT NULL DEFAULT 0,
   cultura_id INT,
+  cultivar VARCHAR(80) NULL COMMENT 'v48: cultivar/híbrido plantado no talhão (ex.: 58I60 IPRO)',
   finalidade_id INT NULL COMMENT 'uso atual: grão, silagem, pastagem... (v40)',
   contorno TEXT NULL COMMENT 'croqui: vértices [[lat,lng],...] marcados no campo (Fase 6A)',
   area_gps DECIMAL(10,2) NULL COMMENT 'área (ha) calculada pelo contorno GPS',
@@ -1686,7 +1710,8 @@ INSERT INTO reclamacoes (cliente_id, usuario_id, produto_id, tipo, lote, nota_fi
 
 -- v40: finalidades de cultura + 1 imóvel (CAR) por propriedade seed + talhões vinculados
 INSERT INTO finalidades (nome, ordem) VALUES
-('Grão', 1), ('Silagem', 2), ('Pastagem', 3), ('Feno/Pré-secado', 4), ('Semente', 5);
+('Grão', 1), ('Silagem', 2), ('Pastagem', 3), ('Feno/Pré-secado', 4), ('Semente', 5),
+('Perene', 6), ('Reflorestamento', 7); -- v48: objetivo dos talhões em áreas perenes/reflorestamento
 INSERT INTO imoveis (propriedade_id, car_numero, municipio, area_ha, contorno, area_gps)
 SELECT p.id, p.car_numero, p.municipio, p.area_ha, p.contorno, p.area_gps FROM propriedades p;
 UPDATE talhoes t JOIN imoveis i ON i.propriedade_id = t.propriedade_id SET t.imovel_id = i.id;
@@ -1728,8 +1753,8 @@ UPDATE propriedades p SET area_ha = (
   SELECT COALESCE(SUM(CASE WHEN i.area_gps IS NOT NULL AND i.area_gps > 0 THEN i.area_gps ELSE i.area_ha END), 0)
     FROM imoveis i WHERE i.propriedade_id = p.id)
  WHERE EXISTS (SELECT 1 FROM imoveis i2 WHERE i2.propriedade_id = p.id AND COALESCE(i2.area_gps, i2.area_ha) > 0);
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','47')
-  ON DUPLICATE KEY UPDATE valor = '47';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','50')
+  ON DUPLICATE KEY UPDATE valor = '50';
 
 -- ============================================================================
 -- SEED — Mapa Territorial: 5 imóveis fictícios (Concórdia/SC), vínculos e talhões

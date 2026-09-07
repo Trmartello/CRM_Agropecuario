@@ -512,7 +512,8 @@ const Clientes = {
     return false;
   },
 
-  async ficha(id) {
+  /** Abre a ficha; `aba` (ex.: 'abaTalhoes') reabre já naquela aba após salvar algo nela. */
+  async ficha(id, aba) {
     Clientes.fichaClienteId = id;
     const painel = new bootstrap.Offcanvas('#painelFicha');
     painel.show();
@@ -521,6 +522,7 @@ const Clientes = {
     const resp = await fetch(`index.php?r=clientes/ficha&id=${id}`, { headers: { 'X-Requested-With': 'fetch-html' } });
     corpo.innerHTML = await resp.text();
     App.graficoPotencialCliente();
+    if (aba) { const b = corpo.querySelector(`[data-bs-target="#${aba}"]`); if (b) bootstrap.Tab.getOrCreateInstance(b).show(); }
   },
 
   async salvarDocumento(ev) {
@@ -608,28 +610,53 @@ const Clientes = {
     } catch (e) { App.alerta(e.message, 'danger'); }
   },
 
-  /** Importa a divisa oficial do CAR (shapefile .zip) e desenha no croqui. */
-  importarCar(imovelId) { // v40: a divisa do CAR é do IMÓVEL
-    const inp = document.createElement('input');
-    inp.type = 'file';
-    inp.accept = '.zip,application/zip';
-    inp.onchange = async () => {
-      if (!inp.files || !inp.files.length) return;
-      const fd = new FormData();
-      fd.append('imovel_id', imovelId);
-      fd.append('arquivo', inp.files[0]);
-      App.alerta('Lendo o shapefile do CAR…', 'info');
-      try {
-        const r = await App.json('index.php?r=clientes/importar-car', { method: 'POST', body: fd });
-        App.alerta(`Divisa do CAR importada: ${r.pontos} pontos · ${Number(r.area_gps).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ha`
-          + (r.car_numero ? ` · nº ${App.escapeHtml(r.car_numero)}` : '') + '.', 'success');
-        if (r.talhoes_fora && r.talhoes_fora.length) {
-          App.alerta('Atenção: talhão(ões) fora da divisa oficial do CAR: ' + r.talhoes_fora.join(', ') + '. Ajuste no croqui.', 'warning');
-        }
-        if (Clientes.fichaClienteId) setTimeout(() => Clientes.ficha(Clientes.fichaClienteId), 900);
-      } catch (e) { App.alerta(e.message, 'danger'); }
-    };
-    inp.click();
+  /**
+   * Importa o zip do imóvel baixado do SICAR: divisa oficial + (v49) camadas ambientais
+   * (APP, Reserva Legal, Vegetação nativa, Servidão) como áreas de não plantio e, opcional,
+   * a Área Consolidada como áreas de plantio. Abre o modal com as opções.
+   */
+  importarCar(imovelId, qtdAreas = 0) { // v40: a divisa do CAR é do IMÓVEL
+    const form = document.getElementById('formImportarCar');
+    if (!form) return;
+    form.reset();
+    form.querySelector('[name=imovel_id]').value = imovelId;
+    form.querySelector('[name=camadas]').checked = true;
+    const cons = form.querySelector('[name=consolidada]');
+    // só faz sentido em imóvel que ainda não tem áreas de plantio (o servidor também confere)
+    cons.checked = Number(qtdAreas) === 0;
+    cons.disabled = Number(qtdAreas) > 0;
+    const dica = document.getElementById('importarCarConsolidadaDica');
+    if (dica) dica.textContent = Number(qtdAreas) > 0
+      ? 'Este imóvel já tem áreas de plantio desenhadas — apague-as no croqui se quiser partir da Área Consolidada do CAR.'
+      : 'Cada parte da área consolidada (uso já aberto) vira uma área de plantio (lavoura) para você ajustar e lançar os talhões.';
+    new bootstrap.Modal('#modalImportarCar').show();
+  },
+
+  async enviarImportarCar(ev) {
+    ev.preventDefault();
+    const form = ev.target;
+    const arquivo = form.querySelector('[name=arquivo]');
+    if (!arquivo.files || !arquivo.files.length) { App.alerta('Selecione o arquivo .zip do SICAR.', 'warning'); return false; }
+    App.alerta('Lendo o arquivo do CAR…', 'info');
+    try {
+      const r = await App.enviarForm(form, 'index.php?r=clientes/importar-car');
+      bootstrap.Modal.getInstance('#modalImportarCar').hide();
+      const fmt = v => Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+      let msg = `Divisa do CAR importada: ${r.pontos} pontos · ${fmt(r.area_gps)} ha` + (r.car_numero ? ` · nº ${App.escapeHtml(r.car_numero)}` : '') + '.';
+      if (r.camadas && r.camadas.length) {
+        msg += ' Não plantio: ' + r.camadas.map(c => `${App.escapeHtml(c.rotulo)} ${c.partes > 1 ? c.partes + ' partes, ' : ''}${fmt(c.ha)} ha`).join(' · ')
+          + ` — união ${fmt(r.nao_plantio)} ha descontada do plantio.`;
+      }
+      if (r.consolidadas) msg += ` ${r.consolidadas} área(s) de plantio criada(s) a partir da Área Consolidada.`;
+      if (r.ignoradas) msg += ` ${r.ignoradas} parte(s) pequena(s) ou fora da divisa ignorada(s).`;
+      App.alerta(msg, 'success');
+      (r.avisos || []).forEach(a => App.alerta(a, 'warning'));
+      if (r.talhoes_fora && r.talhoes_fora.length) {
+        App.alerta('Atenção: talhão(ões) fora da divisa oficial do CAR: ' + r.talhoes_fora.join(', ') + '. Ajuste no croqui.', 'warning');
+      }
+      if (Clientes.fichaClienteId) setTimeout(() => Clientes.ficha(Clientes.fichaClienteId), 600);
+    } catch (e) { App.alerta(e.message, 'danger'); }
+    return false;
   },
 
   /** Abre a consulta pública do SICAR e copia o número do CAR para colar na busca.
@@ -775,25 +802,45 @@ const Clientes = {
     } catch (e) { App.alerta(e.message, 'danger'); }
   },
 
-  /** "Plantar a área toda": um talhão único cobrindo a área de plantio do imóvel. */
-  plantarAreaToda(imovelId, rotulo, areaPlantio) {
-    const form = document.getElementById('formPlantarArea');
+  /**
+   * v48 — aba "Talhões": "Toda a área" cria UM talhão cobrindo a área de plantio
+   * inteira (o servidor copia o contorno e desconta o não plantio). O modal do
+   * talhão abre no modo "toda" só com nome, cultura, cultivar e finalidade.
+   * a = {area_id, nome, ha, imovel_id, imovel_rotulo, propriedade_id, uso, cultura_id}
+   */
+  talhaoAreaToda(a) {
+    const form = document.getElementById('formTalhao');
     form.reset();
-    form.querySelector('[name=imovel_id]').value = imovelId;
-    document.getElementById('plantarAreaImovel').textContent = rotulo || '';
-    document.getElementById('plantarAreaHa').textContent = Number(areaPlantio || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
-    new bootstrap.Modal('#modalPlantarArea').show();
+    document.getElementById('btnExcluirTalhao').classList.add('d-none');
+    document.getElementById('btnTalhaoParaPlantio').classList.add('d-none');
+    form.querySelector('[name=id]').value = 0;
+    form.querySelector('[name=propriedade_id]').value = a.propriedade_id;
+    form.querySelector('[name=area_plantio_id]').value = a.area_id;
+    form.querySelector('[name=contorno]').value = '';
+    form.querySelector('[name=nome]').value = a.nome || '';
+    form.dataset.origem = 'toda';
+    Clientes._imoveisNoModalTalhao([{ id: a.imovel_id, rotulo: a.imovel_rotulo }], a.imovel_id);
+    Clientes._sugerirCulturaFinalidade(a);
+    Clientes._modoTalhaoModal({ croqui: false, medida: Number(a.ha || 0), toda: a });
+    new bootstrap.Modal('#modalTalhao').show();
   },
 
-  async salvarPlantarArea(ev) {
-    ev.preventDefault();
-    try {
-      const r = await App.enviarForm(ev.target, 'index.php?r=clientes/plantar-area-toda');
-      bootstrap.Modal.getInstance('#modalPlantarArea').hide();
-      App.alerta(`${r.talhoes > 1 ? r.talhoes + ' talhões criados' : 'Talhão criado'} com ${Number(r.area_ha || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ha — a área de plantio inteira.`);
-      if (Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId);
-    } catch (e) { App.alerta(e.message, 'danger'); }
-    return false;
+  /** v48: "Delimitar" — desenha o talhão no croqui já dentro da área escolhida (limite = a área). */
+  delimitarTalhao(imovelId, areaId) {
+    Croqui.abrir(imovelId, { novoTalhao: true, areaId: Number(areaId) || 0 });
+  },
+
+  /** Área perene/reflorestamento: sugere a cultura da área e a finalidade do uso (Perene/Reflorestamento). */
+  _sugerirCulturaFinalidade(a) {
+    const form = document.getElementById('formTalhao');
+    if (!a) return;
+    if (a.cultura_id) form.querySelector('[name=cultura_id]').value = String(a.cultura_id);
+    const rotulo = a.uso === 'perene' ? 'Perene' : (a.uso === 'reflorestamento' ? 'Reflorestamento' : null);
+    if (rotulo) {
+      const fin = form.querySelector('[name=finalidade_id]');
+      const opt = [...fin.options].find(o => o.textContent.trim().toLowerCase() === rotulo.toLowerCase());
+      if (opt) fin.value = opt.value;
+    }
   },
 
   /** Preenche o seletor de imóvel do modal de talhão com os imóveis da propriedade. */
@@ -823,8 +870,12 @@ const Clientes = {
     form.querySelector('[name=id]').value = 0;
     form.querySelector('[name=propriedade_id]').value = Croqui.prop.id;
     form.querySelector('[name=contorno]').value = JSON.stringify(pontos);
+    form.querySelector('[name=area_plantio_id]').value = 0;
     form.dataset.origem = 'croqui';
     Clientes._imoveisNoModalTalhao([{ id: Croqui.imovel.id, rotulo: Croqui.imovel.rotulo }], Croqui.imovel.id);
+    // v48: a área hospedeira (limite do desenho) sugere cultura/finalidade para perene/reflorestamento
+    const lim = Croqui._limite();
+    if (lim && lim.area) Clientes._sugerirCulturaFinalidade(lim.area);
     Clientes._modoTalhaoModal({ croqui: true, medida: Croqui.areaHa(pontos) });
     document.getElementById('btnTalhaoParaPlantio').classList.add('d-none');
     new bootstrap.Modal('#modalTalhao').show();
@@ -873,7 +924,9 @@ const Clientes = {
     form.dataset.origem = 'ficha';
     form.querySelector('[name=nome]').value = t.nome;
     form.querySelector('[name=area_ha]').value = t.area_ha;
+    form.querySelector('[name=area_plantio_id]').value = t.area_plantio_id || 0;
     if (t.cultura_id) form.querySelector('[name=cultura_id]').value = t.cultura_id;
+    form.querySelector('[name=cultivar]').value = t.cultivar || ''; // v48
     if (t.finalidade_id) form.querySelector('[name=finalidade_id]').value = t.finalidade_id;
     Clientes._imoveisNoModalTalhao(imoveis, t.imovel_id);
     // Área digitada só vale para talhão antigo SEM desenho; com desenho, a área é a medida
@@ -901,26 +954,36 @@ const Clientes = {
   },
 
   /** Mostra/esconde os campos do modal de talhão conforme a origem (croqui × ficha) e se há desenho. */
-  _modoTalhaoModal({ croqui, medida }) {
+  _modoTalhaoModal({ croqui, medida, toda }) {
     const titulo = document.getElementById('modalTalhaoTitulo');
-    if (titulo) titulo.textContent = croqui ? 'Novo talhão desenhado' : 'Talhão';
+    if (titulo) titulo.textContent = toda ? 'Toda a área — ' + (toda.nome || '') : (croqui ? 'Novo talhão desenhado' : 'Talhão');
     const wrapImovel = document.getElementById('talhaoImovelWrap');
-    if (wrapImovel) wrapImovel.classList.toggle('d-none', !!croqui); // no croqui o imóvel é o aberto
+    if (wrapImovel) wrapImovel.classList.toggle('d-none', !!croqui || !!toda); // no croqui/na área o imóvel é o aberto
     const wrapArea = document.getElementById('talhaoAreaWrap');
     const medidaEl = document.getElementById('talhaoAreaMedida');
     const temDesenho = medida !== null && medida !== undefined;
     if (wrapArea) wrapArea.classList.toggle('d-none', temDesenho);
     if (medidaEl) {
       medidaEl.classList.toggle('d-none', !temDesenho);
-      if (temDesenho) medidaEl.innerHTML = `<i class="bi bi-bounding-box-circles me-1 text-success"></i>Área medida no croqui: <strong>${Number(medida).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha</strong>`;
+      if (toda) medidaEl.innerHTML = `<i class="bi bi-grid-1x2 me-1 text-success"></i>O talhão cobre <strong>toda a área "${App.escapeHtml(toda.nome || '')}"</strong>: <strong>${Number(medida).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha</strong> (já sem o não plantio). Para mais de uma cultura na mesma área, use <em>Delimitar</em>.`;
+      else if (temDesenho) medidaEl.innerHTML = `<i class="bi bi-bounding-box-circles me-1 text-success"></i>Área medida no croqui: <strong>${Number(medida).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha</strong>`;
     }
+    const btn = document.getElementById('btnSalvarTalhao');
+    if (btn) btn.innerHTML = toda ? '<i class="bi bi-check-lg me-1"></i>Criar talhão na área toda' : '<i class="bi bi-check-lg me-1"></i>Salvar';
   },
 
   async salvarTalhao(ev) {
     ev.preventDefault();
     try {
-      const r = await App.enviarForm(ev.target, 'index.php?r=clientes/salvar-talhao');
+      // v48: modo "toda a área" → o servidor cria o talhão com o contorno da área (plantar-area-toda)
+      const toda = ev.target.dataset.origem === 'toda';
+      const r = await App.enviarForm(ev.target, toda ? 'index.php?r=clientes/plantar-area-toda' : 'index.php?r=clientes/salvar-talhao');
       bootstrap.Modal.getInstance('#modalTalhao').hide();
+      if (toda) {
+        App.alerta(`Talhão criado na área toda — ${Number(r.area_ha || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha.`);
+        if (Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId, 'abaTalhoes');
+        return false;
+      }
       if (ev.target.dataset.origem === 'croqui' && r.talhao && typeof Croqui !== 'undefined') {
         // Veio do croqui: o talhão entra na lista, vira o alvo selecionado e o desenho
         // passa a ser o gravado (o servidor pode ter prendido pontos na divisa/vizinhos)
@@ -936,7 +999,7 @@ const Clientes = {
         return false; // a ficha atualiza ao fechar o croqui (Croqui.fechar)
       }
       App.alerta('Talhão salvo.');
-      if (Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId);
+      if (Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId, 'abaTalhoes');
     } catch (e) { App.alerta(e.message, 'danger'); }
     return false;
   },
@@ -1089,12 +1152,15 @@ const FenologiaArte = {
 /* ============================== PLANTIOS (Fase 6E) ============================== */
 
 const Plantios = {
-  abrir(talhaoId, culturaId, nomeTalhao, finalidadeId) {
+  abrir(talhaoId, culturaId, nomeTalhao, finalidadeId, cultivar) {
     const form = document.getElementById('formPlantio');
     if (!form) return;
     form.reset();
     form.querySelector('[name=talhao_id]').value = talhaoId;
     if (culturaId) form.querySelector('[name=cultura_id]').value = culturaId;
+    // v48: o cultivar cadastrado no talhão vem sugerido (pode trocar nesta safra)
+    const cv = form.querySelector('[name=cultivar]');
+    if (cv && cultivar) cv.value = cultivar;
     // v40: sugere a finalidade atual do talhão (grão, silagem...) — pode trocar nesta safra
     const fin = form.querySelector('[name=finalidade_id]');
     if (fin && finalidadeId) fin.value = finalidadeId;
@@ -1189,8 +1255,92 @@ const Croqui = {
   EXCLUSAO_BASE: 2000,
   COR_EXCLUSAO: '#6d4c41',
   exclusoes: [],
-  tiposExclusao: { mata: 'Mata / Reserva legal', app: 'APP (rio, nascente)', acude: 'Açude / Barragem', sede: 'Sede / Benfeitorias', estrada: 'Estrada / Carreador', outro: 'Outro' },
-  ICONE_EXCLUSAO: { mata: '🌳', app: '💧', acude: '🐟', sede: '🏠', estrada: '🛣️', outro: '⛔' },
+  tiposExclusao: { mata: 'Mata / Vegetação nativa', reserva: 'Reserva legal', app: 'APP (rio, nascente)', acude: 'Açude / Barragem', sede: 'Sede / Benfeitorias', estrada: 'Estrada / Carreador', outro: 'Outro' },
+  ICONE_EXCLUSAO: { mata: '🌳', reserva: '🌲', app: '💧', acude: '🐟', sede: '🏠', estrada: '🛣️', outro: '⛔' },
+  /** v49: área de não plantio importada do CAR (camada ambiental) — pode se sobrepor a outras. */
+  _ehExclusaoCar(x) { return !!x && x.origem === 'car'; },
+  /* --- v50: TODAS as feições ambientais do zip do SICAR (referência ligável no mapa) --- */
+  camadasCar: [],
+  CLASSES_CAR: { outro: { rotulo: 'Outra camada do CAR', cor: '#546e7a', icone: '🗂️' } }, // vem do servidor (ShapefileService::CLASSES)
+  // Ligadas por padrão: o que NÃO está hachurado como área de não plantio (APP por tipo, a recompor,
+  // banhado, curso d'água, nascente, não classificada, área líquida, uso restrito, pousio)
+  CAMADAS_CAR_PADRAO: ['app', 'app_recompor', 'banhado', 'hidrografia', 'nascente', 'nao_classificada', 'area_liquida', 'uso_restrito', 'pousio'],
+  _carregarCamadasCar(dados) {
+    Croqui.camadasCar = dados.camadas_car || [];
+    if (dados.classes_car) Croqui.CLASSES_CAR = dados.classes_car;
+    Croqui._montarCamadasCar();
+  },
+  /** Classes visíveis (lembradas no aparelho; sem escolha, o padrão). */
+  _camadasCarVisiveis() {
+    let salvo = null;
+    try { salvo = JSON.parse(localStorage.getItem('croqui_camadas_car') || 'null'); } catch (e) { salvo = null; }
+    const vis = new Set();
+    const classes = [...new Set(Croqui.camadasCar.map(c => c.classe))];
+    classes.forEach(k => { if (salvo && typeof salvo[k] === 'boolean' ? salvo[k] : Croqui.CAMADAS_CAR_PADRAO.includes(k)) vis.add(k); });
+    return vis;
+  },
+  toggleCamadaCar(classe, ligada) {
+    let salvo = {};
+    try { salvo = JSON.parse(localStorage.getItem('croqui_camadas_car') || '{}') || {}; } catch (e) { salvo = {}; }
+    salvo[classe] = !!ligada;
+    try { localStorage.setItem('croqui_camadas_car', JSON.stringify(salvo)); } catch (e) { /* sem storage */ }
+    Croqui.render();
+  },
+  /** Painel "Camadas do CAR": um checkbox por classe com a área somada (ou a contagem de pontos). */
+  _montarCamadasCar() {
+    const wrap = document.getElementById('croquiCamadasCarWrap'), lista = document.getElementById('croquiCamadasCarLista'), qtd = document.getElementById('croquiCamadasCarQtd');
+    if (!wrap || !lista) return;
+    if (!Croqui.camadasCar.length) { wrap.classList.add('d-none'); return; }
+    wrap.classList.remove('d-none');
+    const vis = Croqui._camadasCarVisiveis();
+    const grupos = new Map();
+    Croqui.camadasCar.forEach(c => {
+      const g = grupos.get(c.classe) || { n: 0, ha: 0, pontos: 0, temas: new Set() };
+      g.n++; if (c.geom_tipo === 'ponto') g.pontos++; else g.ha += Number(c.area_ha || 0);
+      if (c.tema) g.temas.add(c.tema);
+      grupos.set(c.classe, g);
+    });
+    const fmt = v => Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+    if (qtd) qtd.textContent = `(${grupos.size})`;
+    lista.innerHTML = '<div class="text-muted mb-1">Feições do zip do SICAR deste imóvel — só referência (o desconto vem das áreas de não plantio hachuradas).</div>'
+      + [...grupos.entries()].map(([k, g]) => {
+        const d = Croqui.CLASSES_CAR[k] || Croqui.CLASSES_CAR.outro;
+        return `<div class="form-check mb-1"><input class="form-check-input" type="checkbox" id="croquiCamadaCar_${k}" ${vis.has(k) ? 'checked' : ''} onchange="Croqui.toggleCamadaCar('${k}', this.checked)">
+          <label class="form-check-label" for="croquiCamadaCar_${k}" title="${App.escapeHtml([...g.temas].join(' | '))}"><span class="croqui-cor" style="background:${d.cor}"></span>${d.icone} ${App.escapeHtml(d.rotulo)} <span class="text-muted">· ${g.pontos ? g.pontos + ' ponto(s)' : fmt(g.ha) + ' ha'}${g.n > 1 && !g.pontos ? ' · ' + g.n + ' registros' : ''}</span></label></div>`;
+      }).join('');
+  },
+  /** SVG das camadas do CAR ligadas (polígonos, linhas e pontos) + entradas de legenda. */
+  _svgCamadasCar(larg, alt, legenda) {
+    if (!Croqui.camadasCar.length) return '';
+    const vis = Croqui._camadasCarVisiveis();
+    if (!vis.size) return '';
+    let svg = '';
+    const usadas = new Map();
+    Croqui.camadasCar.forEach(c => {
+      if (!vis.has(c.classe)) return;
+      const d = Croqui.CLASSES_CAR[c.classe] || Croqui.CLASSES_CAR.outro;
+      let partes = []; try { partes = JSON.parse(c.geometria) || []; } catch (e) { partes = []; }
+      partes.forEach(parte => {
+        if (!parte || !parte.length) return;
+        if (c.geom_tipo === 'ponto') {
+          const [x, y] = Croqui._paraTela(parte[0], larg, alt);
+          svg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="8" fill="${d.cor}" fill-opacity=".85" stroke="#fff" stroke-width="2" style="pointer-events:none"/>
+                  <text x="${x.toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="middle" font-size="10" style="pointer-events:none">${d.icone}</text>`;
+        } else {
+          const xy = parte.map(p => Croqui._paraTela(p, larg, alt));
+          // estilhaço menor que 6 px na tela (as dezenas de lascas da "APP em área antropizada") só vira ruído
+          if (c.geom_tipo !== 'linha' && Math.max(...xy.map(p => p[0])) - Math.min(...xy.map(p => p[0])) < 6 && Math.max(...xy.map(p => p[1])) - Math.min(...xy.map(p => p[1])) < 6) return;
+          const tela = xy.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+          svg += c.geom_tipo === 'linha'
+            ? `<polyline points="${tela}" fill="none" stroke="${d.cor}" stroke-width="2.5" stroke-linejoin="round" style="pointer-events:none"/>`
+            : `<polygon points="${tela}" fill="${d.cor}" fill-opacity=".18" stroke="${d.cor}" stroke-width="2" stroke-dasharray="6 3" style="pointer-events:none"/>`;
+        }
+      });
+      usadas.set(c.classe, d);
+    });
+    usadas.forEach(d => legenda.push(`<span><span class="croqui-cor" style="background:${d.cor}"></span>${d.icone} ${App.escapeHtml(d.rotulo)} (CAR)</span>`));
+    return svg;
+  },
   _alvoExclusao(id) { return -(Croqui.EXCLUSAO_BASE + Number(id)); },
   _exclusaoIdDe(alvo) { alvo = Number(alvo); return alvo <= -Croqui.EXCLUSAO_BASE ? -alvo - Croqui.EXCLUSAO_BASE : 0; },
   _ehExclusao(alvo) { alvo = Number(alvo); return alvo === Croqui.EXCLUSAO_ID || alvo <= -Croqui.EXCLUSAO_BASE; },
@@ -1202,10 +1352,73 @@ const Croqui = {
     if (Croqui.atualId === Croqui.EXCLUSAO_ID && Croqui.pontos.length >= 3) lista.push(Croqui.pontos);
     return lista;
   },
-  /** Quanto (ha) um polígono perde para as áreas de não plantio (soma das interseções). */
+  /**
+   * Quanto (ha) um polígono perde para as áreas de não plantio. Exclusões que não se tocam:
+   * soma das interseções (exato). v49: se alguma caixa cobre outra (camadas do CAR — a APP
+   * fica dentro da vegetação nativa), desconto pela UNIÃO (máscara em grade), espelho de
+   * AreaPlantioService::descontoNaoPlantio.
+   */
   _descontoNaoPlantio(pontos, exclusoes) {
     if (!pontos || pontos.length < 3) return 0;
-    return (exclusoes || Croqui._exclusoesAtuais()).reduce((s, ex) => s + Croqui._areaIntersecaoHa(pontos, ex), 0);
+    const lista = (exclusoes || Croqui._exclusoesAtuais()).filter(ex => ex && ex.length >= 3);
+    if (lista.length > 1 && Croqui._caixasSobrepoem(lista)) return Croqui._descontoMascara(pontos, Croqui._mascaraUniao(lista));
+    return lista.reduce((s, ex) => s + Croqui._areaIntersecaoHa(pontos, ex), 0);
+  },
+  /** Alguma caixa envolvente ([[lat,lng],...][]) toca outra? (espelho de CroquiService::caixasSobrepoem) */
+  _caixasSobrepoem(pols) {
+    const cx = pols.map(p => { const la = p.map(q => Number(q[0])), lo = p.map(q => Number(q[1])); return [Math.min(...la), Math.min(...lo), Math.max(...la), Math.max(...lo)]; });
+    for (let i = 0; i < cx.length; i++) for (let j = i + 1; j < cx.length; j++) {
+      const [a1, b1, a2, b2] = cx[i], [c1, d1, c2, d2] = cx[j];
+      if (!(a2 < c1 || c2 < a1 || b2 < d1 || d2 < b1)) return true;
+    }
+    return false;
+  },
+  _mascaraCache: null,
+  /** Máscara (grade) da união dos polígonos — cache pelo conteúdo (espelho de CroquiService::mascaraUniao). */
+  _mascaraUniao(pols, alvo = 30000) {
+    const chave = JSON.stringify(pols);
+    if (Croqui._mascaraCache && Croqui._mascaraCache.chave === chave) return Croqui._mascaraCache.m;
+    const todos = pols.flat();
+    const lat0 = todos.reduce((s, q) => s + Number(q[0]), 0) / todos.length;
+    const mLat = 110574, mLng = 111320 * Math.cos(lat0 * Math.PI / 180);
+    const proj = q => [Number(q[1]) * mLng, -Number(q[0]) * mLat];
+    const projs = pols.map(p => p.map(proj));
+    const caixas = projs.map(pp => [Math.min(...pp.map(p => p[0])), Math.min(...pp.map(p => p[1])), Math.max(...pp.map(p => p[0])), Math.max(...pp.map(p => p[1]))]);
+    const x1 = Math.min(...caixas.map(c => c[0])), y1 = Math.min(...caixas.map(c => c[1])), x2 = Math.max(...caixas.map(c => c[2])), y2 = Math.max(...caixas.map(c => c[3]));
+    const passo = Math.max(1, Math.min(30, Math.sqrt(Math.max(1, (x2 - x1) * (y2 - y1)) / alvo)));
+    const nx = Math.ceil((x2 - x1) / passo), ny = Math.ceil((y2 - y1) / passo);
+    const bits = new Uint8Array(nx * ny);
+    let dentro = 0;
+    for (let iy = 0; iy < ny; iy++) {
+      const y = y1 + (iy + 0.5) * passo;
+      for (let ix = 0; ix < nx; ix++) {
+        const x = x1 + (ix + 0.5) * passo;
+        for (let k = 0; k < caixas.length; k++) {
+          const c = caixas[k];
+          if (x < c[0] || x > c[2] || y < c[1] || y > c[3]) continue;
+          if (Croqui._dentroXY([x, y], projs[k])) { bits[iy * nx + ix] = 1; dentro++; break; }
+        }
+      }
+    }
+    const m = { mLng, x1, y1, passo, nx, ny, bits, area_ha: dentro * passo * passo / 10000 };
+    Croqui._mascaraCache = { chave, m };
+    return m;
+  },
+  /** Área (ha) de `pontos` coberta pela união (espelho de CroquiService::descontoMascara). */
+  _descontoMascara(pontos, m) {
+    if (!pontos || pontos.length < 3 || !m.nx || !m.ny) return 0;
+    const pp = pontos.map(q => [Number(q[1]) * m.mLng, -Number(q[0]) * 110574]);
+    const xs = pp.map(p => p[0]), ys = pp.map(p => p[1]);
+    const ix1 = Math.max(0, Math.floor((Math.min(...xs) - m.x1) / m.passo)), ix2 = Math.min(m.nx - 1, Math.floor((Math.max(...xs) - m.x1) / m.passo));
+    const iy1 = Math.max(0, Math.floor((Math.min(...ys) - m.y1) / m.passo)), iy2 = Math.min(m.ny - 1, Math.floor((Math.max(...ys) - m.y1) / m.passo));
+    let n = 0;
+    for (let iy = iy1; iy <= iy2; iy++) {
+      const y = m.y1 + (iy + 0.5) * m.passo, base = iy * m.nx;
+      for (let ix = ix1; ix <= ix2; ix++) {
+        if (m.bits[base + ix] && Croqui._dentroXY([m.x1 + (ix + 0.5) * m.passo, y], pp)) n++;
+      }
+    }
+    return n * m.passo * m.passo / 10000;
   },
   /**
    * Área (ha) da interseção de dois polígonos [[lat,lng],...] — espelho de
@@ -1298,7 +1511,7 @@ const Croqui = {
     Croqui.outros = dados.outros || [];
     Croqui.talhoes = dados.talhoes;
     Croqui.areasPlantio = dados.areas_plantio || [];
-    Croqui.exclusoes = dados.areas_nao_plantio || [];
+    Croqui.exclusoes = dados.areas_nao_plantio || []; Croqui._carregarCamadasCar(dados);
     if (dados.tipos_nao_plantio) Croqui.tiposExclusao = dados.tipos_nao_plantio;
     if (dados.usos_area) Croqui.usosArea = dados.usos_area;
     Croqui.culturas = dados.culturas || [];
@@ -1310,6 +1523,8 @@ const Croqui = {
       + (Croqui.outros.length || dados.imovel.nome ? ' · ' + dados.imovel.rotulo : ''); // só o apelido (o nº do CAR fica na ficha)
     // pré-preenche o "Ir para" com o endereço do produtor (município/UF/linha)
     Croqui._setIrPara(dados.imovel.municipio || dados.propriedade.municipio, dados.propriedade.estado, dados.propriedade.linha);
+    // v48 (aba Talhões → "Delimitar"): a área escolhida é o limite preferido do talhão novo
+    Croqui._areaPreferida = Number(opts.areaId || 0);
     // Fluxo guiado: abre na primeira etapa pendente (sem divisa → 1; sem área → 2; senão 3)
     Croqui.etapa = opts.novoTalhao && Croqui.areasPlantio.length ? 3 : Croqui._etapaMinima();
     let alvoInicial = 0;
@@ -1345,7 +1560,9 @@ const Croqui = {
       Croqui._autoMostrarCar();
       // "+ Talhão" na ficha: já entra no modo "novo talhão" (desenha, depois dá o nome)
       if (opts.novoTalhao) {
-        if (Croqui.etapa === 3) App.alerta('Toque dentro de uma área de plantio para marcar os cantos do talhão. Ao salvar, você dá o nome, a cultura e a finalidade.', 'info');
+        const areaPref = Croqui._areaPreferida ? Croqui.areasPlantio.find(a => Number(a.id) === Croqui._areaPreferida) : null;
+        if (Croqui.etapa === 3 && areaPref) App.alerta(`Toque dentro da área "${areaPref.nome}" (laranja) para marcar os cantos do talhão. Ao salvar, você dá o nome, a cultura, o cultivar e a finalidade.`, 'info');
+        else if (Croqui.etapa === 3) App.alerta('Toque dentro de uma área de plantio para marcar os cantos do talhão. Ao salvar, você dá o nome, a cultura e a finalidade.', 'info');
         else App.alerta(Croqui.etapa === 1 ? 'Antes do talhão: traga a divisa do CAR (etapa 1) e marque as áreas de plantio (etapa 2).' : 'Antes do talhão: marque ao menos uma área de plantio (etapa 2). O talhão é desenhado dentro dela.', 'warning');
       }
       Croqui._carLayerNoLimite(Croqui.atualId === 0);
@@ -1499,7 +1716,7 @@ const Croqui = {
       Croqui.outros = dados.outros || [];
       Croqui.talhoes = dados.talhoes;
       Croqui.areasPlantio = dados.areas_plantio || [];
-      Croqui.exclusoes = dados.areas_nao_plantio || [];
+      Croqui.exclusoes = dados.areas_nao_plantio || []; Croqui._carregarCamadasCar(dados);
     } catch (e) { App.alerta(e.message, 'danger'); return; }
     Croqui.etapa = Croqui._etapaDe(alvo);
     Croqui._montarSelect(alvo);
@@ -2214,7 +2431,10 @@ const Croqui = {
   fechar() {
     Croqui._pararGPS();
     const m = document.getElementById('modalCroqui'); if (m) m.classList.remove('croqui-cheio');
-    if (typeof Clientes !== 'undefined' && Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId);
+    // v48: croqui aberto pelo "Delimitar" da aba Talhões volta para ela; senão, Propriedades
+    const aba = Croqui._areaPreferida ? 'abaTalhoes' : 'abaPropriedades';
+    Croqui._areaPreferida = 0;
+    if (typeof Clientes !== 'undefined' && Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId, aba);
   },
 
   _distM(a, b) {
@@ -2341,9 +2561,10 @@ const Croqui = {
     }
     // 4) v46: área de não plantio dentro de OUTRA área de não plantio → mesma regra
     //    (pode ficar dentro de área de plantio/talhão: é um buraco descontado)
-    if (Croqui._ehExclusao(Croqui.atualId)) {
+    //    v49: camadas do CAR se sobrepõem por natureza (APP dentro da mata) — ficam fora da regra
+    if (Croqui._ehExclusao(Croqui.atualId) && !Croqui._ehExclusaoCar(Croqui._exclusaoDe(Croqui.atualId))) {
       for (const x of Croqui.exclusoes) {
-        if (Croqui._alvoExclusao(x.id) === Croqui.atualId) continue;
+        if (Croqui._alvoExclusao(x.id) === Croqui.atualId || Croqui._ehExclusaoCar(x)) continue;
         const pts = Croqui._contornoDe(Croqui._alvoExclusao(x.id));
         if (pts.length >= 3 && Croqui._dentroDe(p, pts)) p = Croqui._bordaMaisProxima(p, pts);
       }
@@ -2362,7 +2583,8 @@ const Croqui = {
     const areas = Croqui.areasPlantio.filter(a => Croqui._contornoDe(Croqui._alvoPlantio(a.id)).length >= 3);
     if (!areas.length) return null;
     const t = Croqui.talhoes.find(x => Number(x.id) === Croqui.atualId);
-    const preferida = t ? Number(t.area_plantio_id || 0) : 0;
+    // v48: talhão NOVO vindo de "Delimitar" na aba Talhões prefere a área escolhida lá
+    const preferida = t ? Number(t.area_plantio_id || 0) : (Croqui.atualId === Croqui.NOVO_ID ? Number(Croqui._areaPreferida || 0) : 0);
     if (pontos && pontos.length) {
       let melhor = null, melhorN = 0;
       for (const a of areas) {
@@ -2732,7 +2954,9 @@ const Croqui = {
       if (Croqui._ehTalhao(Croqui.atualId) && !lim && Croqui.pontos.length) { fora = Croqui.pontos.map((_, i) => i); semLimite = true; }
       // REGRA (teste de campo): nenhuma LINHA sai do limite — mesmo com os dois
       // pontos dentro, uma aresta que atravessa uma reentrância fica vermelha
-      const linhasFora = divisa.length >= 3 ? Croqui._linhasFora(Croqui.pontos, divisa) : [];
+      // v49: camada do CAR margeia a divisa oficial — aresta coincidente daria falso "linha fora"
+      const linhasFora = divisa.length >= 3 && !(Croqui._ehExclusao(Croqui.atualId) && Croqui._ehExclusaoCar(Croqui._exclusaoDe(Croqui.atualId)))
+        ? Croqui._linhasFora(Croqui.pontos, divisa) : [];
       if (Croqui._ehPlantio(Croqui.atualId)) {
         // v44: uma área de plantio NÃO cobre outra (mesma regra dos talhões)
         Croqui.areasPlantio.forEach(a => {
@@ -2757,9 +2981,11 @@ const Croqui = {
           });
         }
       } else if (Croqui._ehExclusao(Croqui.atualId)) {
-        // v46: uma área de não plantio NÃO cobre outra (pode ficar dentro de plantio/talhão)
+        // v46: uma área de não plantio NÃO cobre outra (pode ficar dentro de plantio/talhão);
+        // v49: camadas do CAR ficam fora da regra (se sobrepõem — desconto por união)
+        const souCar = Croqui._ehExclusaoCar(Croqui._exclusaoDe(Croqui.atualId));
         Croqui.exclusoes.forEach(x => {
-          if (Croqui._alvoExclusao(x.id) === Croqui.atualId) return;
+          if (Croqui._alvoExclusao(x.id) === Croqui.atualId || souCar || Croqui._ehExclusaoCar(x)) return;
           const pts = Croqui._contornoDe(Croqui._alvoExclusao(x.id));
           if (pts.length < 3) return;
           fora = fora.concat(Croqui._pontosDentroDe(Croqui.pontos, pts));
@@ -2792,6 +3018,7 @@ const Croqui = {
         if (pts.length >= 3 && Croqui._pontosFora(pts, Croqui.pontos).length) talhoesFora.push('área de plantio "' + a.nome + '"');
       });
       Croqui.exclusoes.forEach(x => {
+        if (Croqui._ehExclusaoCar(x)) return; // v49: camada do CAR margeia a divisa oficial — não prende o ajuste
         const pts = Croqui._contornoDe(Croqui._alvoExclusao(x.id));
         if (pts.length >= 3 && Croqui._pontosFora(pts, Croqui.pontos).length) talhoesFora.push('área de não plantio "' + x.nome + '"');
       });
@@ -3235,6 +3462,9 @@ const Croqui = {
         ? '<span><span class="croqui-cor" style="background:#ffd400"></span>Imóveis do CAR (toque p/ adotar)</span>'
         : '<span><span class="croqui-cor" style="background:#ffd400;opacity:.5"></span>CAR (só referência)</span>');
     }
+    // v50: feições ambientais do zip do SICAR ligadas no painel "Camadas do CAR" — referência,
+    // sob a divisa e sem capturar o toque
+    svg += Croqui._svgCamadasCar(larg, alt, legenda);
     // Outros imóveis (CAR) da mesma propriedade — contexto apagado, não editáveis (v40)
     if (Croqui.outros.length) {
       Croqui.outros.forEach(o => {
@@ -3323,8 +3553,11 @@ const Croqui = {
       const tela = pts.map(p => Croqui._paraTela(p, larg, alt));
       svg += `<polygon points="${tela.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ')}"
                 fill="url(#croquiHachura)" fill-opacity=".6" stroke="${Croqui.COR_EXCLUSAO}" stroke-width="2" stroke-dasharray="3 3"/>`;
-      const cx = tela.reduce((s, p) => s + p[0], 0) / tela.length, cy = tela.reduce((s, p) => s + p[1], 0) / tela.length;
-      svg += `<text x="${cx.toFixed(1)}" y="${cy.toFixed(1)}" text-anchor="middle" class="croqui-rotulo" style="fill:#3e2723">${Croqui.ICONE_EXCLUSAO[x.tipo] || '⛔'} ${App.escapeHtml(x.nome)}</text>`;
+      // v50: camada do CAR (dezenas de partes) fica só hachurada — o nome está no seletor/painel
+      if (!Croqui._ehExclusaoCar(x)) {
+        const cx = tela.reduce((s, p) => s + p[0], 0) / tela.length, cy = tela.reduce((s, p) => s + p[1], 0) / tela.length;
+        svg += `<text x="${cx.toFixed(1)}" y="${cy.toFixed(1)}" text-anchor="middle" class="croqui-rotulo" style="fill:#3e2723">${Croqui.ICONE_EXCLUSAO[x.tipo] || '⛔'} ${App.escapeHtml(x.nome)}</text>`;
+      }
       exclusoesDesenhadas++;
     });
     if (exclusoesDesenhadas) legenda.push(`<span><span class="croqui-cor" style="background:repeating-linear-gradient(45deg,${Croqui.COR_EXCLUSAO} 0 2px,#fff 2px 4px)"></span>Não plantio (descontado)</span>`);
@@ -3347,14 +3580,16 @@ const Croqui = {
       });
       // Realce (anel branco) do ponto tocado uma vez — feedback do "toque de novo para remover".
       const sel = Croqui._selecionado !== null && Croqui._selecionado < tela.length ? Croqui._selecionado : null;
+      // v50: polígono vindo do CAR tem centenas de vértices — alças menores para não virar um borrão
+      const rAlca = tela.length > 80 ? 5 : 9, wAlca = tela.length > 80 ? 1.5 : 3;
       tela.forEach((p, i) => {
         const invalido = foraSet.has(i); // ponto fora da divisa da propriedade
         if (i === sel) {
           svg += `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="15" fill="none" stroke="#fff" stroke-width="2.5" stroke-opacity=".95"/>`;
         }
-        svg += `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="9" class="croqui-vertice" data-idx="${i}"
+        svg += `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${rAlca}" class="croqui-vertice" data-idx="${i}"
                   fill="${invalido ? '#dc3545' : (i === 0 ? '#fff' : corAtual)}"
-                  stroke="${invalido ? '#7a121f' : '#0a5b6b'}" stroke-width="3"/>`;
+                  stroke="${invalido ? '#7a121f' : '#0a5b6b'}" stroke-width="${wAlca}"/>`;
       });
       const rotuloEdicao = Croqui.atualId === 0 ? 'Divisa (seu ajuste)'
         : (Croqui._ehPlantio(Croqui.atualId) ? 'Área de plantio (desenhando)' : (Croqui._ehExclusao(Croqui.atualId) ? 'Área de não plantio (desenhando)' : 'Talhão (desenhando)'));

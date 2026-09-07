@@ -735,6 +735,122 @@ class CroquiService
         return round($dentro * $passo * $passo / 10000, 4);
     }
 
+    /* =====================================================================
+     * v49 — UNIÃO das áreas de não plantio. As camadas ambientais do CAR se
+     * sobrepõem (a APP fica dentro da vegetação nativa; a reserva legal também),
+     * então somar interseção por interseção contaria a mesma mata duas vezes.
+     * Solução sem biblioteca de geometria: rasteriza a união numa grade (máscara)
+     * e conta as células dentro de cada polígono. Só entra em ação quando alguma
+     * caixa se sobrepõe a outra — desenhos à mão (que não se cobrem) seguem no
+     * cálculo exato de antes. Espelho de Croqui._mascaraUniao/_descontoMascara.
+     * ===================================================================== */
+
+    /** Alguma caixa envolvente de $poligonos ([[lat,lng],...][]) toca outra? */
+    public static function caixasSobrepoem(array $poligonos): bool
+    {
+        $caixas = [];
+        foreach ($poligonos as $pol) {
+            if (count($pol) < 3) {
+                continue;
+            }
+            $lats = array_column($pol, 0);
+            $lngs = array_column($pol, 1);
+            $caixas[] = [min($lats), min($lngs), max($lats), max($lngs)];
+        }
+        $n = count($caixas);
+        for ($i = 0; $i < $n; $i++) {
+            for ($j = $i + 1; $j < $n; $j++) {
+                [$a1, $b1, $a2, $b2] = $caixas[$i];
+                [$c1, $d1, $c2, $d2] = $caixas[$j];
+                if (!($a2 < $c1 || $c2 < $a1 || $b2 < $d1 || $d2 < $b1)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Máscara (grade) da união dos polígonos: ['lat0','mLng','x1','y1','passo','nx','ny',
+     * 'bits' (string "0"/"1" por célula), 'area_ha' (da união)]. ~$alvoCelulas células
+     * sobre a caixa comum (passo entre 1 e 30 m).
+     */
+    public static function mascaraUniao(array $poligonos, int $alvoCelulas = 30000): array
+    {
+        $pols = array_values(array_filter($poligonos, fn ($p) => count($p) >= 3));
+        if (!$pols) {
+            return ['lat0' => 0.0, 'mLng' => 111320.0, 'x1' => 0.0, 'y1' => 0.0, 'passo' => 1.0, 'nx' => 0, 'ny' => 0, 'bits' => '', 'area_ha' => 0.0];
+        }
+        $todos = array_merge(...$pols);
+        $lat0 = array_sum(array_column($todos, 0)) / count($todos);
+        $mLat = 110574.0;
+        $mLng = 111320.0 * cos(deg2rad($lat0));
+        $proj = fn ($p) => [$p[1] * $mLng, -$p[0] * $mLat];
+        $projs = [];
+        $caixas = [];
+        $x1 = INF; $y1 = INF; $x2 = -INF; $y2 = -INF;
+        foreach ($pols as $pol) {
+            $pp = array_map($proj, $pol);
+            $xs = array_column($pp, 0);
+            $ys = array_column($pp, 1);
+            $c = [min($xs), min($ys), max($xs), max($ys)];
+            $projs[] = $pp;
+            $caixas[] = $c;
+            $x1 = min($x1, $c[0]); $y1 = min($y1, $c[1]); $x2 = max($x2, $c[2]); $y2 = max($y2, $c[3]);
+        }
+        $passo = max(1.0, min(30.0, sqrt(max(1.0, ($x2 - $x1) * ($y2 - $y1)) / $alvoCelulas)));
+        $nx = (int) ceil(($x2 - $x1) / $passo);
+        $ny = (int) ceil(($y2 - $y1) / $passo);
+        $bits = str_repeat('0', $nx * $ny);
+        $dentro = 0;
+        for ($iy = 0; $iy < $ny; $iy++) {
+            $y = $y1 + ($iy + 0.5) * $passo;
+            for ($ix = 0; $ix < $nx; $ix++) {
+                $x = $x1 + ($ix + 0.5) * $passo;
+                foreach ($caixas as $k => $c) {
+                    if ($x < $c[0] || $x > $c[2] || $y < $c[1] || $y > $c[3]) {
+                        continue;
+                    }
+                    if (self::dentro([$x, $y], $projs[$k])) {
+                        $bits[$iy * $nx + $ix] = '1';
+                        $dentro++;
+                        break;
+                    }
+                }
+            }
+        }
+        return ['lat0' => $lat0, 'mLng' => $mLng, 'x1' => $x1, 'y1' => $y1, 'passo' => $passo, 'nx' => $nx, 'ny' => $ny,
+            'bits' => $bits, 'area_ha' => round($dentro * $passo * $passo / 10000, 2)];
+    }
+
+    /** Área (ha) de $pontos coberta pela união (máscara de mascaraUniao). */
+    public static function descontoMascara(array $pontos, array $m): float
+    {
+        if (count($pontos) < 3 || $m['nx'] <= 0 || $m['ny'] <= 0) {
+            return 0.0;
+        }
+        $mLat = 110574.0;
+        $pp = array_map(fn ($p) => [$p[1] * $m['mLng'], -$p[0] * $mLat], $pontos);
+        $xs = array_column($pp, 0);
+        $ys = array_column($pp, 1);
+        $passo = $m['passo'];
+        $ix1 = max(0, (int) floor((min($xs) - $m['x1']) / $passo));
+        $ix2 = min($m['nx'] - 1, (int) floor((max($xs) - $m['x1']) / $passo));
+        $iy1 = max(0, (int) floor((min($ys) - $m['y1']) / $passo));
+        $iy2 = min($m['ny'] - 1, (int) floor((max($ys) - $m['y1']) / $passo));
+        $n = 0;
+        for ($iy = $iy1; $iy <= $iy2; $iy++) {
+            $base = $iy * $m['nx'];
+            $y = $m['y1'] + ($iy + 0.5) * $passo;
+            for ($ix = $ix1; $ix <= $ix2; $ix++) {
+                if ($m['bits'][$base + $ix] === '1' && self::dentro([$m['x1'] + ($ix + 0.5) * $passo, $y], $pp)) {
+                    $n++;
+                }
+            }
+        }
+        return round($n * $passo * $passo / 10000, 2);
+    }
+
     /**
      * SVG estático do croqui de uma propriedade (ficha/impressão): polígonos
      * coloridos com rótulo (nome + ha) + barra de escala. $talhoes precisa de
@@ -774,7 +890,8 @@ class CroquiService
             foreach ($propriedade['areas_nao_plantio'] as $x) {
                 $d = json_decode((string) ($x['contorno'] ?? ''), true);
                 if (is_array($d) && count($d) >= 3) {
-                    $exclusoes[] = ['nome' => (string) ($x['nome'] ?? ''), 'pontos' => $d];
+                    // v49: camada do CAR (dezenas de partes) fica só hachurada — rótulo por parte vira borrão
+                    $exclusoes[] = ['nome' => ($x['origem'] ?? 'manual') === 'car' ? '' : (string) ($x['nome'] ?? ''), 'pontos' => $d];
                 }
             }
         }

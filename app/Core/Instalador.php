@@ -1172,6 +1172,76 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '47'"
             );
         }
+        if ($versao < 48) {
+            // Aba "Talhões" (pedido do teste de campo): talhão lançado por ÁREA com cultura,
+            // CULTIVAR e finalidade; finalidades "Perene" e "Reflorestamento" para as áreas desse uso.
+            if (!self::temColuna('talhoes', 'cultivar')) {
+                Database::executar('ALTER TABLE talhoes ADD COLUMN cultivar VARCHAR(80) NULL AFTER cultura_id');
+            }
+            foreach ([['Perene', 6], ['Reflorestamento', 7]] as [$nome, $ordem]) {
+                if (!Database::valor('SELECT 1 FROM finalidades WHERE nome = ?', [$nome])) {
+                    Database::executar('INSERT INTO finalidades (nome, ordem) VALUES (?, ?)', [$nome, $ordem]);
+                }
+            }
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '48')
+                 ON DUPLICATE KEY UPDATE valor = '48'"
+            );
+        }
+        if ($versao < 49) {
+            // Camadas ambientais do CAR (pedido do teste de campo): APP, Reserva Legal, Vegetação
+            // nativa e Servidão do zip do SICAR viram áreas de não plantio (origem 'car', com o tema).
+            // Elas se SOBREPÕEM (APP dentro da vegetação nativa), então o desconto passa a ser por
+            // UNIÃO — com cache da área líquida por área de plantio e do não plantio por imóvel.
+            if (!self::temColuna('areas_nao_plantio', 'origem')) {
+                Database::executar("ALTER TABLE areas_nao_plantio ADD COLUMN origem VARCHAR(10) NOT NULL DEFAULT 'manual' AFTER area_gps");
+            }
+            if (!self::temColuna('areas_nao_plantio', 'tema')) {
+                Database::executar('ALTER TABLE areas_nao_plantio ADD COLUMN tema VARCHAR(160) NULL AFTER origem');
+            }
+            if (!self::temColuna('areas_plantio', 'area_liquida')) {
+                Database::executar('ALTER TABLE areas_plantio ADD COLUMN area_liquida DECIMAL(10,2) NULL AFTER area_gps');
+            }
+            if (!self::temColuna('imoveis', 'nao_plantio_ha')) {
+                Database::executar('ALTER TABLE imoveis ADD COLUMN nao_plantio_ha DECIMAL(10,2) NULL AFTER area_plantio_gps');
+            }
+            // Backfill dos caches nos imóveis que já têm áreas de não plantio (poucos; sem exclusão o cálculo é direto)
+            try {
+                foreach (Database::todos('SELECT DISTINCT imovel_id FROM areas_nao_plantio') as $r) {
+                    \App\Services\AreaPlantioService::sincronizarLiquidas((int) $r['imovel_id']);
+                }
+            } catch (\Throwable $e) {
+                error_log('migração v49: backfill das áreas líquidas falhou: ' . $e->getMessage());
+            }
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '49')
+                 ON DUPLICATE KEY UPDATE valor = '49'"
+            );
+        }
+        if ($versao < 50) {
+            // Todas as feições ambientais do zip do SICAR no mapa (pedido do teste de campo:
+            // "implemente todas as opções desse arquivo no mapa") — referência ligável no croqui
+            // e lista na ficha; reimportar o CAR substitui.
+            Database::executar(
+                'CREATE TABLE IF NOT EXISTS imovel_camadas_car (
+                   id INT AUTO_INCREMENT PRIMARY KEY,
+                   imovel_id INT NOT NULL,
+                   camada VARCHAR(60) NOT NULL,
+                   classe VARCHAR(30) NOT NULL,
+                   tema VARCHAR(160) NULL,
+                   geom_tipo VARCHAR(10) NOT NULL DEFAULT \'poligono\',
+                   geometria MEDIUMTEXT NOT NULL,
+                   area_ha DECIMAL(10,2) NULL,
+                   ordem INT NOT NULL DEFAULT 0,
+                   INDEX idx_imovel_camadas_car (imovel_id),
+                   FOREIGN KEY (imovel_id) REFERENCES imoveis(id) ON DELETE CASCADE
+                 ) ENGINE=InnoDB'
+            );
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '50')
+                 ON DUPLICATE KEY UPDATE valor = '50'"
+            );
+        }
     }
 
     /** Apaga cópias idênticas de talhão (mantém a de menor id), poupando as que têm histórico. */
