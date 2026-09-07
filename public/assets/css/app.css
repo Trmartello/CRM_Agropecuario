@@ -349,3 +349,11 @@ body.voz-suportada .campo-voz .btn-voz { display: inline-flex; }
 }
 .select-busca-lista .list-group-item { padding: .65rem .75rem; font-size: 1rem; }
 .select-busca-lista .list-group-item-action.active { background: var(--verde-claro); border-color: var(--verde-claro); }
+
+/* Croqui — fluxo guiado em etapas (v45): 1 Divisa → 2 Áreas de plantio → 3 Talhões */
+.croqui-etapas .btn { font-weight: 600; }
+.croqui-etapas .btn .croqui-etapa-icone { font-size: .85em; }
+@media (max-width: 575.98px) {
+  .croqui-etapas .btn-group { flex-wrap: wrap; }
+  .croqui-etapas .btn { font-size: .78rem; padding: .3rem .45rem; }
+}

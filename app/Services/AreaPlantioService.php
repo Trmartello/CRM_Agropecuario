@@ -105,6 +105,31 @@ class AreaPlantioService
     }
 
     /**
+     * v45: a área de plantio que HOSPEDA um desenho de talhão — a que contém mais
+     * vértices (tolerância curta); empate → $preferidaId (o vínculo já gravado),
+     * senão a primeira. Null se nenhuma área contém vértice algum. $areas = linhas
+     * de areas_plantio (id, nome, contorno).
+     */
+    public static function areaHospedeira(array $pontos, array $areas, ?int $preferidaId = null): ?array
+    {
+        $melhor = null;
+        $melhorN = 0;
+        foreach ($areas as $a) {
+            $pol = json_decode((string) ($a['contorno'] ?? ''), true) ?: [];
+            if (count($pol) < 3) {
+                continue;
+            }
+            $fora = CroquiService::pontosFora($pontos, $pol, CroquiService::TOLERANCIA_SOBREPOSICAO_M);
+            $dentro = count($pontos) - count($fora);
+            if ($dentro > $melhorN || ($dentro === $melhorN && $dentro > 0 && $preferidaId !== null && (int) $a['id'] === $preferidaId)) {
+                $melhor = $a;
+                $melhorN = $dentro;
+            }
+        }
+        return $melhorN > 0 ? $melhor : null;
+    }
+
+    /**
      * Pontos de $pontos que ficam FORA de TODAS as áreas de plantio ([[lat,lng],...][]):
      * um talhão está "dentro da área de plantio" quando cada vértice cai em alguma
      * das áreas. Sem área nenhuma, nada fica fora (a área de plantio é o imóvel inteiro).

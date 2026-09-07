@@ -7,6 +7,19 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button><!-- Croqui.fechar() roda no hidden.bs.modal (cobre Esc também) -->
       </div>
       <div class="modal-body d-flex flex-column p-2 gap-2">
+        <?php /* FLUXO GUIADO (v45): 1 Divisa (CAR ajustado) → 2 Áreas de plantio (dentro da divisa) → 3 Talhões (dentro de uma área) */ ?>
+        <div class="d-flex flex-wrap align-items-center gap-1 croqui-etapas">
+          <div class="btn-group btn-group-sm" role="group" aria-label="Etapas do croqui">
+            <button type="button" class="btn btn-outline-secondary" id="croquiEtapa1" onclick="Croqui.irEtapa(1)"><i class="croqui-etapa-icone bi bi-circle me-1"></i>1 Divisa (CAR)</button>
+            <button type="button" class="btn btn-outline-secondary" id="croquiEtapa2" onclick="Croqui.irEtapa(2)"><i class="croqui-etapa-icone bi bi-circle me-1"></i>2 Áreas de plantio</button>
+            <button type="button" class="btn btn-outline-secondary" id="croquiEtapa3" onclick="Croqui.irEtapa(3)"><i class="croqui-etapa-icone bi bi-circle me-1"></i>3 Talhões</button>
+          </div>
+          <div class="ms-auto d-flex gap-1">
+            <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="croquiEtapaAnterior" onclick="Croqui.irEtapa(Croqui.etapa - 1)"><i class="bi bi-arrow-left"></i> Voltar</button>
+            <button type="button" class="btn btn-sm btn-outline-success d-none" id="croquiEtapaProxima" onclick="Croqui.irEtapa(Croqui.etapa + 1)">Próxima etapa <i class="bi bi-arrow-right"></i></button>
+          </div>
+        </div>
+        <div class="small text-muted" id="croquiEtapaDica"></div>
         <div class="d-flex flex-wrap align-items-center gap-2">
           <select id="croquiTalhao" class="form-select form-select-sm" style="max-width:230px" onchange="Croqui.trocarTalhao()"></select>
           <?php /* Rádios do MODO ficam escondidos: o GPS (trocarModo) e o toque no mapa leem o estado deles.
@@ -23,7 +36,7 @@
           </div>
           <span id="croquiGpsStatus" class="badge text-bg-light border d-none"></span>
           <?php /* CAR: "CAR no mapa" é o principal (fica ativo sozinho quando há base na região); os demais no menu. */ ?>
-          <div class="btn-group btn-group-sm" role="group" title="Divisa oficial do CAR">
+          <div class="btn-group btn-group-sm" role="group" title="Divisa oficial do CAR" id="croquiCarGrupo">
             <button type="button" id="croquiCarMapaBtn" class="btn btn-outline-warning" onclick="Croqui.toggleCarLayer()"
                     title="Mostrar os imóveis do CAR no mapa e tocar na área do produtor para adotar a divisa"><i class="bi bi-grid-3x3-gap me-1"></i>CAR no mapa</button>
             <button type="button" class="btn btn-outline-warning dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false"><span class="visually-hidden">Mais opções do CAR</span></button>
@@ -80,10 +93,9 @@
           <div id="croquiLegenda" class="d-flex flex-wrap gap-2 small ms-auto"></div>
         </div>
         <div class="small text-muted">
-          <i class="bi bi-info-circle me-1"></i>No seletor, escolha <strong>Divisa do imóvel (CAR)</strong> para a área total,
-          <strong>Nova área de plantio</strong> para marcar cada pedaço que dá para plantar dentro dela (verde tracejado — pode haver várias: Campo, Morro…), ou um <strong>talhão</strong>
-          para a área de cada cultura. <strong>Manual</strong>: toque sobre a imagem de satélite para marcar cada canto (arraste o mapa para navegar,
-          use +/− ou a roda do mouse para o zoom, <strong>⤢ para o mapa ocupar a tela toda</strong>, arraste um ponto para ajustar, dê <strong>dois toques sobre a linha ciano para inserir um ponto</strong> ali e refinar, e <strong>dois toques em um ponto para removê-lo</strong>. A divisa que você desenha/ajusta fica em <strong>ciano</strong>; as linhas do CAR ficam em amarelo (com o <em>CAR no mapa</em> ligado, tocar dentro de um imóvel amarelo adota aquela divisa). Ao desenhar a <strong>área de plantio ou um talhão</strong>, o limite é a <strong>divisa salva</strong> (laranja) — a sua marcação, não o CAR: pontos fora dela são puxados para a borda e o <em>CAR no mapa</em> desliga sozinho (ligue-o de novo só como referência). <strong>Caminhar a divisa</strong>: ande pelo perímetro —
+          <i class="bi bi-info-circle me-1"></i>O croqui segue <strong>três etapas presas uma à outra</strong>: a divisa do CAR ajustada por você é o limite das áreas de plantio, e cada área de plantio é o limite dos seus talhões — pontos fora são puxados para a borda e nenhuma linha atravessa o limite (laranja).
+          <strong>Manual</strong>: toque sobre a imagem de satélite para marcar cada canto (arraste o mapa para navegar,
+          use +/− ou a roda do mouse para o zoom, <strong>⤢ para o mapa ocupar a tela toda</strong>, arraste um ponto para ajustar, dê <strong>dois toques sobre a linha ciano para inserir um ponto</strong> ali e refinar, e <strong>dois toques em um ponto para removê-lo</strong>). O que você desenha fica em <strong>ciano</strong>; as linhas do CAR ficam em amarelo (na etapa 1, com o <em>CAR no mapa</em> ligado, tocar dentro de um imóvel amarelo adota aquela divisa). <strong>Caminhar a divisa</strong>: ande pelo perímetro —
           o app marca um ponto a cada ~10 m pelo GPS, mesmo sem sinal (o salvar entra na fila).
           <strong>Sem sinal na propriedade?</strong> Antes de sair, com wi-fi, enquadre a área e toque em <strong>Baixar mapa</strong>:
           a imagem de satélite fica guardada no aparelho e o mapa abre no campo mesmo sem internet.

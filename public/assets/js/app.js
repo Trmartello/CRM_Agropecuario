@@ -1152,6 +1152,12 @@ const Croqui = {
   talhoes: [],
   tiles: null,
   atualId: 0,          // 0 = divisa do IMÓVEL (CAR); -1 = ÁREA DE PLANTIO do imóvel; >0 = talhão
+  /**
+   * FLUXO GUIADO (v45, pedido do teste de campo): 1 Divisa do imóvel (CAR ajustado
+   * pelo usuário) → 2 Áreas de plantio (dentro da divisa) → 3 Talhões (dentro de UMA
+   * área de plantio). Cada camada é presa à anterior; o seletor mostra só os alvos da etapa.
+   */
+  etapa: 1,
   PLANTIO_ID: -1, // "Nova área de plantio (desenhar)" — v44: as áreas gravadas são alvos -(PLANTIO_BASE + id)
   PLANTIO_BASE: 1000,
   areasPlantio: [],
@@ -1221,9 +1227,14 @@ const Croqui = {
       + (Croqui.outros.length || dados.imovel.nome ? ' · ' + dados.imovel.rotulo : ''); // só o apelido (o nº do CAR fica na ficha)
     // pré-preenche o "Ir para" com o endereço do produtor (município/UF/linha)
     Croqui._setIrPara(dados.imovel.municipio || dados.propriedade.municipio, dados.propriedade.estado, dados.propriedade.linha);
-    Croqui._montarSelect();
-    Croqui.atualId = 0; // começa pela divisa do imóvel (área total)
-    Croqui.pontos = Croqui._contornoDe(0);
+    // Fluxo guiado: abre na primeira etapa pendente (sem divisa → 1; sem área → 2; senão 3)
+    Croqui.etapa = opts.novoTalhao && Croqui.areasPlantio.length ? 3 : Croqui._etapaMinima();
+    let alvoInicial = 0;
+    if (Croqui.etapa === 2) alvoInicial = Croqui.areasPlantio.length ? Croqui._alvoPlantio(Croqui.areasPlantio[0].id) : Croqui.PLANTIO_ID;
+    else if (Croqui.etapa === 3) { const t = Croqui.talhoes.find(x => Croqui._contornoDe(x.id).length >= 3) || Croqui.talhoes[0]; alvoInicial = opts.novoTalhao ? Croqui.NOVO_ID : (t ? Number(t.id) : Croqui.NOVO_ID); }
+    Croqui._montarSelect(alvoInicial);
+    Croqui.atualId = alvoInicial;
+    Croqui.pontos = Croqui._contornoDe(alvoInicial);
     Croqui._carCod = '';
     Croqui._selecionado = null;
     Croqui.carLayer = []; Croqui.carLayerOn = false; Croqui._carLayerCentro = null;
@@ -1251,10 +1262,10 @@ const Croqui = {
       Croqui._autoMostrarCar();
       // "+ Talhão" na ficha: já entra no modo "novo talhão" (desenha, depois dá o nome)
       if (opts.novoTalhao) {
-        document.getElementById('croquiTalhao').value = String(Croqui.NOVO_ID);
-        Croqui.trocarTalhao(); // sem divisa do CAR, o próprio trocarTalhao avisa e fica na divisa
-        if (Croqui.atualId === Croqui.NOVO_ID) App.alerta('Toque nos cantos do talhão sobre o satélite. Ao salvar, você dá o nome, a cultura e a finalidade.', 'info');
+        if (Croqui.etapa === 3) App.alerta('Toque dentro de uma área de plantio para marcar os cantos do talhão. Ao salvar, você dá o nome, a cultura e a finalidade.', 'info');
+        else App.alerta(Croqui.etapa === 1 ? 'Antes do talhão: traga a divisa do CAR (etapa 1) e marque as áreas de plantio (etapa 2).' : 'Antes do talhão: marque ao menos uma área de plantio (etapa 2). O talhão é desenhado dentro dela.', 'warning');
       }
+      Croqui._carLayerNoLimite(Croqui.atualId === 0);
     }, 250);
   },
 
@@ -1282,6 +1293,7 @@ const Croqui = {
     const t = Croqui.talhoes.find(x => Number(x.id) === Croqui.atualId);
     if (!t) return;
     if (Croqui._dirty) { App.alerta('Salve (ou desfaça) o ajuste do talhão antes de transformá-lo em área de plantio.', 'warning'); return; }
+    if (!confirm('O desenho deste talhão vai virar uma área de plantio (etapa 2). Continuar?')) return;
     const r = await Clientes._converterTalhaoEmPlantio(t);
     if (r) await Croqui._recarregar(r.plantio_id ? Croqui._alvoPlantio(r.plantio_id) : Croqui.PLANTIO_ID);
   },
@@ -1327,6 +1339,7 @@ const Croqui = {
       Croqui.talhoes = dados.talhoes;
       Croqui.areasPlantio = dados.areas_plantio || [];
     } catch (e) { App.alerta(e.message, 'danger'); return; }
+    Croqui.etapa = Croqui._etapaDe(alvo);
     Croqui._montarSelect(alvo);
     Croqui.atualId = Number(alvo);
     Croqui.pontos = Croqui._contornoDe(Croqui.atualId);
@@ -1339,17 +1352,91 @@ const Croqui = {
     Croqui.render();
   },
 
-  /** Monta o seletor de alvos: divisa, área de plantio, talhões e "novo talhão". */
+  /** Etapa a que um alvo pertence: 1 divisa, 2 área de plantio, 3 talhão. */
+  _etapaDe(alvo) { alvo = Number(alvo); return alvo === 0 ? 1 : (Croqui._ehPlantio(alvo) ? 2 : 3); },
+  /** Primeira etapa pendente do imóvel (onde o croqui abre por padrão). */
+  _etapaMinima() {
+    if (Croqui._contornoDe(0).length < 3) return 1;
+    if (!Croqui.areasPlantio.length) return 2;
+    return 3;
+  },
+  _temDivisa() { return Croqui._contornoDe(0).length >= 3; },
+
+  /** Monta o seletor de alvos SÓ da etapa atual (2: áreas + nova; 3: talhões + novo). */
   _montarSelect(selecionar) {
     const sel = document.getElementById('croquiTalhao');
-    sel.innerHTML = '<option value="0">🏠 Divisa do imóvel (CAR) — área total</option>'
-      + Croqui.areasPlantio.map(a =>
+    if (selecionar !== undefined) Croqui.etapa = Croqui._etapaDe(selecionar);
+    let html = '';
+    if (Croqui.etapa === 1) {
+      html = '<option value="0">🏠 Divisa do imóvel (CAR) — área total</option>';
+    } else if (Croqui.etapa === 2) {
+      html = Croqui.areasPlantio.map(a =>
         `<option value="${Croqui._alvoPlantio(a.id)}">🌱 ${App.escapeHtml(a.nome)} (${Number(a.area_gps || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ha)</option>`).join('')
-      + `<option value="${Croqui.PLANTIO_ID}">🌱➕ Nova área de plantio (desenhar)</option>`
-      + Croqui.talhoes.map(t =>
-      `<option value="${Number(t.id)}">▪ ${App.escapeHtml(t.nome)}${t.cultura ? ' (' + App.escapeHtml(t.cultura) + (t.finalidade ? ' · ' + App.escapeHtml(t.finalidade) : '') + ')' : ''}</option>`).join('')
-      + `<option value="${Croqui.NOVO_ID}">➕ Novo talhão (desenhar)</option>`;
+        + `<option value="${Croqui.PLANTIO_ID}">🌱➕ Nova área de plantio (desenhar)</option>`;
+    } else {
+      html = Croqui.talhoes.map(t =>
+        `<option value="${Number(t.id)}">▪ ${App.escapeHtml(t.nome)}${t.cultura ? ' (' + App.escapeHtml(t.cultura) + (t.finalidade ? ' · ' + App.escapeHtml(t.finalidade) : '') + ')' : ''}</option>`).join('')
+        + `<option value="${Croqui.NOVO_ID}">➕ Novo talhão (desenhar)</option>`;
+    }
+    sel.innerHTML = html;
+    sel.classList.toggle('d-none', Croqui.etapa === 1);
     if (selecionar !== undefined) sel.value = String(selecionar);
+    Croqui._atualizarEtapas();
+  },
+
+  /**
+   * Vai para a etapa n (1 divisa, 2 áreas de plantio, 3 talhões) escolhendo o alvo
+   * padrão dela. Não deixa pular o que ainda falta: sem divisa salva não há etapa 2;
+   * sem área de plantio não há etapa 3.
+   */
+  irEtapa(n, alvo) {
+    n = Number(n);
+    if (Croqui._dirty) {
+      if (!confirm('Há pontos não salvos nesta etapa — descartar e trocar de etapa?')) return;
+      Croqui._dirty = false;
+    }
+    if (n >= 2 && !Croqui._temDivisa()) { App.alerta('Etapa 1 primeiro: traga a divisa do CAR e ajuste os pontos da área total. As áreas de plantio ficam dentro dela.', 'warning'); n = 1; }
+    if (n === 3 && !Croqui.areasPlantio.length) { App.alerta('Etapa 2 primeiro: marque ao menos uma área de plantio. Os talhões ficam dentro das áreas de plantio.', 'warning'); n = 2; }
+    Croqui.etapa = n;
+    if (alvo === undefined) {
+      if (n === 1) alvo = 0;
+      else if (n === 2) alvo = Croqui.areasPlantio.length ? Croqui._alvoPlantio(Croqui.areasPlantio[0].id) : Croqui.PLANTIO_ID;
+      else { const t = Croqui.talhoes.find(x => Croqui._contornoDe(x.id).length >= 3) || Croqui.talhoes[0]; alvo = t ? Number(t.id) : Croqui.NOVO_ID; }
+    }
+    Croqui._montarSelect(alvo);
+    document.getElementById('croquiTalhao').value = String(alvo);
+    Croqui.trocarTalhao();
+  },
+
+  /** Pinta o passo a passo (feito / atual / pendente), a dica da etapa e os botões Voltar/Próxima. */
+  _atualizarEtapas() {
+    const feito = [null, Croqui._temDivisa(), Croqui.areasPlantio.length > 0, Croqui.talhoes.some(t => Croqui._contornoDe(t.id).length >= 3)];
+    [1, 2, 3].forEach(n => {
+      const b = document.getElementById('croquiEtapa' + n);
+      if (!b) return;
+      b.classList.toggle('btn-success', Croqui.etapa === n);
+      b.classList.toggle('btn-outline-success', Croqui.etapa !== n && feito[n]);
+      b.classList.toggle('btn-outline-secondary', Croqui.etapa !== n && !feito[n]);
+      const ic = b.querySelector('.croqui-etapa-icone');
+      if (ic) ic.className = 'croqui-etapa-icone bi ' + (feito[n] ? 'bi-check-circle-fill' : (Croqui.etapa === n ? 'bi-pencil-fill' : 'bi-circle'));
+    });
+    const dicas = {
+      1: '<strong>Etapa 1 — Área total do imóvel.</strong> Traga a divisa do CAR (<em>CAR no mapa</em>, <em>CAR aqui</em> ou <em>CAR pela sede</em>) e <strong>ajuste os pontos</strong> até a linha ciano ser a área real da propriedade. Salve: essa marcação é o limite de tudo que vem depois.',
+      2: '<strong>Etapa 2 — Áreas de plantio.</strong> Dentro da divisa salva (laranja), marque cada pedaço que dá para plantar (Campo, Morro…). Pontos fora da divisa são puxados para a borda e uma área não cobre outra. Salve cada área com um nome.',
+      3: '<strong>Etapa 3 — Talhões.</strong> Escolha <em>Novo talhão</em> e toque <strong>dentro de uma área de plantio</strong>: o talhão fica preso a ela (laranja) e não pode passar por cima de outro talhão. Ao salvar, informe nome, cultura e finalidade.',
+    };
+    const dica = document.getElementById('croquiEtapaDica');
+    if (dica) dica.innerHTML = dicas[Croqui.etapa] || '';
+    const ant = document.getElementById('croquiEtapaAnterior'), prox = document.getElementById('croquiEtapaProxima');
+    if (ant) ant.classList.toggle('d-none', Croqui.etapa <= 1);
+    if (prox) {
+      prox.classList.toggle('d-none', Croqui.etapa >= 3);
+      const pode = Croqui.etapa === 1 ? feito[1] : feito[2];
+      prox.disabled = !pode;
+      prox.title = pode ? '' : (Croqui.etapa === 1 ? 'Salve a divisa para seguir' : 'Salve ao menos uma área de plantio para seguir');
+    }
+    const grupoCar = document.getElementById('croquiCarGrupo');
+    if (grupoCar) grupoCar.classList.toggle('d-none', Croqui.etapa !== 1);
   },
 
   /**
@@ -1469,7 +1556,15 @@ const Croqui = {
       document.getElementById('croquiTalhao').value = Croqui.atualId;
       return;
     }
+    // v45: talhão só dentro de uma área de plantio — sem área não há onde desenhar
+    if (Croqui._ehTalhao(alvo) && !Croqui.areasPlantio.length) {
+      App.alerta('Marque primeiro ao menos uma área de plantio (etapa 2). O talhão é desenhado dentro dela.', 'warning');
+      document.getElementById('croquiTalhao').value = Croqui.atualId;
+      return;
+    }
     Croqui.atualId = alvo;
+    Croqui.etapa = Croqui._etapaDe(alvo);
+    Croqui._hostId = null;
     Croqui.pontos = Croqui._contornoDe(Croqui.atualId);
     Croqui._undo = []; // outro alvo: o Desfazer recomeça
     Croqui._dirty = false;
@@ -1480,6 +1575,7 @@ const Croqui = {
     // confundia o técnico); volta sozinho ao editar a divisa de novo.
     Croqui._carLayerNoLimite(alvo === 0);
     Croqui._botoesPorAlvo();
+    Croqui._atualizarEtapas();
     const rotulo = document.querySelector('label[for="croquiUsarArea"]');
     if (rotulo) rotulo.textContent = Croqui.atualId === 0
       ? 'Usar a área medida como área oficial do imóvel'
@@ -2048,10 +2144,11 @@ const Croqui = {
    */
   _prender(p) {
     if (Croqui.atualId === 0) return p; // desenhando a própria divisa
-    // 1) fora da divisa do imóvel → puxa para a borda da divisa
-    const divisa = Croqui._contornoDe(0);
-    // Fora da divisa OU colado nela (≤ SNAP_DIVISA_M): vai para a borda EXATA — o talhão
-    // margeia a divisa tal como foi desenhada (pedido do teste de campo)
+    // 1) fora do LIMITE (área de plantio → divisa; talhão → área de plantio hospedeira, v45)
+    //    → puxa para a borda. Fora OU colado (≤ SNAP_DIVISA_M): vai para a borda EXATA —
+    //    o desenho margeia o limite tal como foi marcado (pedido do teste de campo)
+    const lim = Croqui._limite(p);
+    const divisa = lim ? lim.pontos : [];
     if (divisa.length >= 3 && (!Croqui._dentroDe(p, divisa) || Croqui._distBordaM(p, divisa) <= Croqui.SNAP_DIVISA_M)) p = Croqui._bordaMaisProxima(p, divisa);
     // 2) talhão: dentro de OUTRO talhão → puxa para a borda do vizinho (talhões não se cobrem)
     if (Croqui._ehTalhao(Croqui.atualId)) {
@@ -2073,6 +2170,54 @@ const Croqui = {
   },
 
   _ehTalhao(id) { return Number(id) > 0 || Number(id) === Croqui.NOVO_ID; },
+
+  /**
+   * v45: a ÁREA DE PLANTIO que hospeda o talhão em edição — a que contém mais vértices
+   * (tolerância curta); empate → o vínculo gravado (area_plantio_id). Com o desenho
+   * ainda vazio, a área que contém o ponto tocado (ou a de borda mais próxima).
+   */
+  _areaHospedeira(pontos, pontoNovo) {
+    const areas = Croqui.areasPlantio.filter(a => Croqui._contornoDe(Croqui._alvoPlantio(a.id)).length >= 3);
+    if (!areas.length) return null;
+    const t = Croqui.talhoes.find(x => Number(x.id) === Croqui.atualId);
+    const preferida = t ? Number(t.area_plantio_id || 0) : 0;
+    if (pontos && pontos.length) {
+      let melhor = null, melhorN = 0;
+      for (const a of areas) {
+        const pol = Croqui._contornoDe(Croqui._alvoPlantio(a.id));
+        const dentro = pontos.length - Croqui._pontosFora(pontos, pol, 3).length;
+        if (dentro > melhorN || (dentro === melhorN && dentro > 0 && Number(a.id) === preferida)) { melhor = a; melhorN = dentro; }
+      }
+      if (melhor) return melhor;
+    }
+    if (pontoNovo) {
+      const dentro = areas.find(a => Croqui._dentroDe(pontoNovo, Croqui._contornoDe(Croqui._alvoPlantio(a.id))));
+      if (dentro) return dentro;
+      let melhor = null, menor = Infinity;
+      for (const a of areas) {
+        const d = Croqui._distBordaM(pontoNovo, Croqui._contornoDe(Croqui._alvoPlantio(a.id)));
+        if (d < menor) { menor = d; melhor = a; }
+      }
+      return melhor;
+    }
+    return preferida ? areas.find(a => Number(a.id) === preferida) || null : null;
+  },
+
+  /**
+   * O LIMITE do alvo em edição: área de plantio → divisa do imóvel; talhão → a área
+   * de plantio hospedeira (v45); divisa → nenhum. {pontos, rotulo, area}.
+   */
+  _limite(pontoNovo) {
+    if (Croqui.atualId === 0) return null;
+    if (Croqui._ehPlantio(Croqui.atualId)) {
+      const d = Croqui._contornoDe(0);
+      return d.length >= 3 ? { pontos: d, rotulo: 'divisa do imóvel', area: null } : null;
+    }
+    const a = Croqui._areaHospedeira(Croqui.pontos, pontoNovo);
+    if (!a) return null;
+    const pol = Croqui._contornoDe(Croqui._alvoPlantio(a.id));
+    return pol.length >= 3 ? { pontos: pol, rotulo: 'área de plantio "' + a.nome + '"', area: a } : null;
+  },
 
   /** Projeção local (metros) de um polígono + função para projetar pontos na mesma referência. */
   _projetor(poligono) {
@@ -2206,7 +2351,8 @@ const Croqui = {
    */
   _margearDivisa() {
     if (Croqui.atualId === 0) return false;
-    const divisa = Croqui._contornoDe(0), pts = Croqui.pontos, n = pts.length;
+    const lim = Croqui._limite();
+    const divisa = lim ? lim.pontos : [], pts = Croqui.pontos, n = pts.length;
     if (divisa.length < 3 || n < 2) return false;
     const { mLat, mLng, proj } = Croqui._projetor(divisa);
     const pol = divisa.map(proj), xy = pts.map(proj);
@@ -2303,12 +2449,17 @@ const Croqui = {
   _validarRegra() {
     const avisos = [];
     const sobrepostos = [];
+    const sobrepostosHosp = []; // talhões hospedados que a área de plantio em edição deixaria para fora
     if (Croqui.atualId !== 0) {
-      const divisa = Croqui._contornoDe(0);
-      let fora = Croqui._pontosFora(Croqui.pontos, divisa);
-      // REGRA (teste de campo): nenhuma LINHA sai da área do CAR — mesmo com os dois
-      // pontos dentro, uma aresta que atravessa uma reentrância da divisa fica vermelha
-      const linhasFora = Croqui._linhasFora(Croqui.pontos, divisa);
+      // LIMITE: área de plantio → divisa; talhão → área de plantio hospedeira (v45)
+      const lim = Croqui._limite();
+      const divisa = lim ? lim.pontos : [];
+      let semLimite = false;
+      let fora = divisa.length >= 3 ? Croqui._pontosFora(Croqui.pontos, divisa) : [];
+      if (Croqui._ehTalhao(Croqui.atualId) && !lim && Croqui.pontos.length) { fora = Croqui.pontos.map((_, i) => i); semLimite = true; }
+      // REGRA (teste de campo): nenhuma LINHA sai do limite — mesmo com os dois
+      // pontos dentro, uma aresta que atravessa uma reentrância fica vermelha
+      const linhasFora = divisa.length >= 3 ? Croqui._linhasFora(Croqui.pontos, divisa) : [];
       if (Croqui._ehPlantio(Croqui.atualId)) {
         // v44: uma área de plantio NÃO cobre outra (mesma regra dos talhões)
         Croqui.areasPlantio.forEach(a => {
@@ -2319,12 +2470,17 @@ const Croqui = {
           if (Croqui.pontos.length >= 3 && Croqui._sobrepoe(Croqui.pontos, pts)) sobrepostos.push(a.nome);
         });
         fora = [...new Set(fora)];
-        // desenhando uma área de plantio: avisa os talhões que ficariam fora de TODAS as áreas
+        // v45: a área de plantio NÃO deixa para fora os talhões hospedados nela (bloqueio);
+        // talhão legado (sem área) fora de todas as áreas é só aviso
         if (Croqui.pontos.length >= 3) {
           const areas = Croqui._areasPlantioAtuais();
+          const meuId = Croqui._plantioIdDe(Croqui.atualId);
           Croqui.talhoes.forEach(t => {
             const pts = Croqui._contornoDe(t.id);
-            if (pts.length >= 3 && Croqui._pontosForaDasAreas(pts, areas).length) avisos.push(t.nome);
+            if (pts.length < 3) return;
+            if (meuId && Number(t.area_plantio_id || 0) === meuId) {
+              if (Croqui._pontosFora(pts, Croqui.pontos, 3).length) sobrepostosHosp.push(t.nome);
+            } else if (Croqui._pontosForaDasAreas(pts, areas).length) avisos.push(t.nome);
           });
         }
       } else if (Croqui._ehTalhao(Croqui.atualId)) {
@@ -2338,10 +2494,8 @@ const Croqui = {
           if (Croqui.pontos.length >= 3 && Croqui._sobrepoe(Croqui.pontos, pts)) sobrepostos.push(t.nome);
         });
         fora = [...new Set(fora)];
-        // avisa se sai de TODAS as áreas de plantio (se existirem)
-        if (Croqui.pontos.length >= 3 && Croqui._pontosForaDasAreas(Croqui.pontos, Croqui._areasPlantioAtuais()).length) avisos.push('fora da área de plantio');
       }
-      return { fora, talhoesFora: [], avisos, sobrepostos, linhasFora };
+      return { fora, talhoesFora: sobrepostosHosp, avisos, sobrepostos, linhasFora, semLimite };
     }
     // Editando a divisa: nenhum talhão já desenhado (nem as áreas de plantio) pode ficar para fora
     const talhoesFora = [];
@@ -2584,18 +2738,35 @@ const Croqui = {
     // (a marcação do usuário, não o CAR): laranja forte com halo branco, inconfundível
     // com o amarelo do CAR. Por baixo de tudo que é do imóvel.
     const divisa = Croqui._contornoAtual(0);
+    const limAtual = Croqui.atualId !== 0 ? Croqui._limite() : null;
+    const limEhDivisa = !!(limAtual && !limAtual.area);
     if (Croqui.atualId !== 0 && divisa.length >= 3) {
       const tela = divisa.map(p => Croqui._paraTela(p, larg, alt));
       const ptsDiv = tela.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
-      svg += `<polygon points="${ptsDiv}" fill="${Croqui.COR_LIMITE}" fill-opacity=".05" stroke="#fff" stroke-opacity=".9" stroke-width="6"/>
-              <polygon points="${ptsDiv}" fill="none" stroke="${Croqui.COR_LIMITE}" stroke-width="3" stroke-dasharray="12 5"/>`;
-      legenda.push(`<span><span class="croqui-cor" style="background:${Croqui.COR_LIMITE}"></span>Divisa do imóvel (limite — sua marcação)</span>`);
+      if (limEhDivisa) {
+        svg += `<polygon points="${ptsDiv}" fill="${Croqui.COR_LIMITE}" fill-opacity=".05" stroke="#fff" stroke-opacity=".9" stroke-width="6"/>
+                <polygon points="${ptsDiv}" fill="none" stroke="${Croqui.COR_LIMITE}" stroke-width="3" stroke-dasharray="12 5"/>`;
+        legenda.push(`<span><span class="croqui-cor" style="background:${Croqui.COR_LIMITE}"></span>Divisa do imóvel (limite — sua marcação)</span>`);
+      } else {
+        // etapa 3: a divisa é só contexto (o limite do talhão é a área de plantio)
+        svg += `<polygon points="${ptsDiv}" fill="${Croqui.COR_PROP}" fill-opacity=".04" stroke="${Croqui.COR_PROP}" stroke-opacity=".7" stroke-width="2" stroke-dasharray="9 6"/>`;
+        legenda.push(`<span><span class="croqui-cor" style="background:${Croqui.COR_PROP}"></span>Divisa do imóvel</span>`);
+      }
+    }
+    // v45 — talhão: a área de plantio HOSPEDEIRA é o limite (laranja com halo)
+    if (limAtual && limAtual.area) {
+      const tela = limAtual.pontos.map(p => Croqui._paraTela(p, larg, alt));
+      const ptsLim = tela.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
+      svg += `<polygon points="${ptsLim}" fill="${Croqui.COR_LIMITE}" fill-opacity=".05" stroke="#fff" stroke-opacity=".9" stroke-width="6"/>
+              <polygon points="${ptsLim}" fill="none" stroke="${Croqui.COR_LIMITE}" stroke-width="3" stroke-dasharray="12 5"/>`;
+      legenda.push(`<span><span class="croqui-cor" style="background:${Croqui.COR_LIMITE}"></span>Área de plantio "${App.escapeHtml(limAtual.area.nome)}" (limite do talhão)</span>`);
     }
     // Áreas de plantio (verde tracejado, v44: várias — Campo, Morro...) — entre a divisa e os talhões
     let plantiosDesenhados = 0;
     Croqui.areasPlantio.forEach(a => {
       const alvo = Croqui._alvoPlantio(a.id);
       if (alvo === Croqui.atualId) return; // a em edição é desenhada em ciano
+      if (limAtual && limAtual.area && Number(limAtual.area.id) === Number(a.id)) return; // já desenhada como limite
       const pts = Croqui._contornoDe(alvo);
       if (pts.length < 3) return;
       const tela = pts.map(p => Croqui._paraTela(p, larg, alt));
@@ -2708,11 +2879,13 @@ const Croqui = {
         ? ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> cobre outra área de plantio: ${App.escapeHtml(regra.sobrepostos.join(', '))} — as áreas não se sobrepõem</span>`
         : ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> cobre outro talhão: ${App.escapeHtml(regra.sobrepostos.join(', '))} — talhões não se sobrepõem</span>`;
     } else if (regra.fora.length) {
-      alerta = ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> ${regra.fora.length} ponto(s) ${Croqui._ehTalhao(Croqui.atualId) ? 'fora da divisa ou dentro de outro talhão' : (ehPlantio ? 'fora da divisa ou dentro de outra área de plantio' : 'fora da divisa do imóvel')}</span>`;
+      alerta = regra.semLimite
+        ? ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> o talhão precisa ficar dentro de uma área de plantio — toque dentro de uma área verde</span>`
+        : ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> ${regra.fora.length} ponto(s) ${Croqui._ehTalhao(Croqui.atualId) ? 'fora da área de plantio ou dentro de outro talhão' : (ehPlantio ? 'fora da divisa ou dentro de outra área de plantio' : 'fora da divisa do imóvel')}</span>`;
     } else if (regra.linhasFora && regra.linhasFora.length) {
       alerta = ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> ${regra.linhasFora.length} linha(s) fora da área do CAR — toque na linha vermelha para acrescentar um ponto e puxe-o para dentro</span>`;
     } else if (regra.talhoesFora.length) {
-      alerta = ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> divisa deixa fora: ${App.escapeHtml(regra.talhoesFora.join(', '))}</span>`;
+      alerta = ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> ${ehPlantio ? 'a área deixaria para fora o talhão' : 'divisa deixa fora'}: ${App.escapeHtml(regra.talhoesFora.join(', '))}</span>`;
     } else if (regra.avisos.length) {
       alerta = ` <span class="text-warning-emphasis"><i class="bi bi-exclamation-circle"></i> ${ehPlantio ? 'talhões fora da área de plantio: ' + App.escapeHtml(regra.avisos.join(', ')) : App.escapeHtml(regra.avisos.join(', '))}</span>`;
     }
@@ -2988,7 +3161,8 @@ const Croqui = {
     if (regra.fora.length) {
       App.alerta(Croqui._ehPlantio(Croqui.atualId)
         ? `A área de plantio deve ficar DENTRO da divisa do imóvel e fora das outras áreas de plantio — ajuste os ${regra.fora.length} ponto(s) em vermelho.`
-        : `O talhão deve ficar dentro da divisa e fora dos outros talhões — ajuste os ${regra.fora.length} ponto(s) em vermelho.`, 'danger');
+        : (regra.semLimite ? 'O talhão precisa ficar dentro de uma área de plantio — toque dentro de uma das áreas verdes.'
+          : `O talhão deve ficar dentro da área de plantio e fora dos outros talhões — ajuste os ${regra.fora.length} ponto(s) em vermelho.`), 'danger');
       return;
     }
     if (regra.linhasFora && regra.linhasFora.length) {
@@ -2996,7 +3170,7 @@ const Croqui = {
       return;
     }
     if (regra.talhoesFora.length) {
-      App.alerta('A divisa deixaria para fora: ' + regra.talhoesFora.join(', ') + '. Amplie a divisa.', 'danger');
+      App.alerta((Croqui._ehPlantio(Croqui.atualId) ? 'A área de plantio deixaria para fora o(s) talhão(ões): ' : 'A divisa deixaria para fora: ') + regra.talhoesFora.join(', ') + '. Amplie a área ou ajuste antes.', 'danger');
       return;
     }
     // NOVO talhão: desenhou primeiro; agora dá nome, cultura e finalidade (o modal grava tudo junto)
@@ -3054,8 +3228,10 @@ const Croqui = {
       } else {
         alvo.contorno = json; alvo.area_gps = area;
         if (usar) alvo.area_ha = area;
+        if (Croqui._ehTalhao(Croqui.atualId) && r.talhao && r.talhao.area_plantio_id) alvo.area_plantio_id = r.talhao.area_plantio_id;
       }
       Croqui._dirty = false;
+      Croqui._atualizarEtapas();
       let msg = r.offline ? 'Sem sinal: croqui salvo na fila — será enviado ao reconectar.'
         : (Croqui.pontos.length ? `Croqui salvo — ${Number(area).toLocaleString('pt-BR')} ha medidos.` : 'Croqui removido.');
       if (r.talhoes_fora && r.talhoes_fora.length) msg += ' Atenção: talhão(ões) fora da área de plantio: ' + r.talhoes_fora.join(', ') + '.';
