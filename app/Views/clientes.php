@@ -79,7 +79,6 @@
 <?php require __DIR__ . '/partials/modal_cliente.php'; ?>
 <?php require __DIR__ . '/partials/modal_propriedade.php'; ?>
 <?php require __DIR__ . '/partials/modal_imovel.php'; ?>
-<?php require __DIR__ . '/partials/modal_plantar_area.php'; ?>
 <?php require __DIR__ . '/partials/modal_plano_safra.php'; ?>
 <?php require __DIR__ . '/partials/modal_plantio.php'; ?>
 <?php require __DIR__ . '/partials/modal_croqui.php'; ?>

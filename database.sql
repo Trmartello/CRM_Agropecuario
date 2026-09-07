@@ -237,6 +237,7 @@ CREATE TABLE talhoes (
   nome VARCHAR(120) NOT NULL,
   area_ha DECIMAL(10,2) NOT NULL DEFAULT 0,
   cultura_id INT,
+  cultivar VARCHAR(80) NULL COMMENT 'v48: cultivar/híbrido plantado no talhão (ex.: 58I60 IPRO)',
   finalidade_id INT NULL COMMENT 'uso atual: grão, silagem, pastagem... (v40)',
   contorno TEXT NULL COMMENT 'croqui: vértices [[lat,lng],...] marcados no campo (Fase 6A)',
   area_gps DECIMAL(10,2) NULL COMMENT 'área (ha) calculada pelo contorno GPS',
@@ -1686,7 +1687,8 @@ INSERT INTO reclamacoes (cliente_id, usuario_id, produto_id, tipo, lote, nota_fi
 
 -- v40: finalidades de cultura + 1 imóvel (CAR) por propriedade seed + talhões vinculados
 INSERT INTO finalidades (nome, ordem) VALUES
-('Grão', 1), ('Silagem', 2), ('Pastagem', 3), ('Feno/Pré-secado', 4), ('Semente', 5);
+('Grão', 1), ('Silagem', 2), ('Pastagem', 3), ('Feno/Pré-secado', 4), ('Semente', 5),
+('Perene', 6), ('Reflorestamento', 7); -- v48: objetivo dos talhões em áreas perenes/reflorestamento
 INSERT INTO imoveis (propriedade_id, car_numero, municipio, area_ha, contorno, area_gps)
 SELECT p.id, p.car_numero, p.municipio, p.area_ha, p.contorno, p.area_gps FROM propriedades p;
 UPDATE talhoes t JOIN imoveis i ON i.propriedade_id = t.propriedade_id SET t.imovel_id = i.id;
@@ -1728,8 +1730,8 @@ UPDATE propriedades p SET area_ha = (
   SELECT COALESCE(SUM(CASE WHEN i.area_gps IS NOT NULL AND i.area_gps > 0 THEN i.area_gps ELSE i.area_ha END), 0)
     FROM imoveis i WHERE i.propriedade_id = p.id)
  WHERE EXISTS (SELECT 1 FROM imoveis i2 WHERE i2.propriedade_id = p.id AND COALESCE(i2.area_gps, i2.area_ha) > 0);
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','47')
-  ON DUPLICATE KEY UPDATE valor = '47';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','48')
+  ON DUPLICATE KEY UPDATE valor = '48';
 
 -- ============================================================================
 -- SEED — Mapa Territorial: 5 imóveis fictícios (Concórdia/SC), vínculos e talhões

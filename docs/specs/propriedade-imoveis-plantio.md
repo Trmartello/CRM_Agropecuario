@@ -19,9 +19,11 @@ Produtor (clientes)
      └─ Imóvel rural / CAR (imoveis)      1 registro por inscrição no SICAR
          ├─ divisa oficial (contorno)     área total do CAR
          └─ Áreas de plantio (areas_plantio)   o que dá para plantar (fora mata/APP/reserva/sede), N por imóvel
-             └─ Talhões (talhoes.imovel_id + area_plantio_id)   dentro de UMA área, cultura + finalidade, desenhado no croqui
+             └─ Talhões (talhoes.imovel_id + area_plantio_id)   dentro de UMA área, cultura + cultivar + finalidade; lançados na aba "Talhões" (toda a área ou delimitado no croqui)
                  └─ Plantios por safra (plantios.finalidade_id guarda o histórico)
 ```
+
+- **Duas telas (v48, pedido do teste de campo 07/09/2026: "deixar essa tela apenas de cadastro da propriedade e fazer uma tela para lançar os talhões de cada área")**: a aba **Propriedades** é só o **cadastro da terra** (propriedade → imóveis/CAR → divisa, áreas de plantio e de não plantio pelo croqui; sem botões de talhão) e a aba **Talhões** (logo depois) é onde se lança **o que está plantado em cada área**.
 
 - Uma propriedade pode ter **N imóveis (CARs)**. Cada imóvel tem a própria divisa, a própria área de plantio e os próprios talhões.
 - `talhoes.propriedade_id` **continua existindo** (tudo que já consulta talhão por propriedade segue igual); `talhoes.imovel_id` é o vínculo novo. Regra: o imóvel do talhão pertence à mesma propriedade.
@@ -38,12 +40,13 @@ Produtor (clientes)
 - **Talhão dentro de UMA área de plantio (v45 — bloqueio, pedido do teste de campo 06/09/2026)**: `talhoes.area_plantio_id` (FK `areas_plantio`, `ON DELETE SET NULL`) guarda a área hospedeira. O limite do talhão passa a ser a **área de plantio**, não a divisa: ponto fora da área é preso na borda dela e a reta é margeada pela própria borda (`prenderNaDivisa`/`margearDivisa` com o contorno da área), linha fora da área é recusada (`exigirLinhasDentro` com rótulo da área), talhão sem nenhuma área que contenha seus vértices é **recusado** ("desenhe dentro de uma das áreas verdes"), e imóvel sem áreas de plantio recusa talhão ("marque primeiro as áreas de plantio — etapa 2"). A área hospedeira é a que contém mais vértices (`AreaPlantioService::areaHospedeira`, empate → a área atual do talhão). Uma área de plantio **não pode encolher deixando talhão hospedado para fora** nem ser excluída com talhões dentro (bloqueio); talhões legados sem vínculo fora de todas as áreas viram só aviso e aparecem na ficha em "Talhões fora das áreas de plantio (ajuste no croqui)". A migração v45 vincula os talhões existentes pela área que os contém.
 - **Croqui guiado em 3 etapas (v45)**: 1 **Divisa** (traz o CAR e ajusta os pontos; único alvo, grupo do CAR visível) → 2 **Áreas de plantio** (seletor só com as áreas + "Nova área"; limite = divisa SALVA) → 3 **Talhões** (seletor só com talhões + "Novo talhão"; limite = área hospedeira, desenhada em laranja como limite, divisa apagada ao fundo). A etapa 2 só abre com divisa salva e a 3 só com ao menos uma área; o croqui abre na primeira etapa pendente e a ficha mostra "Próximo passo (n/3)" por imóvel. Os talhões na ficha ficam agrupados pela área de plantio.
 - Renomear pelo croqui ("Renomear"); excluir = Limpar + Salvar na área. **Talhão cadastrado errado → "Virar área de plantio"** cria uma área nova com o nome do talhão (não substitui as outras); **"Copiar de talhão"** carrega o desenho de um talhão numa área nova para ajustar.
-- **"Plantar a área toda"**: cria **um talhão por área de plantio** (com o nome da área quando há mais de uma), na cultura/finalidade escolhidas. Só quando o imóvel ainda não tem talhões.
+- **Aba "Talhões" (v48)**: lista propriedade → imóvel → **cada área de plantio** (ícone do uso, cultura, área líquida, "com talhão X ha"/"sem talhão") com dois botões por área: **"Toda a área"** (padrão — um talhão cobrindo a área inteira, `plantar-area-toda` com `area_plantio_id`; só aparece enquanto a área não tem talhão, e o servidor recusa repetir) e **"Delimitar"** (abre o croqui na etapa 3 já com a área escolhida como limite — `Croqui.abrir(imovelId, {novoTalhao:true, areaId})`; para mais de uma cultura na mesma área). Nos dois caminhos o modal do talhão pede **nome, cultura, cultivar/híbrido e finalidade (objetivo)** — cultura e finalidade vêm sugeridas pelo uso da área (perene → cultura da área + "Perene"; reflorestamento → "Reflorestamento"). Os talhões aparecem embaixo da própria área (cultura · cultivar · finalidade, plantio/colheita, editar). O "Plantar a área toda" do imóvel inteiro (um talhão por área) continua no servidor sem `area_plantio_id`, mas a tela não o oferece mais.
 
 ## 4. Finalidades
 
-- Tabela `finalidades` (nome, ativo, ordem), editável em **Configurações → Finalidades de cultura**. Seed: Grão · Silagem · Pastagem · Feno/Pré-secado · Semente.
+- Tabela `finalidades` (nome, ativo, ordem), editável em **Configurações → Finalidades de cultura**. Seed: Grão · Silagem · Pastagem · Feno/Pré-secado · Semente · **Perene · Reflorestamento** (v48 — a migração insere as que faltam).
 - `talhoes.finalidade_id` = uso atual; `plantios.finalidade_id` = histórico por safra (registrar plantio copia para o talhão, como já acontece com a cultura).
+- **Cultivar/híbrido (v48)**: `talhoes.cultivar` (texto livre, 80) — informado ao lançar o talhão (aba Talhões) e sugerido ao registrar plantio (`plantios.cultivar` já existia).
 
 ## 5. Totalização (`AreaPlantioService`, só leitura)
 
@@ -57,7 +60,7 @@ Por imóvel → por propriedade → por produtor:
 | Não mapeado | área de plantio − soma dos talhões (quando > 0) |
 | Excedente | soma dos talhões − área de plantio (quando > 0) → alerta |
 
-Exibido na ficha (aba Propriedades) como barra por cultura/finalidade com %, mais consolidado do produtor no topo da aba.
+Exibido na ficha: a aba **Propriedades** mostra o cadastro da terra (totais de área, plantio e não plantio por imóvel; contagem de talhões) e a aba **Talhões** (v48) mostra a barra por cultura/finalidade com %, o consolidado do produtor no topo e cada área com os seus talhões.
 
 ## 6. O que NÃO muda
 

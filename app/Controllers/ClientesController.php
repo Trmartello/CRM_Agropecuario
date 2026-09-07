@@ -283,7 +283,7 @@ class ClientesController
         $primeiroId = (int) Database::valor('SELECT MIN(id) FROM imoveis WHERE propriedade_id = ?', [$propId]);
         // Talhão legado (sem imóvel) aparece no PRIMEIRO imóvel, para não sumir do croqui
         $talhoes = Database::todos(
-            'SELECT t.id, t.nome, t.area_ha, t.area_gps, t.contorno, t.imovel_id, t.area_plantio_id, cu.nome AS cultura, f.nome AS finalidade
+            'SELECT t.id, t.nome, t.area_ha, t.area_gps, t.contorno, t.imovel_id, t.area_plantio_id, t.cultivar, cu.nome AS cultura, f.nome AS finalidade
                FROM talhoes t
                LEFT JOIN culturas cu ON cu.id = t.cultura_id
                LEFT JOIN finalidades f ON f.id = t.finalidade_id
@@ -1613,14 +1613,26 @@ class ClientesController
         if (!$culturaId) {
             json_erro('Escolha a cultura.');
         }
-        if ((int) Database::valor('SELECT COUNT(*) FROM talhoes WHERE imovel_id = ?', [$imovelId]) > 0) {
+        $finalidadeId = (int) ($_POST['finalidade_id'] ?? 0) ?: null;
+        $cultivar = mb_substr(trim($_POST['cultivar'] ?? ''), 0, 80) ?: null;
+        $nome = trim($_POST['nome'] ?? '') ?: 'Área toda';
+        $areas = \App\Services\AreaPlantioService::areasDoImovel($imovelId);
+        // v48 (aba Talhões): "Toda a área" de UMA área de plantio — o talhão cobre a área inteira
+        $areaUnicaId = (int) ($_POST['area_plantio_id'] ?? 0);
+        if ($areaUnicaId > 0) {
+            $areas = array_values(array_filter($areas, fn ($a) => (int) $a['id'] === $areaUnicaId));
+            if (!$areas) {
+                json_erro('Área de plantio não encontrada neste imóvel.', 404);
+            }
+            if ((int) Database::valor('SELECT COUNT(*) FROM talhoes WHERE area_plantio_id = ?', [$areaUnicaId]) > 0) {
+                json_erro('Esta área já tem talhão. Para dividir a área, delimite os talhões no mapa; para trocar a cultura, edite o talhão existente.');
+            }
+            $nome = trim($_POST['nome'] ?? '') ?: (string) $areas[0]['nome'];
+        } elseif ((int) Database::valor('SELECT COUNT(*) FROM talhoes WHERE imovel_id = ?', [$imovelId]) > 0) {
             json_erro('Este imóvel já tem talhões. Edite-os ou exclua-os para plantar a área toda de uma vez.');
         }
-        $finalidadeId = (int) ($_POST['finalidade_id'] ?? 0) ?: null;
-        $nome = trim($_POST['nome'] ?? '') ?: 'Área toda';
         // v44: UM talhão por área de plantio desenhada (com o nome da área quando há mais de uma);
         // sem área desenhada, cai no legado (área de plantio única/digitada) e, por fim, na divisa
-        $areas = \App\Services\AreaPlantioService::areasDoImovel($imovelId);
         $lotes = [];
         foreach ($areas as $a) {
             $lotes[] = ['nome' => count($areas) > 1 ? (string) $a['nome'] : $nome, 'area' => (float) $a['area_gps'], 'contorno' => $a['contorno'], 'area_id' => (int) $a['id']];
@@ -1642,10 +1654,10 @@ class ClientesController
         $total = 0.0;
         foreach ($lotes as $l) {
             Database::executar(
-                'INSERT INTO talhoes (propriedade_id, imovel_id, nome, area_ha, cultura_id, finalidade_id, contorno, area_gps, area_plantio_id)
-                 VALUES (?,?,?,?,?,?,?,?,?)',
+                'INSERT INTO talhoes (propriedade_id, imovel_id, nome, area_ha, cultura_id, cultivar, finalidade_id, contorno, area_gps, area_plantio_id)
+                 VALUES (?,?,?,?,?,?,?,?,?,?)',
                 [(int) $imovel['propriedade_id'], $imovelId, mb_substr($l['nome'], 0, 120), round($l['area'], 2),
-                    $culturaId, $finalidadeId, $l['contorno'], $l['contorno'] ? round($l['area'], 2) : null, $l['area_id']]
+                    $culturaId, $cultivar, $finalidadeId, $l['contorno'], $l['contorno'] ? round($l['area'], 2) : null, $l['area_id']]
             );
             $ids[] = Database::ultimoId();
             $total += $l['area'];
@@ -1720,12 +1732,13 @@ class ClientesController
             $nome,
             $areaHa,
             (int) ($_POST['cultura_id'] ?? 0) ?: null,
+            mb_substr(trim($_POST['cultivar'] ?? ''), 0, 80) ?: null, // v48
             $finalidadeId,
             $imovelId,
         ];
         if ($id > 0) {
             Database::executar(
-                'UPDATE talhoes SET nome=?, area_ha=?, cultura_id=?, finalidade_id=?, imovel_id=? WHERE id=? AND propriedade_id=?',
+                'UPDATE talhoes SET nome=?, area_ha=?, cultura_id=?, cultivar=?, finalidade_id=?, imovel_id=? WHERE id=? AND propriedade_id=?',
                 array_merge($dados, [$id, $propriedadeId])
             );
             if ($pontos !== null) {
@@ -1734,8 +1747,8 @@ class ClientesController
             }
         } else {
             Database::executar(
-                'INSERT INTO talhoes (nome, area_ha, cultura_id, finalidade_id, imovel_id, propriedade_id, contorno, area_gps, area_plantio_id)
-                 VALUES (?,?,?,?,?,?,?,?,?)',
+                'INSERT INTO talhoes (nome, area_ha, cultura_id, cultivar, finalidade_id, imovel_id, propriedade_id, contorno, area_gps, area_plantio_id)
+                 VALUES (?,?,?,?,?,?,?,?,?,?)',
                 array_merge($dados, [$propriedadeId, $pontos !== null ? json_encode($pontos) : null, $areaGps,
                     $pontos !== null ? (int) $hostTalhao['id'] : null])
             );
@@ -1748,7 +1761,7 @@ class ClientesController
         }
         // Devolve o talhão pronto para o croqui (com cultura/finalidade por nome)
         $talhao = Database::um(
-            'SELECT t.id, t.nome, t.area_ha, t.area_gps, t.contorno, t.imovel_id, t.area_plantio_id, t.cultura_id, t.finalidade_id,
+            'SELECT t.id, t.nome, t.area_ha, t.area_gps, t.contorno, t.imovel_id, t.area_plantio_id, t.cultura_id, t.cultivar, t.finalidade_id,
                     cu.nome AS cultura, f.nome AS finalidade
                FROM talhoes t
                LEFT JOIN culturas cu ON cu.id = t.cultura_id

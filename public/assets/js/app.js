@@ -512,7 +512,8 @@ const Clientes = {
     return false;
   },
 
-  async ficha(id) {
+  /** Abre a ficha; `aba` (ex.: 'abaTalhoes') reabre já naquela aba após salvar algo nela. */
+  async ficha(id, aba) {
     Clientes.fichaClienteId = id;
     const painel = new bootstrap.Offcanvas('#painelFicha');
     painel.show();
@@ -521,6 +522,7 @@ const Clientes = {
     const resp = await fetch(`index.php?r=clientes/ficha&id=${id}`, { headers: { 'X-Requested-With': 'fetch-html' } });
     corpo.innerHTML = await resp.text();
     App.graficoPotencialCliente();
+    if (aba) { const b = corpo.querySelector(`[data-bs-target="#${aba}"]`); if (b) bootstrap.Tab.getOrCreateInstance(b).show(); }
   },
 
   async salvarDocumento(ev) {
@@ -775,25 +777,45 @@ const Clientes = {
     } catch (e) { App.alerta(e.message, 'danger'); }
   },
 
-  /** "Plantar a área toda": um talhão único cobrindo a área de plantio do imóvel. */
-  plantarAreaToda(imovelId, rotulo, areaPlantio) {
-    const form = document.getElementById('formPlantarArea');
+  /**
+   * v48 — aba "Talhões": "Toda a área" cria UM talhão cobrindo a área de plantio
+   * inteira (o servidor copia o contorno e desconta o não plantio). O modal do
+   * talhão abre no modo "toda" só com nome, cultura, cultivar e finalidade.
+   * a = {area_id, nome, ha, imovel_id, imovel_rotulo, propriedade_id, uso, cultura_id}
+   */
+  talhaoAreaToda(a) {
+    const form = document.getElementById('formTalhao');
     form.reset();
-    form.querySelector('[name=imovel_id]').value = imovelId;
-    document.getElementById('plantarAreaImovel').textContent = rotulo || '';
-    document.getElementById('plantarAreaHa').textContent = Number(areaPlantio || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
-    new bootstrap.Modal('#modalPlantarArea').show();
+    document.getElementById('btnExcluirTalhao').classList.add('d-none');
+    document.getElementById('btnTalhaoParaPlantio').classList.add('d-none');
+    form.querySelector('[name=id]').value = 0;
+    form.querySelector('[name=propriedade_id]').value = a.propriedade_id;
+    form.querySelector('[name=area_plantio_id]').value = a.area_id;
+    form.querySelector('[name=contorno]').value = '';
+    form.querySelector('[name=nome]').value = a.nome || '';
+    form.dataset.origem = 'toda';
+    Clientes._imoveisNoModalTalhao([{ id: a.imovel_id, rotulo: a.imovel_rotulo }], a.imovel_id);
+    Clientes._sugerirCulturaFinalidade(a);
+    Clientes._modoTalhaoModal({ croqui: false, medida: Number(a.ha || 0), toda: a });
+    new bootstrap.Modal('#modalTalhao').show();
   },
 
-  async salvarPlantarArea(ev) {
-    ev.preventDefault();
-    try {
-      const r = await App.enviarForm(ev.target, 'index.php?r=clientes/plantar-area-toda');
-      bootstrap.Modal.getInstance('#modalPlantarArea').hide();
-      App.alerta(`${r.talhoes > 1 ? r.talhoes + ' talhões criados' : 'Talhão criado'} com ${Number(r.area_ha || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ha — a área de plantio inteira.`);
-      if (Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId);
-    } catch (e) { App.alerta(e.message, 'danger'); }
-    return false;
+  /** v48: "Delimitar" — desenha o talhão no croqui já dentro da área escolhida (limite = a área). */
+  delimitarTalhao(imovelId, areaId) {
+    Croqui.abrir(imovelId, { novoTalhao: true, areaId: Number(areaId) || 0 });
+  },
+
+  /** Área perene/reflorestamento: sugere a cultura da área e a finalidade do uso (Perene/Reflorestamento). */
+  _sugerirCulturaFinalidade(a) {
+    const form = document.getElementById('formTalhao');
+    if (!a) return;
+    if (a.cultura_id) form.querySelector('[name=cultura_id]').value = String(a.cultura_id);
+    const rotulo = a.uso === 'perene' ? 'Perene' : (a.uso === 'reflorestamento' ? 'Reflorestamento' : null);
+    if (rotulo) {
+      const fin = form.querySelector('[name=finalidade_id]');
+      const opt = [...fin.options].find(o => o.textContent.trim().toLowerCase() === rotulo.toLowerCase());
+      if (opt) fin.value = opt.value;
+    }
   },
 
   /** Preenche o seletor de imóvel do modal de talhão com os imóveis da propriedade. */
@@ -823,8 +845,12 @@ const Clientes = {
     form.querySelector('[name=id]').value = 0;
     form.querySelector('[name=propriedade_id]').value = Croqui.prop.id;
     form.querySelector('[name=contorno]').value = JSON.stringify(pontos);
+    form.querySelector('[name=area_plantio_id]').value = 0;
     form.dataset.origem = 'croqui';
     Clientes._imoveisNoModalTalhao([{ id: Croqui.imovel.id, rotulo: Croqui.imovel.rotulo }], Croqui.imovel.id);
+    // v48: a área hospedeira (limite do desenho) sugere cultura/finalidade para perene/reflorestamento
+    const lim = Croqui._limite();
+    if (lim && lim.area) Clientes._sugerirCulturaFinalidade(lim.area);
     Clientes._modoTalhaoModal({ croqui: true, medida: Croqui.areaHa(pontos) });
     document.getElementById('btnTalhaoParaPlantio').classList.add('d-none');
     new bootstrap.Modal('#modalTalhao').show();
@@ -873,7 +899,9 @@ const Clientes = {
     form.dataset.origem = 'ficha';
     form.querySelector('[name=nome]').value = t.nome;
     form.querySelector('[name=area_ha]').value = t.area_ha;
+    form.querySelector('[name=area_plantio_id]').value = t.area_plantio_id || 0;
     if (t.cultura_id) form.querySelector('[name=cultura_id]').value = t.cultura_id;
+    form.querySelector('[name=cultivar]').value = t.cultivar || ''; // v48
     if (t.finalidade_id) form.querySelector('[name=finalidade_id]').value = t.finalidade_id;
     Clientes._imoveisNoModalTalhao(imoveis, t.imovel_id);
     // Área digitada só vale para talhão antigo SEM desenho; com desenho, a área é a medida
@@ -901,26 +929,36 @@ const Clientes = {
   },
 
   /** Mostra/esconde os campos do modal de talhão conforme a origem (croqui × ficha) e se há desenho. */
-  _modoTalhaoModal({ croqui, medida }) {
+  _modoTalhaoModal({ croqui, medida, toda }) {
     const titulo = document.getElementById('modalTalhaoTitulo');
-    if (titulo) titulo.textContent = croqui ? 'Novo talhão desenhado' : 'Talhão';
+    if (titulo) titulo.textContent = toda ? 'Toda a área — ' + (toda.nome || '') : (croqui ? 'Novo talhão desenhado' : 'Talhão');
     const wrapImovel = document.getElementById('talhaoImovelWrap');
-    if (wrapImovel) wrapImovel.classList.toggle('d-none', !!croqui); // no croqui o imóvel é o aberto
+    if (wrapImovel) wrapImovel.classList.toggle('d-none', !!croqui || !!toda); // no croqui/na área o imóvel é o aberto
     const wrapArea = document.getElementById('talhaoAreaWrap');
     const medidaEl = document.getElementById('talhaoAreaMedida');
     const temDesenho = medida !== null && medida !== undefined;
     if (wrapArea) wrapArea.classList.toggle('d-none', temDesenho);
     if (medidaEl) {
       medidaEl.classList.toggle('d-none', !temDesenho);
-      if (temDesenho) medidaEl.innerHTML = `<i class="bi bi-bounding-box-circles me-1 text-success"></i>Área medida no croqui: <strong>${Number(medida).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha</strong>`;
+      if (toda) medidaEl.innerHTML = `<i class="bi bi-grid-1x2 me-1 text-success"></i>O talhão cobre <strong>toda a área "${App.escapeHtml(toda.nome || '')}"</strong>: <strong>${Number(medida).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha</strong> (já sem o não plantio). Para mais de uma cultura na mesma área, use <em>Delimitar</em>.`;
+      else if (temDesenho) medidaEl.innerHTML = `<i class="bi bi-bounding-box-circles me-1 text-success"></i>Área medida no croqui: <strong>${Number(medida).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha</strong>`;
     }
+    const btn = document.getElementById('btnSalvarTalhao');
+    if (btn) btn.innerHTML = toda ? '<i class="bi bi-check-lg me-1"></i>Criar talhão na área toda' : '<i class="bi bi-check-lg me-1"></i>Salvar';
   },
 
   async salvarTalhao(ev) {
     ev.preventDefault();
     try {
-      const r = await App.enviarForm(ev.target, 'index.php?r=clientes/salvar-talhao');
+      // v48: modo "toda a área" → o servidor cria o talhão com o contorno da área (plantar-area-toda)
+      const toda = ev.target.dataset.origem === 'toda';
+      const r = await App.enviarForm(ev.target, toda ? 'index.php?r=clientes/plantar-area-toda' : 'index.php?r=clientes/salvar-talhao');
       bootstrap.Modal.getInstance('#modalTalhao').hide();
+      if (toda) {
+        App.alerta(`Talhão criado na área toda — ${Number(r.area_ha || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha.`);
+        if (Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId, 'abaTalhoes');
+        return false;
+      }
       if (ev.target.dataset.origem === 'croqui' && r.talhao && typeof Croqui !== 'undefined') {
         // Veio do croqui: o talhão entra na lista, vira o alvo selecionado e o desenho
         // passa a ser o gravado (o servidor pode ter prendido pontos na divisa/vizinhos)
@@ -936,7 +974,7 @@ const Clientes = {
         return false; // a ficha atualiza ao fechar o croqui (Croqui.fechar)
       }
       App.alerta('Talhão salvo.');
-      if (Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId);
+      if (Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId, 'abaTalhoes');
     } catch (e) { App.alerta(e.message, 'danger'); }
     return false;
   },
@@ -1089,12 +1127,15 @@ const FenologiaArte = {
 /* ============================== PLANTIOS (Fase 6E) ============================== */
 
 const Plantios = {
-  abrir(talhaoId, culturaId, nomeTalhao, finalidadeId) {
+  abrir(talhaoId, culturaId, nomeTalhao, finalidadeId, cultivar) {
     const form = document.getElementById('formPlantio');
     if (!form) return;
     form.reset();
     form.querySelector('[name=talhao_id]').value = talhaoId;
     if (culturaId) form.querySelector('[name=cultura_id]').value = culturaId;
+    // v48: o cultivar cadastrado no talhão vem sugerido (pode trocar nesta safra)
+    const cv = form.querySelector('[name=cultivar]');
+    if (cv && cultivar) cv.value = cultivar;
     // v40: sugere a finalidade atual do talhão (grão, silagem...) — pode trocar nesta safra
     const fin = form.querySelector('[name=finalidade_id]');
     if (fin && finalidadeId) fin.value = finalidadeId;
@@ -1310,6 +1351,8 @@ const Croqui = {
       + (Croqui.outros.length || dados.imovel.nome ? ' · ' + dados.imovel.rotulo : ''); // só o apelido (o nº do CAR fica na ficha)
     // pré-preenche o "Ir para" com o endereço do produtor (município/UF/linha)
     Croqui._setIrPara(dados.imovel.municipio || dados.propriedade.municipio, dados.propriedade.estado, dados.propriedade.linha);
+    // v48 (aba Talhões → "Delimitar"): a área escolhida é o limite preferido do talhão novo
+    Croqui._areaPreferida = Number(opts.areaId || 0);
     // Fluxo guiado: abre na primeira etapa pendente (sem divisa → 1; sem área → 2; senão 3)
     Croqui.etapa = opts.novoTalhao && Croqui.areasPlantio.length ? 3 : Croqui._etapaMinima();
     let alvoInicial = 0;
@@ -1345,7 +1388,9 @@ const Croqui = {
       Croqui._autoMostrarCar();
       // "+ Talhão" na ficha: já entra no modo "novo talhão" (desenha, depois dá o nome)
       if (opts.novoTalhao) {
-        if (Croqui.etapa === 3) App.alerta('Toque dentro de uma área de plantio para marcar os cantos do talhão. Ao salvar, você dá o nome, a cultura e a finalidade.', 'info');
+        const areaPref = Croqui._areaPreferida ? Croqui.areasPlantio.find(a => Number(a.id) === Croqui._areaPreferida) : null;
+        if (Croqui.etapa === 3 && areaPref) App.alerta(`Toque dentro da área "${areaPref.nome}" (laranja) para marcar os cantos do talhão. Ao salvar, você dá o nome, a cultura, o cultivar e a finalidade.`, 'info');
+        else if (Croqui.etapa === 3) App.alerta('Toque dentro de uma área de plantio para marcar os cantos do talhão. Ao salvar, você dá o nome, a cultura e a finalidade.', 'info');
         else App.alerta(Croqui.etapa === 1 ? 'Antes do talhão: traga a divisa do CAR (etapa 1) e marque as áreas de plantio (etapa 2).' : 'Antes do talhão: marque ao menos uma área de plantio (etapa 2). O talhão é desenhado dentro dela.', 'warning');
       }
       Croqui._carLayerNoLimite(Croqui.atualId === 0);
@@ -2214,7 +2259,10 @@ const Croqui = {
   fechar() {
     Croqui._pararGPS();
     const m = document.getElementById('modalCroqui'); if (m) m.classList.remove('croqui-cheio');
-    if (typeof Clientes !== 'undefined' && Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId);
+    // v48: croqui aberto pelo "Delimitar" da aba Talhões volta para ela; senão, Propriedades
+    const aba = Croqui._areaPreferida ? 'abaTalhoes' : 'abaPropriedades';
+    Croqui._areaPreferida = 0;
+    if (typeof Clientes !== 'undefined' && Clientes.fichaClienteId) Clientes.ficha(Clientes.fichaClienteId, aba);
   },
 
   _distM(a, b) {
@@ -2362,7 +2410,8 @@ const Croqui = {
     const areas = Croqui.areasPlantio.filter(a => Croqui._contornoDe(Croqui._alvoPlantio(a.id)).length >= 3);
     if (!areas.length) return null;
     const t = Croqui.talhoes.find(x => Number(x.id) === Croqui.atualId);
-    const preferida = t ? Number(t.area_plantio_id || 0) : 0;
+    // v48: talhão NOVO vindo de "Delimitar" na aba Talhões prefere a área escolhida lá
+    const preferida = t ? Number(t.area_plantio_id || 0) : (Croqui.atualId === Croqui.NOVO_ID ? Number(Croqui._areaPreferida || 0) : 0);
     if (pontos && pontos.length) {
       let melhor = null, melhorN = 0;
       for (const a of areas) {

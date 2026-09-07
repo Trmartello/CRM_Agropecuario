@@ -1172,6 +1172,22 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '47'"
             );
         }
+        if ($versao < 48) {
+            // Aba "Talhões" (pedido do teste de campo): talhão lançado por ÁREA com cultura,
+            // CULTIVAR e finalidade; finalidades "Perene" e "Reflorestamento" para as áreas desse uso.
+            if (!self::temColuna('talhoes', 'cultivar')) {
+                Database::executar('ALTER TABLE talhoes ADD COLUMN cultivar VARCHAR(80) NULL AFTER cultura_id');
+            }
+            foreach ([['Perene', 6], ['Reflorestamento', 7]] as [$nome, $ordem]) {
+                if (!Database::valor('SELECT 1 FROM finalidades WHERE nome = ?', [$nome])) {
+                    Database::executar('INSERT INTO finalidades (nome, ordem) VALUES (?, ?)', [$nome, $ordem]);
+                }
+            }
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '48')
+                 ON DUPLICATE KEY UPDATE valor = '48'"
+            );
+        }
     }
 
     /** Apaga cópias idênticas de talhão (mantém a de menor id), poupando as que têm histórico. */
