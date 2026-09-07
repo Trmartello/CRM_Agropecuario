@@ -375,8 +375,25 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
               </div>
             <?php endif; ?>
             <?php if (!empty($r['exclusoes'])): ?>
+              <?php
+                // v49: as camadas importadas do CAR (muitas partes por tema) aparecem AGRUPADAS por tipo;
+                // as desenhadas à mão seguem uma a uma
+                $doCar = [];
+                $manuais = [];
+                foreach ($r['exclusoes'] as $ex) {
+                    if (($ex['origem'] ?? 'manual') === 'car') {
+                        $doCar[$ex['tipo']] ??= ['rotulo' => $ex['tipo_rotulo'], 'tema' => $ex['tema'] ?? '', 'partes' => 0, 'ha' => 0.0];
+                        $doCar[$ex['tipo']]['partes']++;
+                        $doCar[$ex['tipo']]['ha'] += (float) $ex['area_gps'];
+                    } else {
+                        $manuais[] = $ex;
+                    }
+                }
+              ?>
               <div class="small text-muted"><i class="bi bi-slash-circle me-1 text-secondary"></i>Não plantio:
-                <?php foreach ($r['exclusoes'] as $ex): ?><span class="badge text-bg-light border text-secondary me-1" title="<?= e($ex['tipo_rotulo']) ?>"><?= e($ex['nome']) ?> · <?= numero($ex['area_gps'], 1) ?> ha</span><?php endforeach; ?>
+                <?php foreach ($doCar as $g): ?><span class="badge text-bg-light border text-secondary me-1" title="Camada do CAR: <?= e($g['tema']) ?><?= $g['partes'] > 1 ? ' · ' . (int) $g['partes'] . ' partes' : '' ?>"><i class="bi bi-patch-check me-1"></i><?= e($g['rotulo']) ?> (CAR)<?= $g['partes'] > 1 ? ' · ' . (int) $g['partes'] . ' partes' : '' ?> · <?= numero($g['ha'], 1) ?> ha</span><?php endforeach; ?>
+                <?php foreach ($manuais as $ex): ?><span class="badge text-bg-light border text-secondary me-1" title="<?= e($ex['tipo_rotulo']) ?>"><?= e($ex['nome']) ?> · <?= numero($ex['area_gps'], 1) ?> ha</span><?php endforeach; ?>
+                <?php if (!empty($r['nao_plantio_sobreposto'])): ?><span class="text-muted" title="A APP fica dentro da vegetação nativa, a reserva legal também: o total descontado é a união das camadas, não a soma">(camadas se sobrepõem — união <?= numero($r['nao_plantio'], 1) ?> ha)</span><?php endif; ?>
               </div>
             <?php endif; ?>
             <?php if (!empty($im['car_numero'])): ?>
@@ -390,8 +407,8 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
             <?php endif; ?>
           </div>
           <div class="btn-group">
-            <button class="btn btn-sm btn-outline-success" title="Importar a divisa oficial do CAR (shapefile .zip) deste imóvel"
-                    onclick="Clientes.importarCar(<?= (int) $im['id'] ?>)"><i class="bi bi-cloud-download me-1"></i>CAR</button>
+            <button class="btn btn-sm btn-outline-success" title="Importar o CAR deste imóvel (zip do SICAR): divisa oficial + APP, Reserva Legal, Vegetação nativa e Servidão como áreas de não plantio"
+                    onclick="Clientes.importarCar(<?= (int) $im['id'] ?>, <?= count($im['areas_plantio'] ?? []) ?>)"><i class="bi bi-cloud-download me-1"></i>CAR</button>
             <button class="btn btn-sm btn-outline-success" title="Croqui do imóvel: divisa, área de plantio e talhões"
                     onclick="Croqui.abrir(<?= (int) $im['id'] ?>)"><i class="bi bi-bounding-box-circles me-1"></i>Croqui</button>
             <button class="btn btn-sm btn-outline-secondary" title="Editar o imóvel (CAR, áreas)"
@@ -420,7 +437,7 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
             <div class="small text-muted mt-1">
               <?php if (!empty($im['area_gps'])): ?>Divisa medida: <strong><?= numero((float) $im['area_gps'], 1) ?> ha</strong> · <?php endif; ?>
               <?php if ($r['plantio_origem'] === 'plantio' && count($r['areas'] ?? []) > 0): ?>Área <?= $temUso ? 'cultivada' : 'de plantio' ?> desenhada: <strong><?= numero($r['area_plantio'], 1) ?> ha</strong><?= $temUso ? ' (lavoura ' . numero($pu['lavoura'] ?? 0, 1) . ($pu['perene'] > 0 ? ' · perene ' . numero($pu['perene'], 1) : '') . ($pu['reflorestamento'] > 0 ? ' · reflorestamento ' . numero($pu['reflorestamento'], 1) : '') . ')' : (count($r['areas']) > 1 ? ' (' . count($r['areas']) . ' áreas)' : '') ?> · <?php endif; ?>
-              <?php if (($r['nao_plantio'] ?? 0) > 0): ?>Não plantio: <strong><?= numero($r['nao_plantio'], 1) ?> ha</strong> (<?= e(implode(', ', array_map(fn ($k, $v) => \App\Services\AreaPlantioService::rotuloTipo($k) . ' ' . numero($v, 1), array_keys($r['nao_plantio_tipos']), $r['nao_plantio_tipos']))) ?>) · <?php endif; ?>
+              <?php if (($r['nao_plantio'] ?? 0) > 0): ?>Não plantio: <strong><?= numero($r['nao_plantio'], 1) ?> ha</strong> (<?= e(implode(', ', array_map(fn ($k, $v) => \App\Services\AreaPlantioService::rotuloTipo($k) . ' ' . numero($v, 1), array_keys($r['nao_plantio_tipos']), $r['nao_plantio_tipos']))) ?><?= !empty($r['nao_plantio_sobreposto']) ? ' — sobrepostas, união' : '' ?>) · <?php endif; ?>
               <?= (int) $r['qtd_talhoes'] ?> <?= (int) $r['qtd_talhoes'] === 1 ? 'talhão' : 'talhões' ?> (aba Talhões)
             </div>
           </div>

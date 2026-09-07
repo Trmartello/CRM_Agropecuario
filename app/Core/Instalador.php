@@ -1188,6 +1188,36 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '48'"
             );
         }
+        if ($versao < 49) {
+            // Camadas ambientais do CAR (pedido do teste de campo): APP, Reserva Legal, Vegetação
+            // nativa e Servidão do zip do SICAR viram áreas de não plantio (origem 'car', com o tema).
+            // Elas se SOBREPÕEM (APP dentro da vegetação nativa), então o desconto passa a ser por
+            // UNIÃO — com cache da área líquida por área de plantio e do não plantio por imóvel.
+            if (!self::temColuna('areas_nao_plantio', 'origem')) {
+                Database::executar("ALTER TABLE areas_nao_plantio ADD COLUMN origem VARCHAR(10) NOT NULL DEFAULT 'manual' AFTER area_gps");
+            }
+            if (!self::temColuna('areas_nao_plantio', 'tema')) {
+                Database::executar('ALTER TABLE areas_nao_plantio ADD COLUMN tema VARCHAR(160) NULL AFTER origem');
+            }
+            if (!self::temColuna('areas_plantio', 'area_liquida')) {
+                Database::executar('ALTER TABLE areas_plantio ADD COLUMN area_liquida DECIMAL(10,2) NULL AFTER area_gps');
+            }
+            if (!self::temColuna('imoveis', 'nao_plantio_ha')) {
+                Database::executar('ALTER TABLE imoveis ADD COLUMN nao_plantio_ha DECIMAL(10,2) NULL AFTER area_plantio_gps');
+            }
+            // Backfill dos caches nos imóveis que já têm áreas de não plantio (poucos; sem exclusão o cálculo é direto)
+            try {
+                foreach (Database::todos('SELECT DISTINCT imovel_id FROM areas_nao_plantio') as $r) {
+                    \App\Services\AreaPlantioService::sincronizarLiquidas((int) $r['imovel_id']);
+                }
+            } catch (\Throwable $e) {
+                error_log('migração v49: backfill das áreas líquidas falhou: ' . $e->getMessage());
+            }
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '49')
+                 ON DUPLICATE KEY UPDATE valor = '49'"
+            );
+        }
     }
 
     /** Apaga cópias idênticas de talhão (mantém a de menor id), poupando as que têm histórico. */

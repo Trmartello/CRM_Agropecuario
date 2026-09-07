@@ -180,6 +180,7 @@ CREATE TABLE imoveis (
   area_plantio_ha DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT 'área disponível para plantio (digitada)',
   contorno_plantio TEXT NULL COMMENT 'área de plantio desenhada no croqui [[lat,lng],...]',
   area_plantio_gps DECIMAL(10,2) NULL COMMENT 'área de plantio (ha) medida pelo contorno',
+  nao_plantio_ha DECIMAL(10,2) NULL COMMENT 'v49: cache da UNIÃO das áreas de não plantio (ha) — camadas do CAR se sobrepõem; NULL = calcular',
   ordem INT NOT NULL DEFAULT 0,
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_imoveis_prop (propriedade_id),
@@ -198,6 +199,7 @@ CREATE TABLE areas_plantio (
   cultura_id INT NULL COMMENT 'v47: cultura da área (perene/reflorestamento)',
   contorno TEXT NOT NULL COMMENT 'polígono [[lat,lng],...] dentro da divisa do imóvel',
   area_gps DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT 'área (ha) medida pelo contorno',
+  area_liquida DECIMAL(10,2) NULL COMMENT 'v49: cache da área líquida (medida − não plantio, por união); NULL = calcular',
   ordem INT NOT NULL DEFAULT 0,
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_areas_plantio_imovel (imovel_id),
@@ -212,9 +214,11 @@ CREATE TABLE areas_nao_plantio (
   id INT AUTO_INCREMENT PRIMARY KEY,
   imovel_id INT NOT NULL,
   nome VARCHAR(120) NOT NULL DEFAULT 'Área de não plantio',
-  tipo VARCHAR(20) NOT NULL DEFAULT 'mata' COMMENT 'mata|app|acude|sede|estrada|outro',
+  tipo VARCHAR(20) NOT NULL DEFAULT 'mata' COMMENT 'mata|reserva|app|acude|sede|estrada|outro',
   contorno TEXT NOT NULL COMMENT 'polígono [[lat,lng],...] dentro da divisa do imóvel',
   area_gps DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT 'área (ha) medida pelo contorno',
+  origem VARCHAR(10) NOT NULL DEFAULT 'manual' COMMENT 'v49: manual (desenhada/varinha) | car (camada ambiental importada do zip do SICAR — pode se sobrepor a outras)',
+  tema VARCHAR(160) NULL COMMENT 'v49: tema da camada do CAR (ex.: APP Total, Reserva Legal Total, Remanescente de Vegetação Nativa)',
   ordem INT NOT NULL DEFAULT 0,
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_areas_nao_plantio_imovel (imovel_id),
@@ -1730,8 +1734,8 @@ UPDATE propriedades p SET area_ha = (
   SELECT COALESCE(SUM(CASE WHEN i.area_gps IS NOT NULL AND i.area_gps > 0 THEN i.area_gps ELSE i.area_ha END), 0)
     FROM imoveis i WHERE i.propriedade_id = p.id)
  WHERE EXISTS (SELECT 1 FROM imoveis i2 WHERE i2.propriedade_id = p.id AND COALESCE(i2.area_gps, i2.area_ha) > 0);
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','48')
-  ON DUPLICATE KEY UPDATE valor = '48';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','49')
+  ON DUPLICATE KEY UPDATE valor = '49';
 
 -- ============================================================================
 -- SEED — Mapa Territorial: 5 imóveis fictícios (Concórdia/SC), vínculos e talhões

@@ -676,6 +676,214 @@ class ShapefileService
         return $imoveis;
     }
 
+    /* =====================================================================
+     * v49 — CAMADAS AMBIENTAIS do zip individual do SICAR. Além da divisa
+     * (Area_do_Imovel), o download traz um zip por tema: Area_de_Preservacao_
+     * Permanente, Reserva_Legal, Cobertura_do_Solo (Remanescente de Vegetação
+     * Nativa + Área Consolidada), Servidao_Administrativa, Hidrografia... Cada
+     * um vira áreas de não plantio (ou, a Área Consolidada, sugestão de área
+     * de plantio). Os temas se sobrepõem (a "APP Total" repete as APPs por tipo;
+     * a Reserva Legal Total repete a Proposta) — quando existe o registro
+     * "Total" de uma camada, só ele entra.
+     * ===================================================================== */
+
+    /** Camada → [tipo de área de não plantio, rótulo]. 'consolidada' não é exclusão. */
+    public const CAMADAS = [
+        'app' => ['tipo' => 'app', 'rotulo' => 'APP'],
+        'reserva' => ['tipo' => 'reserva', 'rotulo' => 'Reserva legal'],
+        'vegetacao' => ['tipo' => 'mata', 'rotulo' => 'Vegetação nativa'],
+        'servidao' => ['tipo' => 'estrada', 'rotulo' => 'Servidão (estrada)'],
+        'hidro' => ['tipo' => 'acude', 'rotulo' => 'Hidrografia'],
+        'consolidada' => ['tipo' => null, 'rotulo' => 'Área consolidada'],
+    ];
+
+    /**
+     * Lê as camadas ambientais do zip do imóvel. Devolve uma entrada por REGISTRO
+     * aproveitado: ['camada'=>app|reserva|vegetacao|servidao|hidro|consolidada,
+     * 'tema'=>string, 'area_dbf'=>float|null, 'aneis'=>[[[lat,lng],...],...]] —
+     * só os anéis EXTERNOS de cada polígono (buracos descartados: a Área Consolidada
+     * tem as ilhas de mata como buracos), já simplificados (≤ $maxPontos) e com
+     * área ≥ $minHa. Lista vazia se o zip só tem a divisa.
+     */
+    public static function camadasAmbientais(string $caminho, int $maxPontos = 300, float $minHa = 0.005): array
+    {
+        if (!class_exists('ZipArchive')) {
+            throw new \RuntimeException('O servidor está sem suporte a ZIP (extensão php-zip).');
+        }
+        $shp = [];
+        $dbf = [];
+        self::coletarPares($caminho, $shp, $dbf, 0);
+        $itens = [];
+        foreach ($shp as $base => $bin) {
+            $b = self::normalizar((string) $base);
+            if (str_contains($b, 'marcador') || str_contains($b, 'area_do_imovel') || str_contains($b, 'area_imovel')) {
+                continue;
+            }
+            $classe = null;
+            if (str_contains($b, 'preservacao') || preg_match('/(^|_)app(_|$)/', $b)) {
+                $classe = 'app';
+            } elseif (str_contains($b, 'reserva')) {
+                $classe = 'reserva';
+            } elseif (str_contains($b, 'servidao')) {
+                $classe = 'servidao';
+            } elseif (str_contains($b, 'hidrografia')) {
+                $classe = 'hidro';
+            } elseif (str_contains($b, 'cobertura')) {
+                $classe = 'cobertura'; // vegetação nativa OU área consolidada, pelo tema
+            } elseif (str_contains($b, 'vegetacao')) {
+                $classe = 'vegetacao';
+            } elseif (str_contains($b, 'consolidad')) {
+                $classe = 'consolidada';
+            } else {
+                continue;
+            }
+            $registros = self::registrosAneisExternos($bin);
+            if (!$registros) {
+                continue;
+            }
+            $linhas = isset($dbf[$base])
+                ? self::lerDbfLinhas($dbf[$base], [
+                    'tema' => ['tema', 'nom_tema', 'nm_tema', 'desc_tema', 'descricao', 'classe', 'tipo'],
+                    'area' => ['area', 'num_area', 'area_ha', 'nu_area', 'hectares'],
+                ])
+                : [];
+            $doArquivo = [];
+            foreach ($registros as $i => $aneis) {
+                $tema = trim((string) ($linhas[$i]['tema'] ?? ''));
+                $temaN = self::normalizar($tema);
+                $camada = $classe;
+                if ($classe === 'cobertura') {
+                    if (str_contains($temaN, 'vegeta')) {
+                        $camada = 'vegetacao';
+                    } elseif (str_contains($temaN, 'consolidad')) {
+                        $camada = 'consolidada';
+                    } else {
+                        continue; // "Área não classificada" e afins
+                    }
+                }
+                $areaDbf = isset($linhas[$i]['area']) && is_numeric($linhas[$i]['area']) ? (float) $linhas[$i]['area'] : null;
+                $doArquivo[] = ['camada' => $camada, 'tema' => $tema, 'temaN' => $temaN, 'area_dbf' => $areaDbf, 'aneis' => $aneis];
+            }
+            // Registro "Total" de uma camada repete os parciais → fica só ele
+            foreach (['app', 'reserva', 'servidao', 'vegetacao'] as $c) {
+                $temTotal = array_filter($doArquivo, fn ($it) => $it['camada'] === $c && str_contains($it['temaN'], 'total'));
+                if ($temTotal) {
+                    $doArquivo = array_values(array_filter($doArquivo, fn ($it) => $it['camada'] !== $c || str_contains($it['temaN'], 'total')));
+                }
+            }
+            foreach ($doArquivo as $it) {
+                $itens[] = $it;
+            }
+        }
+        // Limpa/simplifica os anéis e descarta estilhaços
+        $saida = [];
+        foreach ($itens as $it) {
+            $aneis = [];
+            foreach ($it['aneis'] as $anel) {
+                $n = count($anel);
+                if ($n > 1 && $anel[0] === $anel[$n - 1]) {
+                    array_pop($anel);
+                }
+                if (count($anel) < 3) {
+                    continue;
+                }
+                foreach ($anel as $pt) {
+                    if ($pt[0] < -90 || $pt[0] > 90 || $pt[1] < -180 || $pt[1] > 180) {
+                        throw new \InvalidArgumentException('As camadas do CAR estão em coordenadas projetadas (UTM). Baixe o CAR em graus (SIRGAS 2000).');
+                    }
+                }
+                $simpl = self::simplificar($anel, $maxPontos);
+                if (count($simpl) < 3 || CroquiService::areaHa($simpl) < $minHa) {
+                    continue;
+                }
+                $aneis[] = $simpl;
+            }
+            if ($aneis) {
+                $saida[] = ['camada' => $it['camada'], 'tema' => $it['tema'], 'area_dbf' => $it['area_dbf'], 'aneis' => $aneis];
+            }
+        }
+        return $saida;
+    }
+
+    /**
+     * Por REGISTRO do .shp (ordem alinhada ao .dbf), a lista de anéis EXTERNOS.
+     * No shapefile o anel externo gira num sentido e o buraco no oposto; como há
+     * gravadores que invertem a convenção, "externo" = mesmo sentido do maior anel
+     * do registro (o maior nunca é buraco).
+     */
+    private static function registrosAneisExternos(string $bin): array
+    {
+        $tipo = unpack('Vt', substr($bin, 32, 4))['t'];
+        if (!in_array($tipo, [5, 15, 25], true)) {
+            return []; // só polígonos (pontos/linhas não viram área)
+        }
+        $len = strlen($bin);
+        $off = 100;
+        $out = [];
+        while ($off + 8 <= $len) {
+            $rec = unpack('Nnum/Nwords', substr($bin, $off, 8));
+            $off += 8;
+            $cl = $rec['words'] * 2;
+            if ($cl <= 0 || $off + $cl > $len) {
+                break;
+            }
+            $shape = substr($bin, $off, $cl);
+            $off += $cl;
+            $st = unpack('Vt', substr($shape, 0, 4))['t'];
+            if ($st === 0) {
+                $out[] = [];
+                continue;
+            }
+            $hdr = unpack('Vparts/Vpoints', substr($shape, 36, 8));
+            $numParts = $hdr['parts'];
+            $numPoints = $hdr['points'];
+            if ($numParts < 1 || $numPoints < 3) {
+                $out[] = [];
+                continue;
+            }
+            $parts = array_values(unpack('V' . $numParts, substr($shape, 44, 4 * $numParts)));
+            $pointsOff = 44 + 4 * $numParts;
+            $coords = array_values(unpack('d' . ($numPoints * 2), substr($shape, $pointsOff, 16 * $numPoints)));
+            $aneis = [];
+            $sinalMaior = 0.0;
+            $maior = -1.0;
+            for ($p = 0; $p < $numParts; $p++) {
+                $ini = $parts[$p];
+                $fim = ($p + 1 < $numParts) ? $parts[$p + 1] : $numPoints;
+                $anel = [];
+                for ($k = $ini; $k < $fim; $k++) {
+                    $anel[] = [$coords[$k * 2 + 1], $coords[$k * 2]];
+                }
+                if (count($anel) < 3) {
+                    continue;
+                }
+                $s = self::areaShoelace($anel);
+                if (abs($s) > $maior) {
+                    $maior = abs($s);
+                    $sinalMaior = $s;
+                }
+                $aneis[] = [$anel, $s];
+            }
+            $externos = [];
+            foreach ($aneis as [$anel, $s]) {
+                if ($s === 0.0 || ($s > 0) === ($sinalMaior > 0)) {
+                    $externos[] = $anel;
+                }
+            }
+            $out[] = $externos;
+        }
+        return $out;
+    }
+
+    /** minúsculas, sem acento, espaços → "_" (para casar nomes de arquivo e temas). */
+    private static function normalizar(string $s): string
+    {
+        $s = mb_strtolower(trim($s), 'UTF-8');
+        $s = strtr($s, ['á' => 'a', 'à' => 'a', 'â' => 'a', 'ã' => 'a', 'é' => 'e', 'ê' => 'e', 'í' => 'i',
+            'ó' => 'o', 'ô' => 'o', 'õ' => 'o', 'ú' => 'u', 'ü' => 'u', 'ç' => 'c']);
+        return preg_replace('/\s+/', '_', $s) ?? $s;
+    }
+
     /** Coleta binários .shp e .dbf por nome-base, entrando em zips aninhados. */
     private static function coletarPares(string $caminho, array &$shp, array &$dbf, int $prof): void
     {

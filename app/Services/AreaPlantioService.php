@@ -21,7 +21,8 @@ class AreaPlantioService
      * da divisa: descontados da área de plantio e dos talhões que os contêm.
      */
     public const TIPOS_NAO_PLANTIO = [
-        'mata' => 'Mata / Reserva legal',
+        'mata' => 'Mata / Vegetação nativa',
+        'reserva' => 'Reserva legal',
         'app' => 'APP (rio, nascente)',
         'acude' => 'Açude / Barragem',
         'sede' => 'Sede / Benfeitorias',
@@ -56,17 +57,26 @@ class AreaPlantioService
     public static function exclusoesDoImovel(int $imovelId): array
     {
         return Database::todos(
-            'SELECT id, imovel_id, nome, tipo, contorno, area_gps, ordem FROM areas_nao_plantio WHERE imovel_id = ? ORDER BY ordem, id',
+            'SELECT id, imovel_id, nome, tipo, contorno, area_gps, origem, tema, ordem FROM areas_nao_plantio WHERE imovel_id = ? ORDER BY ordem, id',
             [$imovelId]
         );
     }
 
     /**
-     * Quanto (ha) um polígono perde para as áreas de não plantio: soma das
-     * interseções com cada exclusão ([[lat,lng],...][]).
+     * Quanto (ha) um polígono perde para as áreas de não plantio ([[lat,lng],...][]).
+     * Exclusões que não se tocam: soma das interseções (exato). v49: se alguma caixa
+     * cobre outra (camadas do CAR — APP dentro da vegetação nativa), o desconto é
+     * pela UNIÃO (máscara em grade), para não descontar a mesma mata duas vezes.
      */
     public static function descontoNaoPlantio(array $pontos, array $exclusoes): float
     {
+        if (count($pontos) < 3) {
+            return 0.0;
+        }
+        $m = self::mascaraSeSobrepoem($exclusoes);
+        if ($m !== null) {
+            return CroquiService::descontoMascara($pontos, $m);
+        }
         $desc = 0.0;
         foreach ($exclusoes as $ex) {
             if (count($ex) >= 3) {
@@ -74,6 +84,41 @@ class AreaPlantioService
             }
         }
         return $desc;
+    }
+
+    /** Área (ha) da UNIÃO das áreas de não plantio (soma quando não se tocam). */
+    public static function uniaoNaoPlantioHa(array $exclusoes): float
+    {
+        $m = self::mascaraSeSobrepoem($exclusoes);
+        if ($m !== null) {
+            return (float) $m['area_ha'];
+        }
+        $soma = 0.0;
+        foreach ($exclusoes as $ex) {
+            if (count($ex) >= 3) {
+                $soma += CroquiService::areaHa($ex);
+            }
+        }
+        return round($soma, 2);
+    }
+
+    /** As exclusões se sobrepõem? Devolve a máscara da união (cache por requisição) ou null. */
+    private static array $mascaras = [];
+
+    private static function mascaraSeSobrepoem(array $exclusoes): ?array
+    {
+        $pols = array_values(array_filter($exclusoes, fn ($p) => is_array($p) && count($p) >= 3));
+        if (count($pols) < 2 || !CroquiService::caixasSobrepoem($pols)) {
+            return null;
+        }
+        $chave = md5(json_encode($pols));
+        if (!isset(self::$mascaras[$chave])) {
+            if (count(self::$mascaras) > 8) {
+                self::$mascaras = [];
+            }
+            self::$mascaras[$chave] = CroquiService::mascaraUniao($pols);
+        }
+        return self::$mascaras[$chave];
     }
 
     /** Polígonos ([[lat,lng],...][]) das linhas de areas_nao_plantio. */
@@ -124,6 +169,16 @@ class AreaPlantioService
                 Database::executar('UPDATE talhoes SET area_ha = ? WHERE id = ?', [$liquida, (int) $t['id']]);
             }
         }
+        // v49: caches — área líquida de cada área de plantio e união do não plantio do imóvel
+        // (a união por máscara custa; a ficha lê o número pronto). Chamar em toda mudança de
+        // exclusão, área de plantio ou divisa.
+        foreach (Database::todos('SELECT id, contorno, area_gps FROM areas_plantio WHERE imovel_id = ?', [$imovelId]) as $a) {
+            $pol = json_decode((string) $a['contorno'], true);
+            $bruta = round((float) $a['area_gps'], 2);
+            $desconto = is_array($pol) && count($pol) >= 3 && $exclusoes ? round(self::descontoNaoPlantio($pol, $exclusoes), 2) : 0.0;
+            Database::executar('UPDATE areas_plantio SET area_liquida = ? WHERE id = ?', [max(0.0, round($bruta - $desconto, 2)), (int) $a['id']]);
+        }
+        Database::executar('UPDATE imoveis SET nao_plantio_ha = ? WHERE id = ?', [$exclusoes ? self::uniaoNaoPlantioHa($exclusoes) : 0.0, $imovelId]);
     }
 
     /** Área "que vale": medida pelo croqui se houver, senão a cadastrada. */
@@ -160,17 +215,24 @@ class AreaPlantioService
             $exclusoesLinhas = isset($imovel['id']) ? self::exclusoesDoImovel((int) $imovel['id']) : [];
         }
         $exclusoes = self::poligonosDe($exclusoesLinhas);
-        $naoPlantio = 0.0;
+        $somaExclusoes = 0.0;
         $naoPlantioTipos = [];
         $exclusoesResumo = [];
         foreach ($exclusoesLinhas as $x) {
             $ha = round((float) ($x['area_gps'] ?? 0), 2);
-            $naoPlantio += $ha;
+            $somaExclusoes += $ha;
             $tipo = (string) ($x['tipo'] ?? 'outro');
             $naoPlantioTipos[$tipo] = round(($naoPlantioTipos[$tipo] ?? 0.0) + $ha, 2);
             $exclusoesResumo[] = ['id' => (int) ($x['id'] ?? 0), 'nome' => (string) ($x['nome'] ?? ''), 'tipo' => $tipo,
-                'tipo_rotulo' => self::rotuloTipo($tipo), 'area_gps' => $ha];
+                'tipo_rotulo' => self::rotuloTipo($tipo), 'area_gps' => $ha,
+                'origem' => (string) ($x['origem'] ?? 'manual'), 'tema' => $x['tema'] ?? null];
         }
+        // v49: as camadas do CAR se sobrepõem — o total é a UNIÃO (cache em imoveis.nao_plantio_ha;
+        // sem cache, calcula). Por tipo segue a soma das partes (podem se sobrepor entre tipos).
+        $naoPlantio = isset($imovel['nao_plantio_ha']) && $imovel['nao_plantio_ha'] !== null
+            ? round((float) $imovel['nao_plantio_ha'], 2)
+            : ($exclusoes ? self::uniaoNaoPlantioHa($exclusoes) : 0.0);
+        $sobrepostas = round($somaExclusoes, 2) > $naoPlantio + 0.05;
         // v47: USO por área — cultivado = lavoura + perene + reflorestamento (líquidos)
         $areaPlantio = 0.0;
         $porUso = ['lavoura' => 0.0, 'perene' => 0.0, 'reflorestamento' => 0.0];
@@ -178,9 +240,15 @@ class AreaPlantioService
         $usoPorArea = [];
         foreach ($areas as $a) {
             $bruta = round((float) ($a['area_gps'] ?? 0), 2);
-            $pol = json_decode((string) ($a['contorno'] ?? ''), true);
-            $desconto = is_array($pol) && count($pol) >= 3 && $exclusoes ? round(self::descontoNaoPlantio($pol, $exclusoes), 2) : 0.0;
-            $liquida = max(0.0, round($bruta - $desconto, 2));
+            if (isset($a['area_liquida']) && $a['area_liquida'] !== null && $exclusoes) {
+                // v49: cache gravado por sincronizarLiquidas (união das exclusões)
+                $liquida = min($bruta, max(0.0, round((float) $a['area_liquida'], 2)));
+                $desconto = round($bruta - $liquida, 2);
+            } else {
+                $pol = json_decode((string) ($a['contorno'] ?? ''), true);
+                $desconto = is_array($pol) && count($pol) >= 3 && $exclusoes ? round(self::descontoNaoPlantio($pol, $exclusoes), 2) : 0.0;
+                $liquida = max(0.0, round($bruta - $desconto, 2));
+            }
             $uso = isset(self::USOS_AREA[$a['uso'] ?? '']) ? (string) $a['uso'] : 'lavoura';
             $areaPlantio += $liquida;
             $porUso[$uso] = round($porUso[$uso] + $liquida, 2);
@@ -252,6 +320,7 @@ class AreaPlantioService
             'por_uso' => $porUso,
             'nao_plantio' => round($naoPlantio, 2),
             'nao_plantio_tipos' => $naoPlantioTipos,
+            'nao_plantio_sobreposto' => $sobrepostas, // v49: partes de tipos diferentes se cobrem (soma por tipo > união)
             'exclusoes' => $exclusoesResumo,
             'grupos' => array_values($grupos),
             'soma' => round($soma, 2),
@@ -265,7 +334,7 @@ class AreaPlantioService
     public static function areasDoImovel(int $imovelId): array
     {
         return Database::todos(
-            'SELECT a.id, a.imovel_id, a.nome, a.uso, a.cultura_id, cu.nome AS cultura, a.contorno, a.area_gps, a.ordem
+            'SELECT a.id, a.imovel_id, a.nome, a.uso, a.cultura_id, cu.nome AS cultura, a.contorno, a.area_gps, a.area_liquida, a.ordem
                FROM areas_plantio a LEFT JOIN culturas cu ON cu.id = a.cultura_id
               WHERE a.imovel_id = ? ORDER BY a.ordem, a.id',
             [$imovelId]
@@ -445,7 +514,7 @@ class AreaPlantioService
         if ($imoveis) {
             $ids = array_map(fn ($im) => (int) $im['id'], $imoveis);
             $rows = Database::todos(
-                'SELECT a.id, a.imovel_id, a.nome, a.uso, a.cultura_id, cu.nome AS cultura, a.contorno, a.area_gps, a.ordem
+                'SELECT a.id, a.imovel_id, a.nome, a.uso, a.cultura_id, cu.nome AS cultura, a.contorno, a.area_gps, a.area_liquida, a.ordem
                    FROM areas_plantio a LEFT JOIN culturas cu ON cu.id = a.cultura_id
                   WHERE a.imovel_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') ORDER BY a.ordem, a.id',
                 $ids
@@ -455,7 +524,7 @@ class AreaPlantioService
             }
             // v46: áreas de não plantio de todos os imóveis numa consulta
             $rows = Database::todos(
-                'SELECT id, imovel_id, nome, tipo, contorno, area_gps, ordem FROM areas_nao_plantio
+                'SELECT id, imovel_id, nome, tipo, contorno, area_gps, origem, tema, ordem FROM areas_nao_plantio
                   WHERE imovel_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') ORDER BY ordem, id',
                 $ids
             );

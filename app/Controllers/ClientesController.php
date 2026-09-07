@@ -339,6 +339,8 @@ class ClientesController
             // v46: áreas de NÃO plantio (mata, açude...) — buracos descontados do plantio/talhões
             'areas_nao_plantio' => array_map(fn ($x) => [
                 'id' => (int) $x['id'], 'nome' => $x['nome'], 'tipo' => $x['tipo'], 'contorno' => $x['contorno'], 'area_gps' => (float) $x['area_gps'],
+                // v49: camada ambiental importada do CAR (pode se sobrepor a outras; desconto por união)
+                'origem' => $x['origem'] ?? 'manual', 'tema' => $x['tema'] ?? null,
             ], \App\Services\AreaPlantioService::exclusoesDoImovel($imovelId)),
             'tipos_nao_plantio' => \App\Services\AreaPlantioService::TIPOS_NAO_PLANTIO,
             // Imagem de satélite de fundo (provedor configurável; vazio = sem mapa)
@@ -407,11 +409,13 @@ class ClientesController
             // v46: área de NÃO plantio (mata, açude...) — exclusao_id 0 = nova
             $imovel = $this->imovelAlvo();
             $exclusaoId = (int) ($_POST['exclusao_id'] ?? 0);
+            $exclusaoDoCar = false;
             if ($exclusaoId > 0) {
-                $existe = Database::valor('SELECT 1 FROM areas_nao_plantio WHERE id = ? AND imovel_id = ?', [$exclusaoId, (int) $imovel['id']]);
+                $existe = Database::um('SELECT origem FROM areas_nao_plantio WHERE id = ? AND imovel_id = ?', [$exclusaoId, (int) $imovel['id']]);
                 if (!$existe) {
                     json_erro('Área de não plantio não encontrada neste imóvel.', 404);
                 }
+                $exclusaoDoCar = ($existe['origem'] ?? 'manual') === 'car'; // v49
             }
             $alvoId = $exclusaoId;
             $tabela = 'areas_nao_plantio';
@@ -483,6 +487,9 @@ class ClientesController
                 }
             }
             foreach (\App\Services\AreaPlantioService::exclusoesDoImovel($imovelId) as $x) {
+                if (($x['origem'] ?? 'manual') === 'car') {
+                    continue; // v49: camada do CAR margeia a divisa oficial — ajustar a divisa não pode ficar preso nela
+                }
                 $pl = json_decode((string) $x['contorno'], true) ?: [];
                 if ($pl && \App\Services\CroquiService::pontosFora($pl, $pontos)) {
                     $foraDaNova[] = 'área de não plantio "' . $x['nome'] . '"';
@@ -511,7 +518,10 @@ class ClientesController
                 $pontos = \App\Services\CroquiService::prenderNaDivisa($pontos, $divisa);
                 $pontos = \App\Services\CroquiService::margearDivisa($pontos, $divisa);
                 $pontos = $this->semSobreporExclusoes($pontos, $imovelId, $alvoId);
-                $this->exigirLinhasDentro($pontos, $divisa);
+                if (!$exclusaoDoCar) {
+                    // v49: camada do CAR margeia a divisa oficial — aresta coincidente dá falso "linha fora"
+                    $this->exigirLinhasDentro($pontos, $divisa);
+                }
             } else {
                 $pontos = \App\Services\CroquiService::prenderNaDivisa($pontos, $divisa);
                 // Margeia a divisa: reta entre dois pontos da borda que sairia do CAR vira o caminho da borda
@@ -594,7 +604,7 @@ class ClientesController
                 );
                 $alvoId = Database::ultimoId();
             }
-            $exclusaoRow = Database::um('SELECT id, nome, tipo, contorno, area_gps FROM areas_nao_plantio WHERE id = ?', [$alvoId]);
+            $exclusaoRow = Database::um('SELECT id, nome, tipo, contorno, area_gps, origem, tema FROM areas_nao_plantio WHERE id = ?', [$alvoId]);
         } else {
             Database::executar(
                 "UPDATE {$tabela} SET {$colContorno} = ?, {$colArea} = ? WHERE id = ?",
@@ -608,8 +618,9 @@ class ClientesController
                 Database::executar("UPDATE {$tabela} SET {$colOficial} = ? WHERE id = ?", [$areaGps, $alvoId]);
             }
         }
-        if ($tipo === 'talhao' || $tipo === 'exclusao') {
-            // v46: talhoes.area_ha = área LÍQUIDA (medida − não plantio dentro dele)
+        if ($tipo === 'talhao' || $tipo === 'exclusao' || $tipo === 'plantio') {
+            // v46: talhoes.area_ha = área LÍQUIDA (medida − não plantio dentro dele);
+            // v49: também os caches areas_plantio.area_liquida e imoveis.nao_plantio_ha
             \App\Services\AreaPlantioService::sincronizarLiquidas($imovelId);
         }
         // Divisa vinda do CAR (identificação por GPS) traz o número do imóvel
@@ -628,7 +639,8 @@ class ClientesController
         $resposta = ['area_gps' => $areaGps, 'talhoes_fora' => $avisos, 'plantio' => $plantioRow];
         if ($tipo === 'exclusao' && !empty($exclusaoRow)) {
             $resposta['exclusao'] = ['id' => (int) $exclusaoRow['id'], 'nome' => $exclusaoRow['nome'], 'tipo' => $exclusaoRow['tipo'],
-                'contorno' => $exclusaoRow['contorno'], 'area_gps' => (float) $exclusaoRow['area_gps']];
+                'contorno' => $exclusaoRow['contorno'], 'area_gps' => (float) $exclusaoRow['area_gps'],
+                'origem' => $exclusaoRow['origem'] ?? 'manual', 'tema' => $exclusaoRow['tema'] ?? null];
         }
         if ($tipo === 'talhao') {
             $resposta['area_ha'] = (float) Database::valor('SELECT area_ha FROM talhoes WHERE id = ?', [$alvoId]);
@@ -782,12 +794,129 @@ class ClientesController
             );
         }
         \App\Services\AreaPlantioService::sincronizarPropriedade($propId); // área total da propriedade = soma dos CARs
-        auditar('importar', 'croqui', $imovelId, 'CAR shapefile · imóvel · ' . count($pontos) . " pontos · {$areaGps} ha");
+
+        // v49: CAMADAS AMBIENTAIS do mesmo zip (APP, Reserva Legal, Vegetação nativa, Servidão,
+        // Hidrografia) → áreas de não plantio de origem 'car'; Área Consolidada → áreas de plantio
+        [$camadasResumo, $consolidadas, $ignoradas, $avisos] = $this->importarCamadasDoCar(
+            $_FILES['arquivo']['tmp_name'], $imovelId, $pontos,
+            (int) ($_POST['camadas'] ?? 1) === 1, (int) ($_POST['consolidada'] ?? 0) === 1
+        );
+        \App\Services\AreaPlantioService::sincronizarLiquidas($imovelId);
+        $naoPlantio = (float) (Database::valor('SELECT nao_plantio_ha FROM imoveis WHERE id = ?', [$imovelId]) ?? 0);
+
+        auditar('importar', 'croqui', $imovelId, 'CAR shapefile · imóvel · ' . count($pontos) . " pontos · {$areaGps} ha"
+            . ($camadasResumo ? ' · camadas: ' . implode(', ', array_map(fn ($c) => $c['rotulo'] . ' ' . $c['partes'] . 'p/' . $c['ha'] . 'ha', $camadasResumo)) : '')
+            . ($consolidadas ? " · {$consolidadas} área(s) de plantio da Área Consolidada" : ''));
         json_ok([
             'area_gps' => $areaGps, 'pontos' => count($pontos), 'talhoes_fora' => $fora,
             'car_numero' => $car ?: null,
             'municipio' => $lido['municipio'] ?? null, 'uf' => $lido['uf'] ?? null,
+            'camadas' => array_values($camadasResumo), 'nao_plantio' => round($naoPlantio, 2),
+            'consolidadas' => $consolidadas, 'ignoradas' => $ignoradas, 'avisos' => $avisos,
         ]);
+    }
+
+    /** Parte menor que isto (ha) numa camada do CAR é estilhaço e não vira área de não plantio. */
+    private const MIN_CAMADA_HA = 0.02;
+    /** Parte da Área Consolidada menor que isto (ha) não vira área de plantio. */
+    private const MIN_CONSOLIDADA_HA = 0.5;
+
+    /**
+     * v49: grava as camadas ambientais do zip do SICAR como áreas de não plantio do imóvel
+     * (origem 'car' + tema; reimportar SUBSTITUI só as de origem 'car' — as desenhadas à mão
+     * ficam) e, opcionalmente, a Área Consolidada como áreas de plantio (só em imóvel sem áreas).
+     * Cada parte é presa/margeada na divisa recém-gravada; parte que ainda ficar com linha fora
+     * é ignorada (contada). Devolve [resumo por camada, áreas de plantio criadas, ignoradas, avisos].
+     */
+    private function importarCamadasDoCar(string $arquivo, int $imovelId, array $divisa, bool $camadas, bool $consolidada): array
+    {
+        $resumo = [];
+        $criadas = 0;
+        $ignoradas = 0;
+        $avisos = [];
+        if (!$camadas && !$consolidada) {
+            return [$resumo, $criadas, $ignoradas, $avisos];
+        }
+        try {
+            $lidas = \App\Services\ShapefileService::camadasAmbientais($arquivo);
+        } catch (\Exception $e) {
+            $avisos[] = 'Camadas ambientais não lidas: ' . $e->getMessage();
+            return [$resumo, $criadas, $ignoradas, $avisos];
+        }
+        // Prende os vértices na divisa recém-gravada (mesma fonte oficial: as camadas margeiam a
+        // divisa do CAR). NÃO passa pelo recorte de linhas (margearDivisa/linhasFora): em aresta
+        // coincidente com a borda ele cria falsos "linha fora" por arredondamento. Parte com
+        // vértice realmente fora (> 15 m) é ignorada.
+        $ajustar = function (array $anel) use ($divisa): ?array {
+            $pts = \App\Services\CroquiService::prenderNaDivisa($anel, $divisa);
+            if (count($pts) < 3 || count($pts) > \App\Services\CroquiService::MAX_PONTOS || \App\Services\CroquiService::pontosFora($pts, $divisa)) {
+                return null;
+            }
+            return $pts;
+        };
+        if ($camadas) {
+            Database::executar("DELETE FROM areas_nao_plantio WHERE imovel_id = ? AND origem = 'car'", [$imovelId]);
+            $ordem = (int) Database::valor('SELECT COALESCE(MAX(ordem), 0) FROM areas_nao_plantio WHERE imovel_id = ?', [$imovelId]);
+            foreach ($lidas as $c) {
+                $def = \App\Services\ShapefileService::CAMADAS[$c['camada']] ?? null;
+                if (!$def || $def['tipo'] === null) {
+                    continue;
+                }
+                $aneis = array_values(array_filter($c['aneis'], fn ($a) => \App\Services\CroquiService::areaHa($a) >= self::MIN_CAMADA_HA));
+                $n = count($aneis);
+                foreach ($aneis as $i => $anel) {
+                    $pts = $ajustar($anel);
+                    $ha = $pts ? \App\Services\CroquiService::areaHa($pts) : 0.0;
+                    if ($pts === null || $ha < self::MIN_CAMADA_HA) {
+                        $ignoradas++;
+                        continue;
+                    }
+                    $nome = $def['rotulo'] . ' (CAR)' . ($n > 1 ? ' ' . ($i + 1) . '/' . $n : '');
+                    Database::executar(
+                        "INSERT INTO areas_nao_plantio (imovel_id, nome, tipo, contorno, area_gps, origem, tema, ordem) VALUES (?,?,?,?,?,'car',?,?)",
+                        [$imovelId, $nome, $def['tipo'], json_encode($pts), $ha, mb_substr((string) $c['tema'], 0, 160) ?: null, ++$ordem]
+                    );
+                    $resumo[$c['camada']] ??= ['camada' => $c['camada'], 'rotulo' => $def['rotulo'], 'tipo' => $def['tipo'], 'partes' => 0, 'ha' => 0.0];
+                    $resumo[$c['camada']]['partes']++;
+                    $resumo[$c['camada']]['ha'] = round($resumo[$c['camada']]['ha'] + $ha, 2);
+                }
+            }
+        }
+        if ($consolidada) {
+            $existentes = count(\App\Services\AreaPlantioService::areasDoImovel($imovelId));
+            $aneis = [];
+            foreach ($lidas as $c) {
+                if ($c['camada'] === 'consolidada') {
+                    foreach ($c['aneis'] as $a) {
+                        if (\App\Services\CroquiService::areaHa($a) >= self::MIN_CONSOLIDADA_HA) {
+                            $aneis[] = $a;
+                        }
+                    }
+                }
+            }
+            if ($existentes > 0) {
+                $avisos[] = 'O imóvel já tem áreas de plantio desenhadas — a Área Consolidada do CAR não foi criada (apague as áreas no croqui para usá-la).';
+            } elseif (!$aneis) {
+                $avisos[] = 'O arquivo não traz a camada "Área Consolidada" (Cobertura do Solo) — as áreas de plantio seguem desenhadas no croqui.';
+            } else {
+                usort($aneis, fn ($a, $b) => \App\Services\CroquiService::areaHa($b) <=> \App\Services\CroquiService::areaHa($a));
+                $n = count($aneis);
+                foreach ($aneis as $i => $anel) {
+                    $pts = $ajustar($anel);
+                    if ($pts === null) {
+                        $ignoradas++;
+                        continue;
+                    }
+                    $nome = 'Área consolidada' . ($n > 1 ? ' ' . ($i + 1) : '') . ' (CAR)';
+                    Database::executar(
+                        "INSERT INTO areas_plantio (imovel_id, nome, uso, contorno, area_gps, ordem) VALUES (?,?,'lavoura',?,?,?)",
+                        [$imovelId, $nome, json_encode($pts), \App\Services\CroquiService::areaHa($pts), $i + 1]
+                    );
+                    $criadas++;
+                }
+            }
+        }
+        return [$resumo, $criadas, $ignoradas, $avisos];
     }
 
     /**
@@ -1124,7 +1253,13 @@ class ClientesController
         $vizinhos = [];
         foreach (\App\Services\AreaPlantioService::exclusoesDoImovel($imovelId) as $x) {
             if ((int) $x['id'] === $ignorarId) {
+                if (($x['origem'] ?? 'manual') === 'car') {
+                    return $pontos; // v49: camada do CAR pode se sobrepor a tudo (o desconto é por união)
+                }
                 continue;
+            }
+            if (($x['origem'] ?? 'manual') === 'car') {
+                continue; // v49: a APP fica dentro da vegetação nativa — sobreposição legítima
             }
             $pts = json_decode((string) $x['contorno'], true) ?: [];
             if (count($pts) >= 3) {
@@ -1539,6 +1674,7 @@ class ClientesController
             [$imovelId, $nome, json_encode($pontos), $areaGps, $qtd + 1]
         );
         $plantioId = Database::ultimoId();
+        \App\Services\AreaPlantioService::sincronizarLiquidas($imovelId); // v49: cache da área líquida da área nova
         auditar('salvar', 'croqui', $plantioId, 'área de plantio "' . $nome . '" a partir do talhão "' . $talhao['nome'] . "\" · {$areaGps} ha");
 
         $excluido = false;
