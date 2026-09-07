@@ -1031,8 +1031,9 @@ class ClientesController
 
     /**
      * REGRA (teste de campo): NENHUMA LINHA fica fora da área do CAR. Prender os
-     * pontos não basta em divisa côncava; se alguma aresta cruzar ou passar por
-     * fora, recusa apontando quais.
+     * pontos não basta em divisa côncava; `margearDivisa` já corrige sozinha
+     * cada linha que sai (recorta pela borda) — isto é só a rede de segurança
+     * para o caso raro em que a correção não fecha.
      */
     private function exigirLinhasDentro(array $pontos, array $divisa, string $rotulo = 'área do CAR'): void
     {
@@ -1040,7 +1041,7 @@ class ClientesController
         if ($fora) {
             $nums = array_map(fn ($i) => ($i + 1) . '→' . (($i + 1) % count($pontos) + 1), $fora);
             json_erro("Linha fora da {$rotulo} (entre os pontos " . implode(', ', $nums)
-                . '). Nenhuma linha pode sair do limite — acrescente um ponto na linha vermelha e puxe-o para dentro.');
+                . '). Não foi possível ajustar sozinho — acrescente um ponto na linha vermelha e puxe-o para dentro.');
         }
     }
 

@@ -2343,11 +2343,13 @@ const Croqui = {
   },
 
   /**
-   * MARGEAR A DIVISA (pedido do teste de campo): dois pontos seguidos na borda da
-   * divisa cuja reta SAI da área do CAR (a divisa faz curva/quina entre eles) ganham
-   * o próprio caminho da borda no meio — os vértices da divisa entram no desenho e
-   * nenhuma linha fica fora. Reta que segue por dentro (corte de lado a lado) não
-   * muda. Idempotente. Espelho de CroquiService::margearDivisa. Devolve true se mudou.
+   * MARGEAR A DIVISA (pedido do teste de campo): toda LINHA do desenho que sai do
+   * limite é corrigida sozinha — o trecho de fora vira o caminho da própria borda.
+   * Cobre dois pontos seguidos na borda com a reta saindo do CAR (a divisa faz
+   * curva/quina entre eles) E ponto no meio do imóvel com a reta cortando uma
+   * reentrância (antes só avisava "linha fora" e travava o salvar). Reta que segue
+   * por dentro não muda. Idempotente. Espelho de CroquiService::margearDivisa.
+   * Devolve true se mudou.
    */
   _margearDivisa() {
     if (Croqui.atualId === 0) return false;
@@ -2361,14 +2363,48 @@ const Croqui = {
     let mudou = false;
     for (let i = 0; i < arestas; i++) {
       saida.push(pts[i]);
-      const pa = Croqui._posicaoNaBorda(xy[i], pol), pb = Croqui._posicaoNaBorda(xy[(i + 1) % n], pol);
-      if (pa.dist > Croqui.SNAP_DIVISA_M || pb.dist > Croqui.SNAP_DIVISA_M) continue;
       if (!Croqui._linhasFora([pts[i], pts[(i + 1) % n]], divisa).length) continue;
-      for (const v of Croqui._caminhoBorda(pol, pa, pb)) { saida.push(desproj(v)); mudou = true; }
+      for (const v of Croqui._caminhoDentro(pol, xy[i], xy[(i + 1) % n], Croqui.SNAP_DIVISA_M)) { saida.push(desproj(v)); mudou = true; }
     }
     if (n === 2) saida.push(pts[1]);
     if (mudou) Croqui.pontos = saida;
     return mudou;
+  },
+
+  /**
+   * Pontos (metros) a inserir entre A e B para o caminho ficar DENTRO do polígono:
+   * corta a reta em cada cruzamento com a borda (mais as pontas que já estão na
+   * borda); trecho cujo meio cai fora vira o caminho da borda entre a saída e a
+   * reentrada; trecho por dentro fica reto. Espelho de CroquiService::caminhoDentro.
+   */
+  _caminhoDentro(pol, A, B, tol) {
+    const n = pol.length, cortes = [];
+    const pa = Croqui._posicaoNaBorda(A, pol), pb = Croqui._posicaoNaBorda(B, pol);
+    if (pa.dist <= tol) cortes.push({ t: 0, pos: pa });
+    if (pb.dist <= tol) cortes.push({ t: 1, pos: pb });
+    const orient = (o, q, r) => (q[0] - o[0]) * (r[1] - o[1]) - (q[1] - o[1]) * (r[0] - o[0]);
+    for (let j = 0; j < n; j++) {
+      const q1 = pol[j], q2 = pol[(j + 1) % n];
+      const d1 = orient(q1, q2, A), d2 = orient(q1, q2, B), d3 = orient(A, B, q1), d4 = orient(A, B, q2);
+      if (!((d1 > 0) !== (d2 > 0)) || !((d3 > 0) !== (d4 > 0))) continue; // não cruzam (ou só encostam)
+      cortes.push({ t: d1 / (d1 - d2), pos: { i: j, t: d3 / (d3 - d4), dist: 0 } });
+    }
+    if (cortes.length < 2) return [];
+    cortes.sort((x, y) => x.t - y.t);
+    const compr = Math.hypot(B[0] - A[0], B[1] - A[1]);
+    const ponto = t => [A[0] + t * (B[0] - A[0]), A[1] + t * (B[1] - A[1])];
+    const naAresta = q => { const [ax, ay] = pol[q.i], [bx, by] = pol[(q.i + 1) % n]; return [ax + q.t * (bx - ax), ay + q.t * (by - ay)]; };
+    const saida = [];
+    for (let k = 0; k < cortes.length - 1; k++) {
+      const c1 = cortes[k], c2 = cortes[k + 1];
+      if ((c2.t - c1.t) * compr < 0.5) continue; // cruzamentos no mesmo lugar (vértice da borda)
+      const meio = ponto((c1.t + c2.t) / 2);
+      if (Croqui._dentroXY(meio, pol) || Croqui._posicaoNaBorda(meio, pol).dist <= tol) continue; // trecho por dentro: reto
+      if (c1.t > 0) saida.push(naAresta(c1.pos));
+      for (const v of Croqui._caminhoBorda(pol, c1.pos, c2.pos)) saida.push(v);
+      if (c2.t < 1) saida.push(naAresta(c2.pos));
+    }
+    return saida;
   },
 
   /** Guarda o estado atual para o Desfazer (uma ação do usuário = um estado). */
@@ -2883,7 +2919,7 @@ const Croqui = {
         ? ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> o talhão precisa ficar dentro de uma área de plantio — toque dentro de uma área verde</span>`
         : ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> ${regra.fora.length} ponto(s) ${Croqui._ehTalhao(Croqui.atualId) ? 'fora da área de plantio ou dentro de outro talhão' : (ehPlantio ? 'fora da divisa ou dentro de outra área de plantio' : 'fora da divisa do imóvel')}</span>`;
     } else if (regra.linhasFora && regra.linhasFora.length) {
-      alerta = ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> ${regra.linhasFora.length} linha(s) fora da área do CAR — toque na linha vermelha para acrescentar um ponto e puxe-o para dentro</span>`;
+      alerta = ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> ${regra.linhasFora.length} linha(s) fora do limite — ao Salvar o app puxa a linha para a borda</span>`;
     } else if (regra.talhoesFora.length) {
       alerta = ` <span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> ${ehPlantio ? 'a área deixaria para fora o talhão' : 'divisa deixa fora'}: ${App.escapeHtml(regra.talhoesFora.join(', '))}</span>`;
     } else if (regra.avisos.length) {
@@ -3148,6 +3184,13 @@ const Croqui = {
       App.alerta('Marque pelo menos 3 pontos para fechar a área (ou Limpar para remover o croqui).', 'warning');
       return;
     }
+    // Linha que sai do limite é corrigida SOZINHA antes de validar (recorte pela
+    // borda) — o técnico não precisa caçar a linha vermelha (pedido do teste de campo)
+    if (Croqui.pontos.length >= 3 && Croqui._margearDivisa()) {
+      Croqui._dirty = true;
+      Croqui.render();
+      App.alerta('O desenho foi ajustado sozinho: a linha que saía do limite passou a seguir a borda.', 'info');
+    }
     // REGRAS (v40): área de plantio e talhão dentro da divisa do imóvel; a divisa
     // não deixa nada para fora (o servidor também valida)
     const regra = Croqui._validarRegra();
@@ -3166,7 +3209,7 @@ const Croqui = {
       return;
     }
     if (regra.linhasFora && regra.linhasFora.length) {
-      App.alerta(`Nenhuma linha pode sair da área do CAR — ${regra.linhasFora.length} linha(s) em vermelho atravessam a divisa. Toque na linha vermelha para acrescentar um ponto e puxe-o para dentro.`, 'danger');
+      App.alerta(`Nenhuma linha pode sair do limite — ${regra.linhasFora.length} linha(s) em vermelho atravessam a divisa e não deu para ajustar sozinho. Toque na linha vermelha para acrescentar um ponto e puxe-o para dentro.`, 'danger');
       return;
     }
     if (regra.talhoesFora.length) {
