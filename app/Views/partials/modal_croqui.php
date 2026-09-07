@@ -53,8 +53,12 @@
             <?php /* Alvo = talhão: o desenho pode virar a ÁREA DE PLANTIO (cadastro errado). Alvo = área de plantio: copiar o desenho de um talhão. */ ?>
             <button type="button" class="btn btn-sm btn-outline-success d-none" id="croquiVirarPlantioBtn" onclick="Croqui.talhaoParaPlantio()"
                     title="Este desenho é a área de plantio do imóvel, não um talhão"><i class="bi bi-arrow-right-circle"></i> Virar área de plantio</button>
-            <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="croquiRenomearBtn" onclick="Croqui.renomearAreaPlantio()"
-                    title="Renomear esta área de plantio"><i class="bi bi-pencil"></i> Renomear</button>
+            <?php /* v46: tipo da ÁREA DE NÃO PLANTIO (mata, açude, sede...) — só com esse alvo selecionado */ ?>
+            <div class="d-none" id="croquiExclusaoTipoWrap" title="Tipo da área de não plantio (descontada da área de plantio e dos talhões)">
+              <select id="croquiExclusaoTipo" class="form-select form-select-sm" style="max-width:210px" onchange="Croqui.tipoExclusaoMudou()"></select>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="croquiRenomearBtn" onclick="Croqui.renomear()"
+                    title="Renomear esta área"><i class="bi bi-pencil"></i> Renomear</button>
             <div class="btn-group btn-group-sm d-none" id="croquiCopiarTalhaoWrap">
               <button type="button" class="btn btn-outline-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"
                       title="Carregar o desenho de um talhão como área de plantio (ajuste e salve)"><i class="bi bi-copy"></i> Copiar de talhão</button>
@@ -94,6 +98,7 @@
         </div>
         <div class="small text-muted">
           <i class="bi bi-info-circle me-1"></i>O croqui segue <strong>três etapas presas uma à outra</strong>: a divisa do CAR ajustada por você é o limite das áreas de plantio, e cada área de plantio é o limite dos seus talhões — pontos fora são puxados para a borda e nenhuma linha atravessa o limite (laranja).
+          <strong>Mato, açude, sede ou estrada no meio da lavoura?</strong> Na etapa 2, marque como <em>área de não plantio</em> (hachurada): ela é descontada da área de plantio e dos talhões que a contêm — não precisa contornar com a linha.
           <strong>Manual</strong>: toque sobre a imagem de satélite para marcar cada canto (arraste o mapa para navegar,
           use +/− ou a roda do mouse para o zoom, <strong>⤢ para o mapa ocupar a tela toda</strong>, arraste um ponto para ajustar, dê <strong>dois toques sobre a linha ciano para inserir um ponto</strong> ali e refinar, e <strong>dois toques em um ponto para removê-lo</strong>). O que você desenha fica em <strong>ciano</strong>; as linhas do CAR ficam em amarelo (na etapa 1, com o <em>CAR no mapa</em> ligado, tocar dentro de um imóvel amarelo adota aquela divisa). <strong>Caminhar a divisa</strong>: ande pelo perímetro —
           o app marca um ponto a cada ~10 m pelo GPS, mesmo sem sinal (o salvar entra na fila).

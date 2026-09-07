@@ -1127,6 +1127,29 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '45'"
             );
         }
+        if ($versao < 46) {
+            // ÁREAS DE NÃO PLANTIO (pedido do teste de campo: a meia-lua de mato dentro da
+            // área de plantio): polígonos com tipo (mata, APP, açude, sede, estrada, outro)
+            // dentro da divisa, descontados da área de plantio e dos talhões que os contêm.
+            Database::executar(
+                'CREATE TABLE IF NOT EXISTS areas_nao_plantio (
+                   id INT AUTO_INCREMENT PRIMARY KEY,
+                   imovel_id INT NOT NULL,
+                   nome VARCHAR(120) NOT NULL DEFAULT \'Área de não plantio\',
+                   tipo VARCHAR(20) NOT NULL DEFAULT \'mata\',
+                   contorno TEXT NOT NULL,
+                   area_gps DECIMAL(10,2) NOT NULL DEFAULT 0,
+                   ordem INT NOT NULL DEFAULT 0,
+                   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                   INDEX idx_areas_nao_plantio_imovel (imovel_id),
+                   FOREIGN KEY (imovel_id) REFERENCES imoveis(id) ON DELETE CASCADE
+                 ) ENGINE=InnoDB'
+            );
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '46')
+                 ON DUPLICATE KEY UPDATE valor = '46'"
+            );
+        }
     }
 
     /** Apaga cópias idênticas de talhão (mantém a de menor id), poupando as que têm histórico. */
