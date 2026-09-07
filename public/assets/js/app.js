@@ -1259,6 +1259,88 @@ const Croqui = {
   ICONE_EXCLUSAO: { mata: '🌳', reserva: '🌲', app: '💧', acude: '🐟', sede: '🏠', estrada: '🛣️', outro: '⛔' },
   /** v49: área de não plantio importada do CAR (camada ambiental) — pode se sobrepor a outras. */
   _ehExclusaoCar(x) { return !!x && x.origem === 'car'; },
+  /* --- v50: TODAS as feições ambientais do zip do SICAR (referência ligável no mapa) --- */
+  camadasCar: [],
+  CLASSES_CAR: { outro: { rotulo: 'Outra camada do CAR', cor: '#546e7a', icone: '🗂️' } }, // vem do servidor (ShapefileService::CLASSES)
+  // Ligadas por padrão: o que NÃO está hachurado como área de não plantio (APP por tipo, a recompor,
+  // banhado, curso d'água, nascente, não classificada, área líquida, uso restrito, pousio)
+  CAMADAS_CAR_PADRAO: ['app', 'app_recompor', 'banhado', 'hidrografia', 'nascente', 'nao_classificada', 'area_liquida', 'uso_restrito', 'pousio'],
+  _carregarCamadasCar(dados) {
+    Croqui.camadasCar = dados.camadas_car || [];
+    if (dados.classes_car) Croqui.CLASSES_CAR = dados.classes_car;
+    Croqui._montarCamadasCar();
+  },
+  /** Classes visíveis (lembradas no aparelho; sem escolha, o padrão). */
+  _camadasCarVisiveis() {
+    let salvo = null;
+    try { salvo = JSON.parse(localStorage.getItem('croqui_camadas_car') || 'null'); } catch (e) { salvo = null; }
+    const vis = new Set();
+    const classes = [...new Set(Croqui.camadasCar.map(c => c.classe))];
+    classes.forEach(k => { if (salvo && typeof salvo[k] === 'boolean' ? salvo[k] : Croqui.CAMADAS_CAR_PADRAO.includes(k)) vis.add(k); });
+    return vis;
+  },
+  toggleCamadaCar(classe, ligada) {
+    let salvo = {};
+    try { salvo = JSON.parse(localStorage.getItem('croqui_camadas_car') || '{}') || {}; } catch (e) { salvo = {}; }
+    salvo[classe] = !!ligada;
+    try { localStorage.setItem('croqui_camadas_car', JSON.stringify(salvo)); } catch (e) { /* sem storage */ }
+    Croqui.render();
+  },
+  /** Painel "Camadas do CAR": um checkbox por classe com a área somada (ou a contagem de pontos). */
+  _montarCamadasCar() {
+    const wrap = document.getElementById('croquiCamadasCarWrap'), lista = document.getElementById('croquiCamadasCarLista'), qtd = document.getElementById('croquiCamadasCarQtd');
+    if (!wrap || !lista) return;
+    if (!Croqui.camadasCar.length) { wrap.classList.add('d-none'); return; }
+    wrap.classList.remove('d-none');
+    const vis = Croqui._camadasCarVisiveis();
+    const grupos = new Map();
+    Croqui.camadasCar.forEach(c => {
+      const g = grupos.get(c.classe) || { n: 0, ha: 0, pontos: 0, temas: new Set() };
+      g.n++; if (c.geom_tipo === 'ponto') g.pontos++; else g.ha += Number(c.area_ha || 0);
+      if (c.tema) g.temas.add(c.tema);
+      grupos.set(c.classe, g);
+    });
+    const fmt = v => Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+    if (qtd) qtd.textContent = `(${grupos.size})`;
+    lista.innerHTML = '<div class="text-muted mb-1">Feições do zip do SICAR deste imóvel — só referência (o desconto vem das áreas de não plantio hachuradas).</div>'
+      + [...grupos.entries()].map(([k, g]) => {
+        const d = Croqui.CLASSES_CAR[k] || Croqui.CLASSES_CAR.outro;
+        return `<div class="form-check mb-1"><input class="form-check-input" type="checkbox" id="croquiCamadaCar_${k}" ${vis.has(k) ? 'checked' : ''} onchange="Croqui.toggleCamadaCar('${k}', this.checked)">
+          <label class="form-check-label" for="croquiCamadaCar_${k}" title="${App.escapeHtml([...g.temas].join(' | '))}"><span class="croqui-cor" style="background:${d.cor}"></span>${d.icone} ${App.escapeHtml(d.rotulo)} <span class="text-muted">· ${g.pontos ? g.pontos + ' ponto(s)' : fmt(g.ha) + ' ha'}${g.n > 1 && !g.pontos ? ' · ' + g.n + ' registros' : ''}</span></label></div>`;
+      }).join('');
+  },
+  /** SVG das camadas do CAR ligadas (polígonos, linhas e pontos) + entradas de legenda. */
+  _svgCamadasCar(larg, alt, legenda) {
+    if (!Croqui.camadasCar.length) return '';
+    const vis = Croqui._camadasCarVisiveis();
+    if (!vis.size) return '';
+    let svg = '';
+    const usadas = new Map();
+    Croqui.camadasCar.forEach(c => {
+      if (!vis.has(c.classe)) return;
+      const d = Croqui.CLASSES_CAR[c.classe] || Croqui.CLASSES_CAR.outro;
+      let partes = []; try { partes = JSON.parse(c.geometria) || []; } catch (e) { partes = []; }
+      partes.forEach(parte => {
+        if (!parte || !parte.length) return;
+        if (c.geom_tipo === 'ponto') {
+          const [x, y] = Croqui._paraTela(parte[0], larg, alt);
+          svg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="8" fill="${d.cor}" fill-opacity=".85" stroke="#fff" stroke-width="2" style="pointer-events:none"/>
+                  <text x="${x.toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="middle" font-size="10" style="pointer-events:none">${d.icone}</text>`;
+        } else {
+          const xy = parte.map(p => Croqui._paraTela(p, larg, alt));
+          // estilhaço menor que 6 px na tela (as dezenas de lascas da "APP em área antropizada") só vira ruído
+          if (c.geom_tipo !== 'linha' && Math.max(...xy.map(p => p[0])) - Math.min(...xy.map(p => p[0])) < 6 && Math.max(...xy.map(p => p[1])) - Math.min(...xy.map(p => p[1])) < 6) return;
+          const tela = xy.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+          svg += c.geom_tipo === 'linha'
+            ? `<polyline points="${tela}" fill="none" stroke="${d.cor}" stroke-width="2.5" stroke-linejoin="round" style="pointer-events:none"/>`
+            : `<polygon points="${tela}" fill="${d.cor}" fill-opacity=".18" stroke="${d.cor}" stroke-width="2" stroke-dasharray="6 3" style="pointer-events:none"/>`;
+        }
+      });
+      usadas.set(c.classe, d);
+    });
+    usadas.forEach(d => legenda.push(`<span><span class="croqui-cor" style="background:${d.cor}"></span>${d.icone} ${App.escapeHtml(d.rotulo)} (CAR)</span>`));
+    return svg;
+  },
   _alvoExclusao(id) { return -(Croqui.EXCLUSAO_BASE + Number(id)); },
   _exclusaoIdDe(alvo) { alvo = Number(alvo); return alvo <= -Croqui.EXCLUSAO_BASE ? -alvo - Croqui.EXCLUSAO_BASE : 0; },
   _ehExclusao(alvo) { alvo = Number(alvo); return alvo === Croqui.EXCLUSAO_ID || alvo <= -Croqui.EXCLUSAO_BASE; },
@@ -1429,7 +1511,7 @@ const Croqui = {
     Croqui.outros = dados.outros || [];
     Croqui.talhoes = dados.talhoes;
     Croqui.areasPlantio = dados.areas_plantio || [];
-    Croqui.exclusoes = dados.areas_nao_plantio || [];
+    Croqui.exclusoes = dados.areas_nao_plantio || []; Croqui._carregarCamadasCar(dados);
     if (dados.tipos_nao_plantio) Croqui.tiposExclusao = dados.tipos_nao_plantio;
     if (dados.usos_area) Croqui.usosArea = dados.usos_area;
     Croqui.culturas = dados.culturas || [];
@@ -1634,7 +1716,7 @@ const Croqui = {
       Croqui.outros = dados.outros || [];
       Croqui.talhoes = dados.talhoes;
       Croqui.areasPlantio = dados.areas_plantio || [];
-      Croqui.exclusoes = dados.areas_nao_plantio || [];
+      Croqui.exclusoes = dados.areas_nao_plantio || []; Croqui._carregarCamadasCar(dados);
     } catch (e) { App.alerta(e.message, 'danger'); return; }
     Croqui.etapa = Croqui._etapaDe(alvo);
     Croqui._montarSelect(alvo);
@@ -3380,6 +3462,9 @@ const Croqui = {
         ? '<span><span class="croqui-cor" style="background:#ffd400"></span>Imóveis do CAR (toque p/ adotar)</span>'
         : '<span><span class="croqui-cor" style="background:#ffd400;opacity:.5"></span>CAR (só referência)</span>');
     }
+    // v50: feições ambientais do zip do SICAR ligadas no painel "Camadas do CAR" — referência,
+    // sob a divisa e sem capturar o toque
+    svg += Croqui._svgCamadasCar(larg, alt, legenda);
     // Outros imóveis (CAR) da mesma propriedade — contexto apagado, não editáveis (v40)
     if (Croqui.outros.length) {
       Croqui.outros.forEach(o => {
@@ -3468,8 +3553,11 @@ const Croqui = {
       const tela = pts.map(p => Croqui._paraTela(p, larg, alt));
       svg += `<polygon points="${tela.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ')}"
                 fill="url(#croquiHachura)" fill-opacity=".6" stroke="${Croqui.COR_EXCLUSAO}" stroke-width="2" stroke-dasharray="3 3"/>`;
-      const cx = tela.reduce((s, p) => s + p[0], 0) / tela.length, cy = tela.reduce((s, p) => s + p[1], 0) / tela.length;
-      svg += `<text x="${cx.toFixed(1)}" y="${cy.toFixed(1)}" text-anchor="middle" class="croqui-rotulo" style="fill:#3e2723">${Croqui.ICONE_EXCLUSAO[x.tipo] || '⛔'} ${App.escapeHtml(x.nome)}</text>`;
+      // v50: camada do CAR (dezenas de partes) fica só hachurada — o nome está no seletor/painel
+      if (!Croqui._ehExclusaoCar(x)) {
+        const cx = tela.reduce((s, p) => s + p[0], 0) / tela.length, cy = tela.reduce((s, p) => s + p[1], 0) / tela.length;
+        svg += `<text x="${cx.toFixed(1)}" y="${cy.toFixed(1)}" text-anchor="middle" class="croqui-rotulo" style="fill:#3e2723">${Croqui.ICONE_EXCLUSAO[x.tipo] || '⛔'} ${App.escapeHtml(x.nome)}</text>`;
+      }
       exclusoesDesenhadas++;
     });
     if (exclusoesDesenhadas) legenda.push(`<span><span class="croqui-cor" style="background:repeating-linear-gradient(45deg,${Croqui.COR_EXCLUSAO} 0 2px,#fff 2px 4px)"></span>Não plantio (descontado)</span>`);
@@ -3492,14 +3580,16 @@ const Croqui = {
       });
       // Realce (anel branco) do ponto tocado uma vez — feedback do "toque de novo para remover".
       const sel = Croqui._selecionado !== null && Croqui._selecionado < tela.length ? Croqui._selecionado : null;
+      // v50: polígono vindo do CAR tem centenas de vértices — alças menores para não virar um borrão
+      const rAlca = tela.length > 80 ? 5 : 9, wAlca = tela.length > 80 ? 1.5 : 3;
       tela.forEach((p, i) => {
         const invalido = foraSet.has(i); // ponto fora da divisa da propriedade
         if (i === sel) {
           svg += `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="15" fill="none" stroke="#fff" stroke-width="2.5" stroke-opacity=".95"/>`;
         }
-        svg += `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="9" class="croqui-vertice" data-idx="${i}"
+        svg += `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${rAlca}" class="croqui-vertice" data-idx="${i}"
                   fill="${invalido ? '#dc3545' : (i === 0 ? '#fff' : corAtual)}"
-                  stroke="${invalido ? '#7a121f' : '#0a5b6b'}" stroke-width="3"/>`;
+                  stroke="${invalido ? '#7a121f' : '#0a5b6b'}" stroke-width="${wAlca}"/>`;
       });
       const rotuloEdicao = Croqui.atualId === 0 ? 'Divisa (seu ajuste)'
         : (Croqui._ehPlantio(Croqui.atualId) ? 'Área de plantio (desenhando)' : (Croqui._ehExclusao(Croqui.atualId) ? 'Área de não plantio (desenhando)' : 'Talhão (desenhando)'));

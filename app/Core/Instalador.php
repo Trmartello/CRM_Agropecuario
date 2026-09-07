@@ -1218,6 +1218,30 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '49'"
             );
         }
+        if ($versao < 50) {
+            // Todas as feições ambientais do zip do SICAR no mapa (pedido do teste de campo:
+            // "implemente todas as opções desse arquivo no mapa") — referência ligável no croqui
+            // e lista na ficha; reimportar o CAR substitui.
+            Database::executar(
+                'CREATE TABLE IF NOT EXISTS imovel_camadas_car (
+                   id INT AUTO_INCREMENT PRIMARY KEY,
+                   imovel_id INT NOT NULL,
+                   camada VARCHAR(60) NOT NULL,
+                   classe VARCHAR(30) NOT NULL,
+                   tema VARCHAR(160) NULL,
+                   geom_tipo VARCHAR(10) NOT NULL DEFAULT \'poligono\',
+                   geometria MEDIUMTEXT NOT NULL,
+                   area_ha DECIMAL(10,2) NULL,
+                   ordem INT NOT NULL DEFAULT 0,
+                   INDEX idx_imovel_camadas_car (imovel_id),
+                   FOREIGN KEY (imovel_id) REFERENCES imoveis(id) ON DELETE CASCADE
+                 ) ENGINE=InnoDB'
+            );
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '50')
+                 ON DUPLICATE KEY UPDATE valor = '50'"
+            );
+        }
     }
 
     /** Apaga cópias idênticas de talhão (mantém a de menor id), poupando as que têm histórico. */

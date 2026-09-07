@@ -511,6 +511,7 @@ class AreaPlantioService
         // v44: áreas de plantio de todos os imóveis da propriedade numa consulta
         $areasPorImovel = [];
         $exclusoesPorImovel = [];
+        $camadasPorImovel = [];
         if ($imoveis) {
             $ids = array_map(fn ($im) => (int) $im['id'], $imoveis);
             $rows = Database::todos(
@@ -531,6 +532,15 @@ class AreaPlantioService
             foreach ($rows as $x) {
                 $exclusoesPorImovel[(int) $x['imovel_id']][] = $x;
             }
+            // v50: feições ambientais do zip do SICAR (sem a geometria — a ficha só lista tema × área)
+            $rows = Database::todos(
+                'SELECT id, imovel_id, camada, classe, tema, geom_tipo, area_ha FROM imovel_camadas_car
+                  WHERE imovel_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') ORDER BY ordem, id',
+                $ids
+            );
+            foreach ($rows as $c) {
+                $camadasPorImovel[(int) $c['imovel_id']][] = $c;
+            }
         }
         foreach ($imoveis as $i => &$im) {
             $im['talhoes'] = $porImovel[(int) $im['id']] ?? [];
@@ -539,6 +549,7 @@ class AreaPlantioService
             }
             $im['areas_plantio'] = $areasPorImovel[(int) $im['id']] ?? [];
             $im['areas_nao_plantio'] = $exclusoesPorImovel[(int) $im['id']] ?? [];
+            $im['camadas_car'] = $camadasPorImovel[(int) $im['id']] ?? [];
             $im['resumo'] = self::resumoImovel($im, $im['talhoes']);
         }
         unset($im);

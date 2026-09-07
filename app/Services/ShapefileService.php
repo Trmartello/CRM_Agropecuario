@@ -813,9 +813,31 @@ class ShapefileService
      */
     private static function registrosAneisExternos(string $bin): array
     {
+        $out = [];
+        foreach (self::registrosGeom($bin) as $r) {
+            $out[] = $r['tipo'] === 'poligono' ? $r['partes'] : [];
+        }
+        return $out;
+    }
+
+    /**
+     * v50: leitura GENÉRICA de um .shp — por registro: ['tipo' => poligono|linha|ponto,
+     * 'partes' => [[[lat,lng],...],...]]. Polígono: só anéis externos; ponto/multiponto:
+     * uma parte por ponto; linha: uma parte por trecho. Variantes Z/M aceitas (os
+     * valores extras ficam depois das coordenadas e são ignorados).
+     */
+    private static function registrosGeom(string $bin): array
+    {
         $tipo = unpack('Vt', substr($bin, 32, 4))['t'];
-        if (!in_array($tipo, [5, 15, 25], true)) {
-            return []; // só polígonos (pontos/linhas não viram área)
+        $familia = match (true) {
+            in_array($tipo, [1, 11, 21], true) => 'ponto',
+            in_array($tipo, [8, 18, 28], true) => 'multiponto',
+            in_array($tipo, [3, 13, 23], true) => 'linha',
+            in_array($tipo, [5, 15, 25], true) => 'poligono',
+            default => null,
+        };
+        if ($familia === null) {
+            return [];
         }
         $len = strlen($bin);
         $off = 100;
@@ -831,48 +853,230 @@ class ShapefileService
             $off += $cl;
             $st = unpack('Vt', substr($shape, 0, 4))['t'];
             if ($st === 0) {
-                $out[] = [];
+                $out[] = ['tipo' => $familia === 'multiponto' ? 'ponto' : $familia, 'partes' => []];
+                continue;
+            }
+            if ($familia === 'ponto') {
+                $xy = unpack('dx/dy', substr($shape, 4, 16));
+                $out[] = ['tipo' => 'ponto', 'partes' => [[[$xy['y'], $xy['x']]]]];
+                continue;
+            }
+            if ($familia === 'multiponto') {
+                $n = unpack('Vn', substr($shape, 36, 4))['n'];
+                $partes = [];
+                if ($n > 0) {
+                    $coords = array_values(unpack('d' . ($n * 2), substr($shape, 40, 16 * $n)));
+                    for ($k = 0; $k < $n; $k++) {
+                        $partes[] = [[$coords[$k * 2 + 1], $coords[$k * 2]]];
+                    }
+                }
+                $out[] = ['tipo' => 'ponto', 'partes' => $partes];
                 continue;
             }
             $hdr = unpack('Vparts/Vpoints', substr($shape, 36, 8));
             $numParts = $hdr['parts'];
             $numPoints = $hdr['points'];
-            if ($numParts < 1 || $numPoints < 3) {
-                $out[] = [];
+            if ($numParts < 1 || $numPoints < ($familia === 'poligono' ? 3 : 2)) {
+                $out[] = ['tipo' => $familia, 'partes' => []];
                 continue;
             }
             $parts = array_values(unpack('V' . $numParts, substr($shape, 44, 4 * $numParts)));
             $pointsOff = 44 + 4 * $numParts;
             $coords = array_values(unpack('d' . ($numPoints * 2), substr($shape, $pointsOff, 16 * $numPoints)));
-            $aneis = [];
+            $partes = [];
             $sinalMaior = 0.0;
             $maior = -1.0;
             for ($p = 0; $p < $numParts; $p++) {
                 $ini = $parts[$p];
                 $fim = ($p + 1 < $numParts) ? $parts[$p + 1] : $numPoints;
-                $anel = [];
+                $parte = [];
                 for ($k = $ini; $k < $fim; $k++) {
-                    $anel[] = [$coords[$k * 2 + 1], $coords[$k * 2]];
+                    $parte[] = [$coords[$k * 2 + 1], $coords[$k * 2]];
                 }
-                if (count($anel) < 3) {
+                if ($familia === 'linha') {
+                    if (count($parte) >= 2) {
+                        $partes[] = $parte;
+                    }
                     continue;
                 }
-                $s = self::areaShoelace($anel);
+                if (count($parte) < 3) {
+                    continue;
+                }
+                $s = self::areaShoelace($parte);
                 if (abs($s) > $maior) {
                     $maior = abs($s);
                     $sinalMaior = $s;
                 }
-                $aneis[] = [$anel, $s];
+                $partes[] = [$parte, $s];
             }
-            $externos = [];
-            foreach ($aneis as [$anel, $s]) {
-                if ($s === 0.0 || ($s > 0) === ($sinalMaior > 0)) {
-                    $externos[] = $anel;
+            if ($familia === 'poligono') {
+                $externos = [];
+                foreach ($partes as [$anel, $s]) {
+                    if ($s === 0.0 || ($s > 0) === ($sinalMaior > 0)) {
+                        $externos[] = $anel;
+                    }
                 }
+                $partes = $externos;
             }
-            $out[] = $externos;
+            $out[] = ['tipo' => $familia, 'partes' => $partes];
         }
         return $out;
+    }
+
+    /* =====================================================================
+     * v50 — TODAS as feições do zip do SICAR (pedido do teste de campo:
+     * "implemente todas as opções desse arquivo no mapa"): cada registro de
+     * cada camada vira uma linha de referência (classe + tema + geometria),
+     * desenhada no croqui e listada na ficha. Não altera o desconto (que vem
+     * de areas_nao_plantio, importadas por camadasAmbientais).
+     * ===================================================================== */
+
+    /** Classe → rótulo, cor e ícone (o croqui pinta por classe; a ficha agrupa). */
+    public const CLASSES = [
+        'app' => ['rotulo' => 'APP por tipo', 'cor' => '#1e88e5', 'icone' => '💧'],
+        'app_total' => ['rotulo' => 'APP total', 'cor' => '#1565c0', 'icone' => '💧'],
+        'app_recompor' => ['rotulo' => 'APP a recompor', 'cor' => '#e53935', 'icone' => '🚩'],
+        'banhado' => ['rotulo' => 'Banhado', 'cor' => '#26a69a', 'icone' => '🌾'],
+        'hidrografia' => ['rotulo' => 'Curso d\'água / hidrografia', 'cor' => '#039be5', 'icone' => '🌊'],
+        'nascente' => ['rotulo' => 'Nascente / olho d\'água', 'cor' => '#00acc1', 'icone' => '💦'],
+        'reserva' => ['rotulo' => 'Reserva legal proposta', 'cor' => '#43a047', 'icone' => '🌲'],
+        'reserva_total' => ['rotulo' => 'Reserva legal total', 'cor' => '#2e7d32', 'icone' => '🌲'],
+        'vegetacao' => ['rotulo' => 'Vegetação nativa', 'cor' => '#1b5e20', 'icone' => '🌳'],
+        'consolidada' => ['rotulo' => 'Área consolidada', 'cor' => '#f9a825', 'icone' => '🚜'],
+        'nao_classificada' => ['rotulo' => 'Área não classificada', 'cor' => '#9e9e9e', 'icone' => '❔'],
+        'servidao' => ['rotulo' => 'Servidão administrativa', 'cor' => '#757575', 'icone' => '🛣️'],
+        'servidao_total' => ['rotulo' => 'Servidão administrativa total', 'cor' => '#616161', 'icone' => '🛣️'],
+        'area_liquida' => ['rotulo' => 'Área líquida do imóvel', 'cor' => '#ff7043', 'icone' => '📐'],
+        'uso_restrito' => ['rotulo' => 'Área de uso restrito', 'cor' => '#8e24aa', 'icone' => '⚠️'],
+        'pousio' => ['rotulo' => 'Pousio', 'cor' => '#a1887f', 'icone' => '🌱'],
+        'outro' => ['rotulo' => 'Outra camada do CAR', 'cor' => '#546e7a', 'icone' => '🗂️'],
+    ];
+
+    /**
+     * Lê TODAS as feições do zip. Uma entrada por registro: ['camada' (arquivo),
+     * 'classe', 'tema', 'area_dbf', 'geom_tipo', 'partes' => [[[lat,lng],...],...]].
+     * A divisa ("Área do Imóvel") fica de fora — ela já é o contorno do imóvel.
+     */
+    public static function todasCamadas(string $caminho, int $maxPontos = 300): array
+    {
+        if (!class_exists('ZipArchive')) {
+            throw new \RuntimeException('O servidor está sem suporte a ZIP (extensão php-zip).');
+        }
+        $shp = [];
+        $dbf = [];
+        self::coletarPares($caminho, $shp, $dbf, 0);
+        $saida = [];
+        foreach ($shp as $base => $bin) {
+            $b = self::normalizar((string) $base);
+            $registros = self::registrosGeom($bin);
+            if (!$registros) {
+                continue;
+            }
+            $linhas = isset($dbf[$base])
+                ? self::lerDbfLinhas($dbf[$base], [
+                    'tema' => ['tema', 'nom_tema', 'nm_tema', 'desc_tema', 'descricao', 'classe', 'tipo'],
+                    'area' => ['area', 'num_area', 'area_ha', 'nu_area', 'hectares'],
+                ])
+                : [];
+            foreach ($registros as $i => $r) {
+                if (!$r['partes']) {
+                    continue;
+                }
+                $tema = trim((string) ($linhas[$i]['tema'] ?? ''));
+                $classe = self::classeDaFeicao($b, self::normalizar($tema));
+                if ($classe === null) {
+                    continue;
+                }
+                $partes = [];
+                foreach ($r['partes'] as $parte) {
+                    if ($r['tipo'] !== 'ponto') {
+                        $n = count($parte);
+                        if ($r['tipo'] === 'poligono' && $n > 1 && $parte[0] === $parte[$n - 1]) {
+                            array_pop($parte);
+                        }
+                        if (count($parte) < ($r['tipo'] === 'poligono' ? 3 : 2)) {
+                            continue;
+                        }
+                        $parte = self::simplificar($parte, $maxPontos);
+                    } else {
+                        $parte = [[round($parte[0][0], 7), round($parte[0][1], 7)]];
+                    }
+                    foreach ($parte as $pt) {
+                        if ($pt[0] < -90 || $pt[0] > 90 || $pt[1] < -180 || $pt[1] > 180) {
+                            continue 2; // projetado (UTM): ignora a parte
+                        }
+                    }
+                    $partes[] = $parte;
+                }
+                if (!$partes) {
+                    continue;
+                }
+                $areaDbf = isset($linhas[$i]['area']) && is_numeric($linhas[$i]['area']) ? round((float) $linhas[$i]['area'], 2) : null;
+                $saida[] = ['camada' => mb_substr($b, 0, 60), 'classe' => $classe, 'tema' => $tema, 'area_dbf' => $areaDbf,
+                    'geom_tipo' => $r['tipo'], 'partes' => $partes];
+            }
+        }
+        return $saida;
+    }
+
+    /** Classe de uma feição pelo arquivo (normalizado) e pelo tema (normalizado); null = ignorar. */
+    private static function classeDaFeicao(string $arquivo, string $tema): ?string
+    {
+        if (str_contains($arquivo, 'area_do_imovel') || str_contains($arquivo, 'area_imovel')) {
+            return str_contains($tema, 'liquid') ? 'area_liquida' : null; // a divisa já é o contorno
+        }
+        if (str_contains($arquivo, 'marcador') || str_contains($arquivo, 'nascente')) {
+            return 'nascente';
+        }
+        if (str_contains($arquivo, 'preservacao') || preg_match('/(^|_)app(_|$)/', $arquivo)) {
+            if (str_contains($tema, 'recompor')) {
+                return 'app_recompor';
+            }
+            if ($tema === 'banhado' || str_starts_with($tema, 'banhado')) {
+                return 'banhado';
+            }
+            if (str_starts_with($tema, 'curso') || str_starts_with($tema, 'rio') || str_starts_with($tema, 'lago') || str_starts_with($tema, 'reservatorio')) {
+                return 'hidrografia';
+            }
+            if (str_contains($tema, 'nascente') && !str_contains($tema, 'app') && !str_contains($tema, 'preservacao')) {
+                return 'nascente';
+            }
+            return str_contains($tema, 'total') ? 'app_total' : 'app';
+        }
+        if (str_contains($arquivo, 'reserva')) {
+            return str_contains($tema, 'total') ? 'reserva_total' : 'reserva';
+        }
+        if (str_contains($arquivo, 'servidao')) {
+            return str_contains($tema, 'total') ? 'servidao_total' : 'servidao';
+        }
+        if (str_contains($arquivo, 'hidrografia')) {
+            return 'hidrografia';
+        }
+        if (str_contains($arquivo, 'cobertura')) {
+            if (str_contains($tema, 'vegeta')) {
+                return 'vegetacao';
+            }
+            if (str_contains($tema, 'consolidad')) {
+                return 'consolidada';
+            }
+            if (str_contains($tema, 'pousio')) {
+                return 'pousio';
+            }
+            return 'nao_classificada';
+        }
+        if (str_contains($arquivo, 'vegetacao')) {
+            return 'vegetacao';
+        }
+        if (str_contains($arquivo, 'consolidad')) {
+            return 'consolidada';
+        }
+        if (str_contains($arquivo, 'restrito')) {
+            return 'uso_restrito';
+        }
+        if (str_contains($arquivo, 'pousio')) {
+            return 'pousio';
+        }
+        return 'outro';
     }
 
     /** minúsculas, sem acento, espaços → "_" (para casar nomes de arquivo e temas). */

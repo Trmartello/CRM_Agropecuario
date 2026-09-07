@@ -225,6 +225,25 @@ CREATE TABLE areas_nao_plantio (
   FOREIGN KEY (imovel_id) REFERENCES imoveis(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+-- v50: TODAS as feições ambientais do zip do SICAR do imóvel (APP por tipo, banhado, curso
+-- d'água, nascente, reserva proposta/total, vegetação nativa, área consolidada, não
+-- classificada, servidão, área líquida...) — só referência no mapa do croqui e na ficha
+-- (o desconto vem de areas_nao_plantio). Reimportar o CAR substitui tudo.
+DROP TABLE IF EXISTS imovel_camadas_car;
+CREATE TABLE imovel_camadas_car (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  imovel_id INT NOT NULL,
+  camada VARCHAR(60) NOT NULL COMMENT 'arquivo de origem (area_de_preservacao_permanente, reserva_legal, cobertura_do_solo...)',
+  classe VARCHAR(30) NOT NULL COMMENT 'ShapefileService::CLASSES: app, app_recompor, app_total, banhado, hidrografia, nascente, reserva, reserva_total, vegetacao, consolidada, nao_classificada, servidao, servidao_total, area_liquida, uso_restrito, pousio, outro',
+  tema VARCHAR(160) NULL COMMENT 'tema do .dbf, como veio',
+  geom_tipo VARCHAR(10) NOT NULL DEFAULT 'poligono' COMMENT 'poligono | linha | ponto',
+  geometria MEDIUMTEXT NOT NULL COMMENT 'JSON: lista de partes, cada parte [[lat,lng],...] (ponto = uma parte com um ponto)',
+  area_ha DECIMAL(10,2) NULL COMMENT 'área declarada no .dbf',
+  ordem INT NOT NULL DEFAULT 0,
+  INDEX idx_imovel_camadas_car (imovel_id),
+  FOREIGN KEY (imovel_id) REFERENCES imoveis(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 -- Finalidade da cultura no talhão/plantio (Grão, Silagem, Pastagem...). Editável em Configurações.
 CREATE TABLE finalidades (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -1734,8 +1753,8 @@ UPDATE propriedades p SET area_ha = (
   SELECT COALESCE(SUM(CASE WHEN i.area_gps IS NOT NULL AND i.area_gps > 0 THEN i.area_gps ELSE i.area_ha END), 0)
     FROM imoveis i WHERE i.propriedade_id = p.id)
  WHERE EXISTS (SELECT 1 FROM imoveis i2 WHERE i2.propriedade_id = p.id AND COALESCE(i2.area_gps, i2.area_ha) > 0);
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','49')
-  ON DUPLICATE KEY UPDATE valor = '49';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','50')
+  ON DUPLICATE KEY UPDATE valor = '50';
 
 -- ============================================================================
 -- SEED — Mapa Territorial: 5 imóveis fictícios (Concórdia/SC), vínculos e talhões

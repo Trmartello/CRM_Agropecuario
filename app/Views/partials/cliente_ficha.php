@@ -396,6 +396,22 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
                 <?php if (!empty($r['nao_plantio_sobreposto'])): ?><span class="text-muted" title="A APP fica dentro da vegetação nativa, a reserva legal também: o total descontado é a união das camadas, não a soma">(camadas se sobrepõem — união <?= numero($r['nao_plantio'], 1) ?> ha)</span><?php endif; ?>
               </div>
             <?php endif; ?>
+            <?php if (!empty($im['camadas_car'])): ?>
+              <?php
+                // v50: TODAS as feições ambientais do zip do SICAR, agrupadas por classe (tema · área do .dbf)
+                $porClasse = [];
+                foreach ($im['camadas_car'] as $c) { $porClasse[$c['classe']][] = $c; }
+              ?>
+              <details class="small text-muted mt-1">
+                <summary class="text-info-emphasis" style="cursor:pointer"><i class="bi bi-map me-1"></i>Informações ambientais do CAR (<?= count($im['camadas_car']) ?> feições — ligue no croqui)</summary>
+                <ul class="mb-1 mt-1 ps-3">
+                  <?php foreach ($porClasse as $classe => $lista): $def = \App\Services\ShapefileService::CLASSES[$classe] ?? \App\Services\ShapefileService::CLASSES['outro']; ?>
+                    <li><span style="display:inline-block;width:.7em;height:.7em;border-radius:2px;background:<?= e($def['cor']) ?>;vertical-align:middle"></span> <strong><?= e($def['rotulo']) ?></strong>:
+                      <?= implode('; ', array_map(fn ($c) => e($c['tema'] ?: $def['rotulo']) . ($c['geom_tipo'] === 'ponto' ? ' (ponto)' : ($c['area_ha'] !== null ? ' · ' . numero((float) $c['area_ha'], 2) . ' ha' : '')), $lista)) ?></li>
+                  <?php endforeach; ?>
+                </ul>
+              </details>
+            <?php endif; ?>
             <?php if (!empty($im['car_numero'])): ?>
               <div class="small text-muted">CAR: <?= e($im['car_numero']) ?>
                 <a href="https://consultapublica.car.gov.br/publico/imoveis/index" target="_blank" rel="noopener" class="ms-1"

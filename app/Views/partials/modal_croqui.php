@@ -44,6 +44,13 @@
             <label for="croquiVarinhaTol" class="mb-0">Sensibilidade</label>
             <input type="range" id="croquiVarinhaTol" min="12" max="70" value="32" style="width:90px">
           </span>
+          <?php /* v50: TODAS as camadas ambientais do zip do SICAR (APP por tipo, banhado, curso d'água, nascente,
+                   reserva, vegetação, consolidada, servidão, área líquida...) — referência ligável no mapa */ ?>
+          <div class="btn-group btn-group-sm d-none" id="croquiCamadasCarWrap">
+            <button type="button" class="btn btn-outline-info dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"
+                    title="Camadas ambientais do CAR deste imóvel (do zip do SICAR): ligue e desligue cada uma no mapa">🗺️ Camadas do CAR <span id="croquiCamadasCarQtd"></span></button>
+            <div class="dropdown-menu p-2 small" id="croquiCamadasCarLista" style="min-width:260px;max-height:60vh;overflow:auto"></div>
+          </div>
           <?php /* CAR: "CAR no mapa" é o principal (fica ativo sozinho quando há base na região); os demais no menu. */ ?>
           <div class="btn-group btn-group-sm" role="group" title="Divisa oficial do CAR" id="croquiCarGrupo">
             <button type="button" id="croquiCarMapaBtn" class="btn btn-outline-warning" onclick="Croqui.toggleCarLayer()"

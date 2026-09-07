@@ -343,6 +343,13 @@ class ClientesController
                 'origem' => $x['origem'] ?? 'manual', 'tema' => $x['tema'] ?? null,
             ], \App\Services\AreaPlantioService::exclusoesDoImovel($imovelId)),
             'tipos_nao_plantio' => \App\Services\AreaPlantioService::TIPOS_NAO_PLANTIO,
+            // v50: TODAS as feições ambientais do zip do SICAR (referência ligável no mapa)
+            'camadas_car' => array_map(fn ($c) => [
+                'id' => (int) $c['id'], 'camada' => $c['camada'], 'classe' => $c['classe'], 'tema' => $c['tema'],
+                'geom_tipo' => $c['geom_tipo'], 'geometria' => $c['geometria'],
+                'area_ha' => $c['area_ha'] !== null ? (float) $c['area_ha'] : null,
+            ], Database::todos('SELECT id, camada, classe, tema, geom_tipo, geometria, area_ha FROM imovel_camadas_car WHERE imovel_id = ? ORDER BY ordem, id', [$imovelId])),
+            'classes_car' => \App\Services\ShapefileService::CLASSES,
             // Imagem de satélite de fundo (provedor configurável; vazio = sem mapa)
             'tiles' => [
                 'url' => \App\Services\ConfigService::obter('mapa_tiles_url',
@@ -797,7 +804,7 @@ class ClientesController
 
         // v49: CAMADAS AMBIENTAIS do mesmo zip (APP, Reserva Legal, Vegetação nativa, Servidão,
         // Hidrografia) → áreas de não plantio de origem 'car'; Área Consolidada → áreas de plantio
-        [$camadasResumo, $consolidadas, $ignoradas, $avisos] = $this->importarCamadasDoCar(
+        [$camadasResumo, $consolidadas, $ignoradas, $avisos, $feicoes] = $this->importarCamadasDoCar(
             $_FILES['arquivo']['tmp_name'], $imovelId, $pontos,
             (int) ($_POST['camadas'] ?? 1) === 1, (int) ($_POST['consolidada'] ?? 0) === 1
         );
@@ -813,6 +820,7 @@ class ClientesController
             'municipio' => $lido['municipio'] ?? null, 'uf' => $lido['uf'] ?? null,
             'camadas' => array_values($camadasResumo), 'nao_plantio' => round($naoPlantio, 2),
             'consolidadas' => $consolidadas, 'ignoradas' => $ignoradas, 'avisos' => $avisos,
+            'feicoes' => $feicoes, // v50: todas as feições do zip guardadas para o mapa
         ]);
     }
 
@@ -834,14 +842,33 @@ class ClientesController
         $criadas = 0;
         $ignoradas = 0;
         $avisos = [];
+        // v50: TODAS as feições do zip (APP por tipo, banhado, curso d'água, nascente, reserva,
+        // vegetação, consolidada, não classificada, servidão, área líquida...) ficam guardadas
+        // como referência — ligáveis no mapa do croqui e listadas na ficha. Sempre, independente
+        // das opções; reimportar substitui.
+        $feicoes = 0;
+        try {
+            $todas = \App\Services\ShapefileService::todasCamadas($arquivo);
+            Database::executar('DELETE FROM imovel_camadas_car WHERE imovel_id = ?', [$imovelId]);
+            foreach ($todas as $i => $f) {
+                Database::executar(
+                    'INSERT INTO imovel_camadas_car (imovel_id, camada, classe, tema, geom_tipo, geometria, area_ha, ordem) VALUES (?,?,?,?,?,?,?,?)',
+                    [$imovelId, $f['camada'], $f['classe'], mb_substr((string) $f['tema'], 0, 160) ?: null, $f['geom_tipo'],
+                        json_encode($f['partes']), $f['area_dbf'], $i + 1]
+                );
+                $feicoes++;
+            }
+        } catch (\Exception $e) {
+            $avisos[] = 'Feições do CAR não guardadas para o mapa: ' . $e->getMessage();
+        }
         if (!$camadas && !$consolidada) {
-            return [$resumo, $criadas, $ignoradas, $avisos];
+            return [$resumo, $criadas, $ignoradas, $avisos, $feicoes];
         }
         try {
             $lidas = \App\Services\ShapefileService::camadasAmbientais($arquivo);
         } catch (\Exception $e) {
             $avisos[] = 'Camadas ambientais não lidas: ' . $e->getMessage();
-            return [$resumo, $criadas, $ignoradas, $avisos];
+            return [$resumo, $criadas, $ignoradas, $avisos, $feicoes];
         }
         // Prende os vértices na divisa recém-gravada (mesma fonte oficial: as camadas margeiam a
         // divisa do CAR). NÃO passa pelo recorte de linhas (margearDivisa/linhasFora): em aresta
@@ -916,7 +943,7 @@ class ClientesController
                 }
             }
         }
-        return [$resumo, $criadas, $ignoradas, $avisos];
+        return [$resumo, $criadas, $ignoradas, $avisos, $feicoes];
     }
 
     /**
