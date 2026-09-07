@@ -662,6 +662,80 @@ class CroquiService
     }
 
     /**
+     * Área (ha) da INTERSEÇÃO de dois polígonos [[lat,lng],...] — usada para descontar
+     * as áreas de não plantio (mata, açude...) da área de plantio e dos talhões que as
+     * contêm (v46). Caminhos rápidos: caixas que não se tocam → 0; um polígono todo
+     * dentro do outro (vértices dentro/na borda e nenhuma aresta cruzando) → a área
+     * dele; senão amostragem em grade (≈ 4000 pontos, passo de 0,5 a 10 m) — erro
+     * < 1% para o uso (descontar uma mancha de mato). Espelho de Croqui._areaIntersecaoHa.
+     */
+    public static function areaIntersecaoHa(array $a, array $b): float
+    {
+        if (count($a) < 3 || count($b) < 3) {
+            return 0.0;
+        }
+        $proj = self::projetar(array_merge($a, $b));
+        $pa = array_slice($proj, 0, count($a));
+        $pb = array_slice($proj, count($a));
+        $caixa = function (array $pol): array {
+            $xs = array_column($pol, 0);
+            $ys = array_column($pol, 1);
+            return [min($xs), min($ys), max($xs), max($ys)];
+        };
+        [$ax1, $ay1, $ax2, $ay2] = $caixa($pa);
+        [$bx1, $by1, $bx2, $by2] = $caixa($pb);
+        if ($ax2 < $bx1 || $bx2 < $ax1 || $ay2 < $by1 || $by2 < $ay1) {
+            return 0.0; // caixas não se tocam
+        }
+        $areaDe = function (array $pol): float {
+            $n = count($pol);
+            $s = 0.0;
+            for ($i = 0; $i < $n; $i++) {
+                $j = ($i + 1) % $n;
+                $s += $pol[$i][0] * $pol[$j][1] - $pol[$j][0] * $pol[$i][1];
+            }
+            return abs($s) / 2;
+        };
+        $todoDentro = function (array $pol, array $outro): bool {
+            foreach ($pol as $p) {
+                if (!self::dentro($p, $outro) && self::distanciaBordaM($p, $outro) > 0.5) {
+                    return false;
+                }
+            }
+            $n = count($pol);
+            $m = count($outro);
+            for ($i = 0; $i < $n; $i++) {
+                for ($j = 0; $j < $m; $j++) {
+                    if (self::segmentosCruzam($pol[$i], $pol[($i + 1) % $n], $outro[$j], $outro[($j + 1) % $m], 0.5)) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        };
+        if ($todoDentro($pb, $pa)) {
+            return round($areaDe($pb) / 10000, 4);
+        }
+        if ($todoDentro($pa, $pb)) {
+            return round($areaDe($pa) / 10000, 4);
+        }
+        // Parcial: amostragem em grade na caixa comum
+        $x1 = max($ax1, $bx1); $y1 = max($ay1, $by1);
+        $x2 = min($ax2, $bx2); $y2 = min($ay2, $by2);
+        $passo = max(0.5, min(10.0, sqrt(max(1.0, ($x2 - $x1) * ($y2 - $y1)) / 4000)));
+        $dentro = 0;
+        for ($x = $x1 + $passo / 2; $x < $x2; $x += $passo) {
+            for ($y = $y1 + $passo / 2; $y < $y2; $y += $passo) {
+                $p = [$x, $y];
+                if (self::dentro($p, $pa) && self::dentro($p, $pb)) {
+                    $dentro++;
+                }
+            }
+        }
+        return round($dentro * $passo * $passo / 10000, 4);
+    }
+
+    /**
      * SVG estático do croqui de uma propriedade (ficha/impressão): polígonos
      * coloridos com rótulo (nome + ha) + barra de escala. $talhoes precisa de
      * nome, contorno (JSON) e area_gps/area_ha.
@@ -683,7 +757,8 @@ class CroquiService
             foreach ($propriedade['areas_plantio'] as $a) {
                 $d = json_decode((string) ($a['contorno'] ?? ''), true);
                 if (is_array($d) && count($d) >= 3) {
-                    $plantios[] = ['nome' => (string) ($a['nome'] ?? ''), 'pontos' => $d];
+                    $plantios[] = ['nome' => (string) ($a['nome'] ?? ''), 'pontos' => $d,
+                        'uso' => (string) ($a['uso'] ?? 'lavoura'), 'cultura' => (string) ($a['cultura'] ?? '')];
                 }
             }
         } elseif ($propriedade && !empty($propriedade['contorno_plantio'])) {
@@ -693,13 +768,26 @@ class CroquiService
             }
         }
         $plantio = $plantios ? true : null;
-        if (!$comContorno && !$divisa && !$plantio) {
+        // v46: áreas de NÃO plantio (mata, açude...) — hachuradas por cima de tudo
+        $exclusoes = [];
+        if ($propriedade && !empty($propriedade['areas_nao_plantio']) && is_array($propriedade['areas_nao_plantio'])) {
+            foreach ($propriedade['areas_nao_plantio'] as $x) {
+                $d = json_decode((string) ($x['contorno'] ?? ''), true);
+                if (is_array($d) && count($d) >= 3) {
+                    $exclusoes[] = ['nome' => (string) ($x['nome'] ?? ''), 'pontos' => $d];
+                }
+            }
+        }
+        if (!$comContorno && !$divisa && !$plantio && !$exclusoes) {
             return '';
         }
         // Junta todos os pontos para calcular o enquadramento comum
         $todos = $divisa ?: [];
         foreach ($plantios as $pl) {
             $todos = array_merge($todos, $pl['pontos']);
+        }
+        foreach ($exclusoes as $ex) {
+            $todos = array_merge($todos, $ex['pontos']);
         }
         $poligonos = [];
         foreach ($comContorno as $t) {
@@ -710,7 +798,7 @@ class CroquiService
             $poligonos[] = ['talhao' => $t, 'pontos' => $pontos];
             $todos = array_merge($todos, $pontos);
         }
-        if (!$poligonos && !$divisa && !$plantio) {
+        if (!$poligonos && !$divisa && !$plantio && !$exclusoes) {
             return '';
         }
         $xy = self::projetar($todos);
@@ -742,15 +830,20 @@ class CroquiService
                 . ' fill="#8d6e2f" fill-opacity=".07" stroke="#8d6e2f" stroke-width="2.5" stroke-dasharray="8 5"/>';
         }
         // Áreas de plantio (v44): o que dá para plantar dentro da divisa, com o nome
+        // v47: cor por USO (lavoura verde, perene âmbar, reflorestamento verde-escuro) + cultura no rótulo
+        $corUso = ['lavoura' => ['#7cb342', '#558b2f'], 'perene' => ['#f9a825', '#b26a00'], 'reflorestamento' => ['#1b5e20', '#1b5e20']];
         foreach ($plantios as $pl) {
+            $uso = $pl['uso'] ?? 'lavoura';
+            [$fill, $stroke] = $corUso[$uso] ?? $corUso['lavoura'];
             $telaPl = array_map($paraTela, $pl['pontos']);
             $svg .= '<polygon points="' . implode(' ', array_map(fn ($p) => $p[0] . ',' . $p[1], $telaPl)) . '"'
-                . ' fill="#7cb342" fill-opacity=".10" stroke="#558b2f" stroke-width="2" stroke-dasharray="4 4"/>';
-            if ($pl['nome'] !== '' && count($plantios) > 1) {
+                . ' fill="' . $fill . '" fill-opacity="' . ($uso === 'lavoura' ? '.10' : '.18') . '" stroke="' . $stroke . '" stroke-width="2" stroke-dasharray="4 4"/>';
+            if ($pl['nome'] !== '' && (count($plantios) > 1 || $uso !== 'lavoura')) {
                 $cx = round(array_sum(array_column($telaPl, 0)) / count($telaPl), 1);
                 $cy = round(array_sum(array_column($telaPl, 1)) / count($telaPl), 1);
-                $svg .= '<text x="' . $cx . '" y="' . ($cy - 12) . '" text-anchor="middle" font-size="8" fill="#558b2f">'
-                    . e($pl['nome']) . '</text>';
+                $rotulo = $pl['nome'] . ($uso !== 'lavoura' ? ' (' . (($pl['cultura'] ?? '') !== '' ? $pl['cultura'] : \App\Services\AreaPlantioService::rotuloUso($uso)) . ')' : '');
+                $svg .= '<text x="' . $cx . '" y="' . ($cy - 12) . '" text-anchor="middle" font-size="8" fill="' . $stroke . '">'
+                    . e($rotulo) . '</text>';
             }
         }
         foreach ($poligonos as $i => $pol) {
@@ -766,6 +859,22 @@ class CroquiService
             if ($areaTxt !== null) {
                 $svg .= '<text x="' . $cx . '" y="' . ($cy + 11) . '" text-anchor="middle" font-size="9" fill="#4a5d4a">'
                     . numero((float) $areaTxt, 1) . ' ha</text>';
+            }
+        }
+        // v46: áreas de NÃO plantio hachuradas (por cima dos talhões — são buracos)
+        if ($exclusoes) {
+            $svg .= '<defs><pattern id="croquiHachura" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">'
+                . '<line x1="0" y1="0" x2="0" y2="6" stroke="#5d4037" stroke-width="1.5"/></pattern></defs>';
+            foreach ($exclusoes as $ex) {
+                $telaEx = array_map($paraTela, $ex['pontos']);
+                $svg .= '<polygon points="' . implode(' ', array_map(fn ($p) => $p[0] . ',' . $p[1], $telaEx)) . '"'
+                    . ' fill="url(#croquiHachura)" fill-opacity=".7" stroke="#5d4037" stroke-width="1.5" stroke-dasharray="3 3"/>';
+                if ($ex['nome'] !== '') {
+                    $cx = round(array_sum(array_column($telaEx, 0)) / count($telaEx), 1);
+                    $cy = round(array_sum(array_column($telaEx, 1)) / count($telaEx), 1);
+                    $svg .= '<text x="' . $cx . '" y="' . $cy . '" text-anchor="middle" font-size="8" fill="#3e2723" stroke="#fff" stroke-width="2" paint-order="stroke">'
+                        . e($ex['nome']) . '</text>';
+                }
             }
         }
         // Barra de escala (~1/4 da largura em metros, arredondada p/ valor "redondo")

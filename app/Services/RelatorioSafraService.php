@@ -169,6 +169,7 @@ class RelatorioSafraService
                     'svg' => $svg,
                     'area_gps' => isset($im['area_gps']) && $im['area_gps'] !== null ? (float) $im['area_gps'] : null,
                     'area_plantio' => $im['resumo']['area_plantio'] ?? null,
+                    'nao_plantio' => $im['resumo']['nao_plantio'] ?? 0,
                     'grupos' => $im['resumo']['grupos'] ?? [],
                 ];
             }

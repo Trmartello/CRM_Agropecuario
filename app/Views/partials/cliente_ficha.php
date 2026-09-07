@@ -323,7 +323,9 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
         <div class="d-flex flex-wrap gap-3 small">
           <span><i class="bi bi-person-vcard me-1 text-success"></i><strong>Total do produtor</strong></span>
           <span>Área total <strong><?= numero($resumoProdutor['area_total'], 1) ?> ha</strong></span>
-          <span>Área de plantio <strong><?= numero($resumoProdutor['area_plantio'], 1) ?> ha</strong></span>
+          <?php $pu = $resumoProdutor['por_uso'] ?? []; $temUso = (($pu['perene'] ?? 0) > 0 || ($pu['reflorestamento'] ?? 0) > 0); ?>
+          <span>Área cultivada <strong><?= numero($resumoProdutor['area_plantio'], 1) ?> ha</strong><?= $temUso ? ' <span class="text-muted">(lavoura ' . numero($pu['lavoura'] ?? 0, 1) . ($pu['perene'] > 0 ? ' · perene ' . numero($pu['perene'], 1) : '') . ($pu['reflorestamento'] > 0 ? ' · reflorestamento ' . numero($pu['reflorestamento'], 1) : '') . ')</span>' : '' ?></span>
+          <?php if (($resumoProdutor['nao_plantio'] ?? 0) > 0): ?><span title="Mata, APP, açude, sede, estrada… descontados da área de plantio">Não plantio <strong><?= numero($resumoProdutor['nao_plantio'], 1) ?> ha</strong></span><?php endif; ?>
           <span>Talhões <strong><?= (int) $resumoProdutor['qtd_talhoes'] ?></strong></span>
         </div>
         <?= $barraPlantio($resumoProdutor, true) ?>
@@ -348,15 +350,26 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
       </div>
 
       <?php foreach ($p['imoveis'] as $im): ?>
-      <?php $r = $im['resumo']; $rotuloIm = \App\Controllers\ClientesController::rotuloImovel($im); ?>
+      <?php $r = $im['resumo']; $rotuloIm = \App\Controllers\ClientesController::rotuloImovel($im);
+            // v46: áreas de não plantio (mata, açude...) do imóvel — descontadas dos talhões e das áreas
+            $exclusoesPol = \App\Services\AreaPlantioService::poligonosDe($im['areas_nao_plantio'] ?? []);
+            $liquidaPorArea = [];
+            foreach ($r['areas'] ?? [] as $ap) { $liquidaPorArea[(int) $ap['id']] = $ap; } ?>
       <div class="border-top">
         <div class="px-3 pt-2 pb-1 d-flex justify-content-between align-items-start flex-wrap gap-1 bg-light bg-opacity-50">
           <div>
             <i class="bi bi-geo text-success me-1"></i><strong><?= e($rotuloIm) ?></strong>
-            <span class="text-muted small">· total <?= numero($r['area_total'], 1) ?> ha · plantio <?= numero($r['area_plantio'], 1) ?> ha<?= $r['plantio_origem'] === 'total' ? ' (= total)' : (count($r['areas'] ?? []) > 1 ? ' (' . count($r['areas']) . ' áreas)' : '') ?><?= !empty($im['municipio']) ? ' · ' . e($im['municipio']) . (!empty($im['uf']) ? '/' . e($im['uf']) : '') : '' ?></span>
+            <?php $pu = $r['por_uso'] ?? []; $temUso = (($pu['perene'] ?? 0) > 0 || ($pu['reflorestamento'] ?? 0) > 0);
+                  $iconeUso = ['lavoura' => '🌱', 'perene' => '🍎', 'reflorestamento' => '🌲']; ?>
+            <span class="text-muted small">· total <?= numero($r['area_total'], 1) ?> ha · <?= $temUso ? 'cultivado' : 'plantio' ?> <?= numero($r['area_plantio'], 1) ?> ha<?= $r['plantio_origem'] === 'total' ? ' (= total)' : ($temUso ? ' (lavoura ' . numero($pu['lavoura'] ?? 0, 1) . ($pu['perene'] > 0 ? ' · perene ' . numero($pu['perene'], 1) : '') . ($pu['reflorestamento'] > 0 ? ' · reflorestamento ' . numero($pu['reflorestamento'], 1) : '') . ')' : (count($r['areas'] ?? []) > 1 ? ' (' . count($r['areas']) . ' áreas)' : '')) ?><?= ($r['nao_plantio'] ?? 0) > 0 ? ' · não plantio ' . numero($r['nao_plantio'], 1) . ' ha' : '' ?><?= !empty($im['municipio']) ? ' · ' . e($im['municipio']) . (!empty($im['uf']) ? '/' . e($im['uf']) : '') : '' ?></span>
             <?php if (count($r['areas'] ?? []) > 0): ?>
-              <div class="small text-muted"><i class="bi bi-layers me-1 text-success"></i>Áreas de plantio:
-                <?php foreach ($r['areas'] as $ap): ?><span class="badge text-bg-light border text-dark me-1"><?= e($ap['nome']) ?> · <?= numero($ap['area_gps'], 1) ?> ha</span><?php endforeach; ?>
+              <div class="small text-muted"><i class="bi bi-layers me-1 text-success"></i>Áreas:
+                <?php foreach ($r['areas'] as $ap): ?><span class="badge text-bg-light border text-dark me-1" title="<?= e($ap['uso_rotulo'] ?? 'Lavoura anual') ?><?= ($ap['desconto'] ?? 0) > 0 ? ' · desenho ' . numero($ap['area_gps'], 1) . ' ha − não plantio ' . numero($ap['desconto'], 1) . ' ha' : '' ?>"><?= $iconeUso[$ap['uso'] ?? 'lavoura'] ?? '🌱' ?> <?= e($ap['nome']) ?><?= ($ap['uso'] ?? 'lavoura') !== 'lavoura' ? ' · ' . e($ap['cultura'] ?: $ap['uso_rotulo']) : '' ?> · <?= numero($ap['area_liquida'] ?? $ap['area_gps'], 1) ?> ha</span><?php endforeach; ?>
+              </div>
+            <?php endif; ?>
+            <?php if (!empty($r['exclusoes'])): ?>
+              <div class="small text-muted"><i class="bi bi-slash-circle me-1 text-secondary"></i>Não plantio:
+                <?php foreach ($r['exclusoes'] as $ex): ?><span class="badge text-bg-light border text-secondary me-1" title="<?= e($ex['tipo_rotulo']) ?>"><?= e($ex['nome']) ?> · <?= numero($ex['area_gps'], 1) ?> ha</span><?php endforeach; ?>
               </div>
             <?php endif; ?>
             <?php if (!empty($im['car_numero'])): ?>
@@ -389,7 +402,8 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
           // Fluxo guiado (v45): próximo passo do imóvel + talhões AGRUPADOS pela área de plantio hospedeira
           $passo = empty($im['contorno']) ? [1, 'Traga a divisa do CAR e ajuste os pontos da área total (Croqui → etapa 1).']
               : (empty($im['areas_plantio']) ? [2, 'Marque as áreas de plantio dentro da divisa (Croqui → etapa 2).']
-              : (!$im['talhoes'] ? [3, 'Desenhe os talhões dentro das áreas de plantio (Croqui → etapa 3).'] : null));
+              // v47: imóvel só com perene/reflorestamento não precisa de talhão
+              : (!$im['talhoes'] && array_filter($im['areas_plantio'], fn ($ap) => ($ap['uso'] ?? 'lavoura') === 'lavoura') ? [3, 'Desenhe os talhões dentro das áreas de plantio (Croqui → etapa 3).'] : null));
           $grupos = [];
           foreach ($im['areas_plantio'] ?? [] as $ap) { $grupos[(int) $ap['id']] = ['area' => $ap, 'talhoes' => []]; }
           $semArea = [];
@@ -398,7 +412,7 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
               if ($apId && isset($grupos[$apId])) { $grupos[$apId]['talhoes'][] = $t; } else { $semArea[] = $t; }
           }
           $linhasTalhao = [];
-          foreach ($grupos as $g) { if ($g['talhoes']) { $linhasTalhao[] = ['cab' => '🌱 ' . $g['area']['nome'] . ' · ' . numero((float) $g['area']['area_gps'], 1) . ' ha', 'itens' => $g['talhoes']]; } }
+          foreach ($grupos as $g) { if ($g['talhoes']) { $apL = $liquidaPorArea[(int) $g['area']['id']] ?? null; $linhasTalhao[] = ['cab' => ($iconeUso[$g['area']['uso'] ?? 'lavoura'] ?? '🌱') . ' ' . $g['area']['nome'] . (($g['area']['uso'] ?? 'lavoura') !== 'lavoura' && !empty($g['area']['cultura']) ? ' · ' . $g['area']['cultura'] : '') . ' · ' . numero((float) ($apL['area_liquida'] ?? $g['area']['area_gps']), 1) . ' ha', 'itens' => $g['talhoes']]; } }
           if ($semArea) { $linhasTalhao[] = ['cab' => $grupos ? 'Talhões fora das áreas de plantio (ajuste no croqui)' : '', 'itens' => $semArea, 'aviso' => (bool) $grupos]; }
         ?>
         <?php if ($passo): ?>
@@ -416,7 +430,7 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
           <?php $pa = $plantiosAtivos[(int) $t['id']] ?? null; $co = $colheitas[(int) $t['id']] ?? null; ?>
           <li class="list-group-item py-1 d-flex justify-content-between align-items-center flex-wrap gap-1<?= $lt['cab'] !== '' ? ' ps-4' : '' ?>">
             <span><i class="bi bi-grid-3x3-gap me-1 text-muted"></i><?= e($t['nome']) ?>
-              <span class="text-muted small">· <?= numero(\App\Services\AreaPlantioService::areaValida($t, 'area_gps', 'area_ha'), 1) ?> ha<?= $t['cultura'] ? ' · ' . e($t['cultura']) : '' ?><?= !empty($t['finalidade']) ? ' <span class="badge text-bg-light border text-dark">' . e($t['finalidade']) . '</span>' : '' ?></span>
+              <span class="text-muted small">· <?= numero(\App\Services\AreaPlantioService::areaLiquidaTalhao($t, $exclusoesPol), 1) ?> ha<?= $t['cultura'] ? ' · ' . e($t['cultura']) : '' ?><?= !empty($t['finalidade']) ? ' <span class="badge text-bg-light border text-dark">' . e($t['finalidade']) . '</span>' : '' ?></span>
               <?php if (empty($t['contorno'])): ?><span class="badge text-bg-light border text-muted ms-1" title="Sem contorno no croqui">não desenhado</span><?php endif; ?>
               <?php if ($pa): ?>
                 <span class="badge text-bg-success ms-1" title="<?= e($pa['cultura']) ?> plantado em <?= data_br($pa['data_plantio']) ?><?= $pa['cultivar'] ? ' (' . e($pa['cultivar']) . ')' : '' ?>">
@@ -451,8 +465,9 @@ $corInad = $inad['cor'] === 'orange' ? 'warning' : $inad['cor'];
             <?php if ($croquiSvg !== ''): ?><div class="text-center"><?= $croquiSvg ?></div><?php endif; ?>
             <div class="small text-muted mt-1">
               <?php if (!empty($im['area_gps'])): ?>Divisa medida: <strong><?= numero((float) $im['area_gps'], 1) ?> ha</strong> · <?php endif; ?>
-              <?php if ($r['plantio_origem'] === 'plantio' && count($r['areas'] ?? []) > 0): ?>Área de plantio desenhada: <strong><?= numero($r['area_plantio'], 1) ?> ha</strong><?= count($r['areas']) > 1 ? ' (' . count($r['areas']) . ' áreas)' : '' ?> · <?php endif; ?>
-              Talhões: <strong><?= numero($r['soma'], 1) ?> ha</strong> de <strong><?= numero($r['area_plantio'], 1) ?> ha</strong> de plantio
+              <?php if ($r['plantio_origem'] === 'plantio' && count($r['areas'] ?? []) > 0): ?>Área <?= $temUso ? 'cultivada' : 'de plantio' ?> desenhada: <strong><?= numero($r['area_plantio'], 1) ?> ha</strong><?= $temUso ? ' (lavoura ' . numero($pu['lavoura'] ?? 0, 1) . ($pu['perene'] > 0 ? ' · perene ' . numero($pu['perene'], 1) : '') . ($pu['reflorestamento'] > 0 ? ' · reflorestamento ' . numero($pu['reflorestamento'], 1) : '') . ')' : (count($r['areas']) > 1 ? ' (' . count($r['areas']) . ' áreas)' : '') ?> · <?php endif; ?>
+              <?php if (($r['nao_plantio'] ?? 0) > 0): ?>Não plantio: <strong><?= numero($r['nao_plantio'], 1) ?> ha</strong> (<?= e(implode(', ', array_map(fn ($k, $v) => \App\Services\AreaPlantioService::rotuloTipo($k) . ' ' . numero($v, 1), array_keys($r['nao_plantio_tipos']), $r['nao_plantio_tipos']))) ?>) · <?php endif; ?>
+              Talhões<?= $temUso ? ' e áreas perenes' : '' ?>: <strong><?= numero($r['soma'], 1) ?> ha</strong> de <strong><?= numero($r['area_plantio'], 1) ?> ha</strong> <?= $temUso ? 'cultivados' : 'de plantio' ?>
             </div>
             <?= $barraPlantio($r) ?>
           </div>

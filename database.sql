@@ -194,11 +194,30 @@ CREATE TABLE areas_plantio (
   id INT AUTO_INCREMENT PRIMARY KEY,
   imovel_id INT NOT NULL,
   nome VARCHAR(120) NOT NULL DEFAULT 'Área de plantio',
+  uso VARCHAR(20) NOT NULL DEFAULT 'lavoura' COMMENT 'v47: lavoura (anual, talhões por safra) | perene (maçã, uva, erva-mate) | reflorestamento (pinus, eucalipto)',
+  cultura_id INT NULL COMMENT 'v47: cultura da área (perene/reflorestamento)',
   contorno TEXT NOT NULL COMMENT 'polígono [[lat,lng],...] dentro da divisa do imóvel',
   area_gps DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT 'área (ha) medida pelo contorno',
   ordem INT NOT NULL DEFAULT 0,
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_areas_plantio_imovel (imovel_id),
+  FOREIGN KEY (imovel_id) REFERENCES imoveis(id) ON DELETE CASCADE,
+  CONSTRAINT fk_areas_plantio_cultura FOREIGN KEY (cultura_id) REFERENCES culturas(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- v46: ÁREAS DE NÃO PLANTIO (mata, APP, açude, sede, estrada...) — "buracos" dentro da divisa:
+-- descontadas da área de plantio e dos talhões que as contêm (pedido do teste de campo).
+DROP TABLE IF EXISTS areas_nao_plantio;
+CREATE TABLE areas_nao_plantio (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  imovel_id INT NOT NULL,
+  nome VARCHAR(120) NOT NULL DEFAULT 'Área de não plantio',
+  tipo VARCHAR(20) NOT NULL DEFAULT 'mata' COMMENT 'mata|app|acude|sede|estrada|outro',
+  contorno TEXT NOT NULL COMMENT 'polígono [[lat,lng],...] dentro da divisa do imóvel',
+  area_gps DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT 'área (ha) medida pelo contorno',
+  ordem INT NOT NULL DEFAULT 0,
+  criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_areas_nao_plantio_imovel (imovel_id),
   FOREIGN KEY (imovel_id) REFERENCES imoveis(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
@@ -1185,7 +1204,9 @@ INSERT INTO filiais (id, nome, municipio, estado) VALUES
 (3,'Filial Chapecó','Chapecó','SC');
 
 INSERT INTO culturas (id, nome) VALUES
-(1,'Soja'),(2,'Milho'),(3,'Trigo'),(4,'Feijão'),(5,'Pastagem');
+(1,'Soja'),(2,'Milho'),(3,'Trigo'),(4,'Feijão'),(5,'Pastagem'),
+-- v47: culturas perenes e de reflorestamento (áreas com uso perene/reflorestamento)
+(6,'Maçã'),(7,'Uva'),(8,'Erva-mate'),(9,'Pinus'),(10,'Eucalipto');
 
 -- Municípios da região de atuação (Alto Uruguai Catarinense e entorno)
 INSERT INTO municipios (nome, estado) VALUES
@@ -1707,8 +1728,8 @@ UPDATE propriedades p SET area_ha = (
   SELECT COALESCE(SUM(CASE WHEN i.area_gps IS NOT NULL AND i.area_gps > 0 THEN i.area_gps ELSE i.area_ha END), 0)
     FROM imoveis i WHERE i.propriedade_id = p.id)
  WHERE EXISTS (SELECT 1 FROM imoveis i2 WHERE i2.propriedade_id = p.id AND COALESCE(i2.area_gps, i2.area_ha) > 0);
-INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','45')
-  ON DUPLICATE KEY UPDATE valor = '45';
+INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao','47')
+  ON DUPLICATE KEY UPDATE valor = '47';
 
 -- ============================================================================
 -- SEED — Mapa Territorial: 5 imóveis fictícios (Concórdia/SC), vínculos e talhões

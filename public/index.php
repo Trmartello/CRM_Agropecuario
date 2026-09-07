@@ -183,6 +183,7 @@ $router->registrar('clientes/excluir-imovel', ClientesController::class, 'exclui
 $router->registrar('clientes/excluir-talhao', ClientesController::class, 'excluirTalhao');
 $router->registrar('clientes/talhao-para-plantio', ClientesController::class, 'talhaoParaPlantio');
 $router->registrar('clientes/renomear-area-plantio', ClientesController::class, 'renomearAreaPlantio');
+$router->registrar('clientes/renomear-exclusao', ClientesController::class, 'renomearExclusao');
 $router->registrar('clientes/excluir-propriedade', ClientesController::class, 'excluirPropriedade');
 $router->registrar('clientes/plantar-area-toda', ClientesController::class, 'plantarAreaToda');
 $router->registrar('configuracoes/salvar-finalidade', \App\Controllers\ConfiguracoesController::class, 'salvarFinalidade');

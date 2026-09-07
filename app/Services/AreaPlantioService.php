@@ -16,6 +16,116 @@ use App\Core\Database;
  */
 class AreaPlantioService
 {
+    /**
+     * v46: tipos das ÁREAS DE NÃO PLANTIO (mata, APP, açude...). São "buracos" dentro
+     * da divisa: descontados da área de plantio e dos talhões que os contêm.
+     */
+    public const TIPOS_NAO_PLANTIO = [
+        'mata' => 'Mata / Reserva legal',
+        'app' => 'APP (rio, nascente)',
+        'acude' => 'Açude / Barragem',
+        'sede' => 'Sede / Benfeitorias',
+        'estrada' => 'Estrada / Carreador',
+        'outro' => 'Outro',
+    ];
+
+    /**
+     * v47: USO de uma área (etapa 2 do croqui). Lavoura = anual, com talhões por safra;
+     * perene e reflorestamento levam a cultura na própria área (talhões/quadras opcionais).
+     * "Cultivado" = soma dos três usos (o não plantio fica fora).
+     */
+    public const USOS_AREA = [
+        'lavoura' => 'Lavoura anual',
+        'perene' => 'Cultura perene',
+        'reflorestamento' => 'Reflorestamento',
+    ];
+
+    /** Nome amigável de um uso de área. */
+    public static function rotuloUso(?string $uso): string
+    {
+        return self::USOS_AREA[$uso ?? ''] ?? self::USOS_AREA['lavoura'];
+    }
+
+    /** Nome amigável de um tipo de área de não plantio. */
+    public static function rotuloTipo(?string $tipo): string
+    {
+        return self::TIPOS_NAO_PLANTIO[$tipo ?? ''] ?? self::TIPOS_NAO_PLANTIO['outro'];
+    }
+
+    /** Áreas de não plantio de um imóvel (v46), na ordem. */
+    public static function exclusoesDoImovel(int $imovelId): array
+    {
+        return Database::todos(
+            'SELECT id, imovel_id, nome, tipo, contorno, area_gps, ordem FROM areas_nao_plantio WHERE imovel_id = ? ORDER BY ordem, id',
+            [$imovelId]
+        );
+    }
+
+    /**
+     * Quanto (ha) um polígono perde para as áreas de não plantio: soma das
+     * interseções com cada exclusão ([[lat,lng],...][]).
+     */
+    public static function descontoNaoPlantio(array $pontos, array $exclusoes): float
+    {
+        $desc = 0.0;
+        foreach ($exclusoes as $ex) {
+            if (count($ex) >= 3) {
+                $desc += CroquiService::areaIntersecaoHa($pontos, $ex);
+            }
+        }
+        return $desc;
+    }
+
+    /** Polígonos ([[lat,lng],...][]) das linhas de areas_nao_plantio. */
+    public static function poligonosDe(array $linhas): array
+    {
+        $out = [];
+        foreach ($linhas as $l) {
+            $p = json_decode((string) ($l['contorno'] ?? ''), true);
+            if (is_array($p) && count($p) >= 3) {
+                $out[] = $p;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Área LÍQUIDA de um talhão: a medida pelo desenho menos as áreas de não plantio
+     * dentro dele; talhão sem desenho → a cadastrada.
+     */
+    public static function areaLiquidaTalhao(array $t, array $exclusoes): float
+    {
+        $bruta = self::areaValida($t, 'area_gps', 'area_ha');
+        if (empty($t['contorno']) || !$exclusoes) {
+            return $bruta;
+        }
+        $pts = json_decode((string) $t['contorno'], true);
+        if (!is_array($pts) || count($pts) < 3) {
+            return $bruta;
+        }
+        return max(0.0, round($bruta - self::descontoNaoPlantio($pts, $exclusoes), 2));
+    }
+
+    /**
+     * Grava em talhoes.area_ha a área LÍQUIDA (medida − não plantio) de cada talhão
+     * desenhado do imóvel — assim custo, produtividade (sc/ha), relatório e snapshot
+     * leem o mesmo número. Chamar sempre que um talhão ou uma área de não plantio mudar.
+     */
+    public static function sincronizarLiquidas(int $imovelId): void
+    {
+        $exclusoes = self::poligonosDe(self::exclusoesDoImovel($imovelId));
+        $talhoes = Database::todos(
+            'SELECT id, contorno, area_gps, area_ha FROM talhoes WHERE imovel_id = ? AND contorno IS NOT NULL AND area_gps IS NOT NULL AND area_gps > 0',
+            [$imovelId]
+        );
+        foreach ($talhoes as $t) {
+            $liquida = self::areaLiquidaTalhao($t, $exclusoes);
+            if (abs($liquida - (float) $t['area_ha']) >= 0.005) {
+                Database::executar('UPDATE talhoes SET area_ha = ? WHERE id = ?', [$liquida, (int) $t['id']]);
+            }
+        }
+    }
+
     /** Área "que vale": medida pelo croqui se houver, senão a cadastrada. */
     public static function areaValida(?array $linha, string $gps, string $ha): float
     {
@@ -43,23 +153,58 @@ class AreaPlantioService
         if ($areas === null) {
             $areas = isset($imovel['id']) ? self::areasDoImovel((int) $imovel['id']) : [];
         }
-        $areaPlantio = 0.0;
-        foreach ($areas as $a) {
-            $areaPlantio += (float) ($a['area_gps'] ?? 0);
+        // v46: áreas de NÃO plantio (mata, açude...) — descontadas de cada área de plantio
+        // e de cada talhão que as contém; somadas à parte por tipo
+        $exclusoesLinhas = $imovel['areas_nao_plantio'] ?? null;
+        if ($exclusoesLinhas === null) {
+            $exclusoesLinhas = isset($imovel['id']) ? self::exclusoesDoImovel((int) $imovel['id']) : [];
         }
-        if ($areaPlantio <= 0) {
+        $exclusoes = self::poligonosDe($exclusoesLinhas);
+        $naoPlantio = 0.0;
+        $naoPlantioTipos = [];
+        $exclusoesResumo = [];
+        foreach ($exclusoesLinhas as $x) {
+            $ha = round((float) ($x['area_gps'] ?? 0), 2);
+            $naoPlantio += $ha;
+            $tipo = (string) ($x['tipo'] ?? 'outro');
+            $naoPlantioTipos[$tipo] = round(($naoPlantioTipos[$tipo] ?? 0.0) + $ha, 2);
+            $exclusoesResumo[] = ['id' => (int) ($x['id'] ?? 0), 'nome' => (string) ($x['nome'] ?? ''), 'tipo' => $tipo,
+                'tipo_rotulo' => self::rotuloTipo($tipo), 'area_gps' => $ha];
+        }
+        // v47: USO por área — cultivado = lavoura + perene + reflorestamento (líquidos)
+        $areaPlantio = 0.0;
+        $porUso = ['lavoura' => 0.0, 'perene' => 0.0, 'reflorestamento' => 0.0];
+        $areasResumo = [];
+        $usoPorArea = [];
+        foreach ($areas as $a) {
+            $bruta = round((float) ($a['area_gps'] ?? 0), 2);
+            $pol = json_decode((string) ($a['contorno'] ?? ''), true);
+            $desconto = is_array($pol) && count($pol) >= 3 && $exclusoes ? round(self::descontoNaoPlantio($pol, $exclusoes), 2) : 0.0;
+            $liquida = max(0.0, round($bruta - $desconto, 2));
+            $uso = isset(self::USOS_AREA[$a['uso'] ?? '']) ? (string) $a['uso'] : 'lavoura';
+            $areaPlantio += $liquida;
+            $porUso[$uso] = round($porUso[$uso] + $liquida, 2);
+            $usoPorArea[(int) ($a['id'] ?? 0)] = ['uso' => $uso, 'cultura' => trim((string) ($a['cultura'] ?? '')), 'liquida' => $liquida, 'nome' => (string) ($a['nome'] ?? '')];
+            $areasResumo[] = ['id' => (int) ($a['id'] ?? 0), 'nome' => (string) ($a['nome'] ?? ''),
+                'uso' => $uso, 'uso_rotulo' => self::rotuloUso($uso), 'cultura' => trim((string) ($a['cultura'] ?? '')) ?: null, 'cultura_id' => (int) ($a['cultura_id'] ?? 0) ?: null,
+                'area_gps' => $bruta, 'desconto' => $desconto, 'area_liquida' => $liquida];
+        }
+        if ($areaPlantio <= 0 && !$areas) {
             $areaPlantio = self::areaValida($imovel, 'area_plantio_gps', 'area_plantio_ha');
+            $porUso['lavoura'] = round($areaPlantio, 2);
         }
         $origem = 'plantio';
         if ($areaPlantio <= 0) {
-            $areaPlantio = $areaTotal; // sem área de plantio informada: assume o imóvel inteiro
+            $areaPlantio = max(0.0, $areaTotal - $naoPlantio); // sem área de plantio informada: o imóvel inteiro menos o não plantio
+            $porUso['lavoura'] = round($areaPlantio, 2);
             $origem = 'total';
         }
 
         $grupos = [];
         $soma = 0.0;
+        $talhoesPorArea = [];
         foreach ($talhoes as $t) {
-            $area = self::areaValida($t, 'area_gps', 'area_ha');
+            $area = self::areaLiquidaTalhao($t, $exclusoes);
             $cultura = trim((string) ($t['cultura'] ?? '')) ?: 'Sem cultura';
             $finalidade = trim((string) ($t['finalidade'] ?? '')) ?: null;
             $chave = $cultura . '|' . ($finalidade ?? '');
@@ -73,6 +218,23 @@ class AreaPlantioService
                 $grupos[$chave]['mapeados']++;
             }
             $soma += $area;
+            $apId = (int) ($t['area_plantio_id'] ?? 0);
+            if ($apId) {
+                $talhoesPorArea[$apId] = ($talhoesPorArea[$apId] ?? 0) + 1;
+            }
+        }
+        // v47: área perene/reflorestamento SEM talhão entra inteira como um grupo (a cultura da
+        // área — "Maçã · Perene", "Pinus · Reflorestamento") em vez de aparecer como "sem talhão"
+        foreach ($usoPorArea as $apId => $ua) {
+            if ($ua['uso'] === 'lavoura' || !empty($talhoesPorArea[$apId]) || $ua['liquida'] <= 0) {
+                continue;
+            }
+            $cultura = $ua['cultura'] ?: self::rotuloUso($ua['uso']);
+            $finalidade = self::rotuloUso($ua['uso']);
+            $chave = $cultura . '|' . $finalidade;
+            $grupos[$chave] ??= ['cultura' => $cultura, 'finalidade' => $finalidade, 'area' => 0.0, 'pct' => 0.0, 'talhoes' => 0, 'mapeados' => 0, 'area_uso' => true];
+            $grupos[$chave]['area'] += $ua['liquida'];
+            $soma += $ua['liquida'];
         }
         foreach ($grupos as &$g) {
             $g['area'] = round($g['area'], 2);
@@ -86,7 +248,11 @@ class AreaPlantioService
             'area_total' => round($areaTotal, 2),
             'area_plantio' => round($areaPlantio, 2),
             'plantio_origem' => $origem,
-            'areas' => array_map(fn ($a) => ['id' => (int) ($a['id'] ?? 0), 'nome' => (string) ($a['nome'] ?? ''), 'area_gps' => round((float) ($a['area_gps'] ?? 0), 2)], $areas),
+            'areas' => $areasResumo,
+            'por_uso' => $porUso,
+            'nao_plantio' => round($naoPlantio, 2),
+            'nao_plantio_tipos' => $naoPlantioTipos,
+            'exclusoes' => $exclusoesResumo,
             'grupos' => array_values($grupos),
             'soma' => round($soma, 2),
             'nao_mapeado' => round(max(0.0, $areaPlantio - $soma), 2),
@@ -99,7 +265,9 @@ class AreaPlantioService
     public static function areasDoImovel(int $imovelId): array
     {
         return Database::todos(
-            'SELECT id, imovel_id, nome, contorno, area_gps, ordem FROM areas_plantio WHERE imovel_id = ? ORDER BY ordem, id',
+            'SELECT a.id, a.imovel_id, a.nome, a.uso, a.cultura_id, cu.nome AS cultura, a.contorno, a.area_gps, a.ordem
+               FROM areas_plantio a LEFT JOIN culturas cu ON cu.id = a.cultura_id
+              WHERE a.imovel_id = ? ORDER BY a.ordem, a.id',
             [$imovelId]
         );
     }
@@ -170,13 +338,23 @@ class AreaPlantioService
         $excedente = 0.0;
         $qtd = 0;
         $grupos = [];
+        $naoPlantio = 0.0;
+        $naoPlantioTipos = [];
+        $porUso = ['lavoura' => 0.0, 'perene' => 0.0, 'reflorestamento' => 0.0];
         foreach ($resumos as $r) {
+            foreach ($r['por_uso'] ?? [] as $uso => $ha) {
+                $porUso[$uso] = round(($porUso[$uso] ?? 0.0) + (float) $ha, 2);
+            }
             $areaTotal += $r['area_total'];
             $areaPlantio += $r['area_plantio'];
             $soma += $r['soma'];
             $naoMapeado += $r['nao_mapeado'];
             $excedente += $r['excedente'];
             $qtd += $r['qtd_talhoes'];
+            $naoPlantio += (float) ($r['nao_plantio'] ?? 0);
+            foreach ($r['nao_plantio_tipos'] ?? [] as $tipo => $ha) {
+                $naoPlantioTipos[$tipo] = round(($naoPlantioTipos[$tipo] ?? 0.0) + (float) $ha, 2);
+            }
             foreach ($r['grupos'] as $g) {
                 $chave = $g['cultura'] . '|' . ($g['finalidade'] ?? '');
                 $grupos[$chave] ??= [
@@ -199,6 +377,9 @@ class AreaPlantioService
             'area_total' => round($areaTotal, 2),
             'area_plantio' => round($areaPlantio, 2),
             'plantio_origem' => 'consolidado',
+            'por_uso' => $porUso,
+            'nao_plantio' => round($naoPlantio, 2),
+            'nao_plantio_tipos' => $naoPlantioTipos,
             'grupos' => array_values($grupos),
             'soma' => round($soma, 2),
             'nao_mapeado' => round($naoMapeado, 2),
@@ -260,15 +441,26 @@ class AreaPlantioService
         }
         // v44: áreas de plantio de todos os imóveis da propriedade numa consulta
         $areasPorImovel = [];
+        $exclusoesPorImovel = [];
         if ($imoveis) {
             $ids = array_map(fn ($im) => (int) $im['id'], $imoveis);
             $rows = Database::todos(
-                'SELECT id, imovel_id, nome, contorno, area_gps, ordem FROM areas_plantio
-                  WHERE imovel_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') ORDER BY ordem, id',
+                'SELECT a.id, a.imovel_id, a.nome, a.uso, a.cultura_id, cu.nome AS cultura, a.contorno, a.area_gps, a.ordem
+                   FROM areas_plantio a LEFT JOIN culturas cu ON cu.id = a.cultura_id
+                  WHERE a.imovel_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') ORDER BY a.ordem, a.id',
                 $ids
             );
             foreach ($rows as $a) {
                 $areasPorImovel[(int) $a['imovel_id']][] = $a;
+            }
+            // v46: áreas de não plantio de todos os imóveis numa consulta
+            $rows = Database::todos(
+                'SELECT id, imovel_id, nome, tipo, contorno, area_gps, ordem FROM areas_nao_plantio
+                  WHERE imovel_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') ORDER BY ordem, id',
+                $ids
+            );
+            foreach ($rows as $x) {
+                $exclusoesPorImovel[(int) $x['imovel_id']][] = $x;
             }
         }
         foreach ($imoveis as $i => &$im) {
@@ -277,6 +469,7 @@ class AreaPlantioService
                 $im['talhoes'] = array_merge($im['talhoes'], $semImovel);
             }
             $im['areas_plantio'] = $areasPorImovel[(int) $im['id']] ?? [];
+            $im['areas_nao_plantio'] = $exclusoesPorImovel[(int) $im['id']] ?? [];
             $im['resumo'] = self::resumoImovel($im, $im['talhoes']);
         }
         unset($im);
