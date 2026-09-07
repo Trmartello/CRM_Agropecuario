@@ -1170,6 +1170,21 @@ const Croqui = {
    * divisa, desenhados na etapa 2 e descontados da área de plantio e dos talhões que os
    * contêm. Alvos: EXCLUSAO_ID = nova; as gravadas são -(EXCLUSAO_BASE + id).
    */
+  /**
+   * v47: USO da área da etapa 2 — lavoura (anual, talhões por safra), perene (maçã, uva,
+   * erva-mate) ou reflorestamento (pinus, eucalipto), com a cultura na própria área.
+   * "Cultivado" = soma dos três; a cor no mapa muda por uso.
+   */
+  usosArea: { lavoura: 'Lavoura anual', perene: 'Cultura perene', reflorestamento: 'Reflorestamento' },
+  ICONE_USO: { lavoura: '🌱', perene: '🍎', reflorestamento: '🌲' },
+  COR_USO: { lavoura: '#7cb342', perene: '#f9a825', reflorestamento: '#1b5e20' },
+  culturas: [],
+  _usoDe(a) { return a && Croqui.usosArea[a.uso] ? a.uso : 'lavoura'; },
+  _corArea(a) { return Croqui.COR_USO[Croqui._usoDe(a)] || Croqui.COR_PLANTIO; },
+  _rotuloArea(a) {
+    const uso = Croqui._usoDe(a);
+    return (Croqui.ICONE_USO[uso] || '🌱') + ' ' + App.escapeHtml(a.nome) + (uso !== 'lavoura' ? ' <small>(' + App.escapeHtml(a.cultura || Croqui.usosArea[uso]) + ')</small>' : '');
+  },
   EXCLUSAO_ID: -3,
   EXCLUSAO_BASE: 2000,
   COR_EXCLUSAO: '#6d4c41',
@@ -1285,6 +1300,8 @@ const Croqui = {
     Croqui.areasPlantio = dados.areas_plantio || [];
     Croqui.exclusoes = dados.areas_nao_plantio || [];
     if (dados.tipos_nao_plantio) Croqui.tiposExclusao = dados.tipos_nao_plantio;
+    if (dados.usos_area) Croqui.usosArea = dados.usos_area;
+    Croqui.culturas = dados.culturas || [];
     Croqui.tiles = dados.tiles && dados.tiles.url ? dados.tiles : null;
     Croqui._dirty = false;
     // Garante a base do CAR do município no aparelho para o "CAR aqui" offline
@@ -1350,6 +1367,21 @@ const Croqui = {
     copiar.classList.toggle('d-none', !(Croqui._ehPlantio(Croqui.atualId) && comDesenho.length));
     const renomear = document.getElementById('croquiRenomearBtn');
     if (renomear) renomear.classList.toggle('d-none', !(Croqui._plantioIdDe(Croqui.atualId) || Croqui._exclusaoIdDe(Croqui.atualId)));
+    // v47: uso da área de plantio (lavoura/perene/reflorestamento) + cultura — só com alvo de área
+    const usoWrap = document.getElementById('croquiAreaUsoWrap');
+    if (usoWrap) {
+      const ehAp = Croqui._ehPlantio(Croqui.atualId);
+      usoWrap.classList.toggle('d-none', !ehAp);
+      if (ehAp) {
+        const selUso = document.getElementById('croquiAreaUso'), selCult = document.getElementById('croquiAreaCultura');
+        selUso.innerHTML = Object.entries(Croqui.usosArea).map(([k, v]) => `<option value="${k}">${Croqui.ICONE_USO[k] || ''} ${App.escapeHtml(v)}</option>`).join('');
+        selCult.innerHTML = '<option value="0">Cultura…</option>' + Croqui.culturas.map(c => `<option value="${Number(c.id)}">${App.escapeHtml(c.nome)}</option>`).join('');
+        const a = Croqui._areaPlantioDe(Croqui.atualId);
+        selUso.value = Croqui._usoDe(a);
+        selCult.value = String(a && a.cultura_id ? a.cultura_id : 0);
+        selCult.classList.toggle('d-none', selUso.value === 'lavoura');
+      }
+    }
     // v46: tipo da área de não plantio (mata, açude...) — só quando o alvo é uma exclusão
     const tipoWrap = document.getElementById('croquiExclusaoTipoWrap');
     if (tipoWrap) {
@@ -1406,6 +1438,25 @@ const Croqui = {
   /** Troca do tipo no seletor: exclusão já gravada salva na hora; nova só usa ao salvar. */
   tipoExclusaoMudou() {
     if (Croqui._exclusaoIdDe(Croqui.atualId)) Croqui.renomearExclusao(true);
+  },
+
+  /**
+   * v47: troca de uso/cultura da área de plantio no seletor — área já gravada salva na
+   * hora (renomear-area-plantio com uso/cultura); área nova só usa ao salvar.
+   */
+  async usoAreaMudou() {
+    const uso = document.getElementById('croquiAreaUso').value, selCult = document.getElementById('croquiAreaCultura');
+    selCult.classList.toggle('d-none', uso === 'lavoura');
+    const a = Croqui._areaPlantioDe(Croqui.atualId);
+    if (!a) { Croqui.render(); return; }
+    try {
+      const fd = new FormData(); fd.append('id', a.id); fd.append('nome', a.nome || ''); fd.append('uso', uso); fd.append('cultura_id', selCult.value || 0);
+      const r = await App.json('index.php?r=clientes/renomear-area-plantio', { method: 'POST', body: fd });
+      Object.assign(a, { uso: r.uso, cultura_id: r.cultura_id, cultura: r.cultura });
+      Croqui._montarSelect(Croqui.atualId);
+      Croqui.render();
+      App.alerta('Uso da área: ' + (Croqui.usosArea[r.uso] || r.uso) + (r.cultura ? ' · ' + r.cultura : '') + '.');
+    } catch (e) { App.alerta(e.message, 'danger'); }
   },
 
   /** v44: renomeia a área de plantio selecionada. */
@@ -1482,8 +1533,8 @@ const Croqui = {
       html = '<option value="0">🏠 Divisa do imóvel (CAR) — área total</option>';
     } else if (Croqui.etapa === 2) {
       const fmt1 = v => Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
-      html = '<optgroup label="Áreas de plantio">' + Croqui.areasPlantio.map(a =>
-        `<option value="${Croqui._alvoPlantio(a.id)}">🌱 ${App.escapeHtml(a.nome)} (${fmt1(a.area_gps)} ha)</option>`).join('')
+      html = '<optgroup label="Áreas cultivadas (lavoura, perene, reflorestamento)">' + Croqui.areasPlantio.map(a =>
+        `<option value="${Croqui._alvoPlantio(a.id)}">${Croqui.ICONE_USO[Croqui._usoDe(a)] || '🌱'} ${App.escapeHtml(a.nome)}${Croqui._usoDe(a) !== 'lavoura' ? ' · ' + App.escapeHtml(a.cultura || Croqui.usosArea[Croqui._usoDe(a)]) : ''} (${fmt1(a.area_gps)} ha)</option>`).join('')
         + `<option value="${Croqui.PLANTIO_ID}">🌱➕ Nova área de plantio (desenhar)</option></optgroup>`
         // v46: áreas de NÃO plantio (mata, açude...) — buracos descontados
         + '<optgroup label="Não plantio (mata, açude, sede…)">' + Croqui.exclusoes.map(x =>
@@ -1538,7 +1589,7 @@ const Croqui = {
     });
     const dicas = {
       1: '<strong>Etapa 1 — Área total do imóvel.</strong> Traga a divisa do CAR (<em>CAR no mapa</em>, <em>CAR aqui</em> ou <em>CAR pela sede</em>) e <strong>ajuste os pontos</strong> até a linha ciano ser a área real da propriedade. Salve: essa marcação é o limite de tudo que vem depois.',
-      2: '<strong>Etapa 2 — Áreas de plantio.</strong> Dentro da divisa salva (laranja), marque cada pedaço que dá para plantar (Campo, Morro…). Pontos fora da divisa são puxados para a borda e uma área não cobre outra. Salve cada área com um nome. <strong>Mato, açude, sede, estrada no meio?</strong> Marque como <em>área de não plantio</em> por cima: ela vira um buraco descontado da área de plantio e dos talhões.',
+      2: '<strong>Etapa 2 — Áreas de plantio.</strong> Dentro da divisa salva (laranja), marque cada pedaço que dá para plantar (Campo, Morro…). Pontos fora da divisa são puxados para a borda e uma área não cobre outra. Salve cada área com um nome e diga o <strong>uso</strong>: lavoura anual, <strong>cultura perene</strong> (maçã, uva, erva-mate) ou <strong>reflorestamento</strong> (pinus, eucalipto) — os dois últimos levam a cultura na própria área e não precisam de talhão. <strong>Mato, açude, sede, estrada no meio?</strong> Marque como <em>área de não plantio</em> por cima: ela vira um buraco descontado da área de plantio e dos talhões.',
       3: '<strong>Etapa 3 — Talhões.</strong> Escolha <em>Novo talhão</em> e toque <strong>dentro de uma área de plantio</strong>: o talhão fica preso a ela (laranja) e não pode passar por cima de outro talhão. Ao salvar, informe nome, cultura e finalidade.',
     };
     const dica = document.getElementById('croquiEtapaDica');
@@ -2995,6 +3046,7 @@ const Croqui = {
     }
     // Áreas de plantio (verde tracejado, v44: várias — Campo, Morro...) — entre a divisa e os talhões
     let plantiosDesenhados = 0;
+    const usosDesenhados = new Set();
     Croqui.areasPlantio.forEach(a => {
       const alvo = Croqui._alvoPlantio(a.id);
       if (alvo === Croqui.atualId) return; // a em edição é desenhada em ciano
@@ -3002,15 +3054,17 @@ const Croqui = {
       const pts = Croqui._contornoDe(alvo);
       if (pts.length < 3) return;
       const tela = pts.map(p => Croqui._paraTela(p, larg, alt));
+      const cor = Croqui._corArea(a), uso = Croqui._usoDe(a); // v47: cor por uso
       svg += `<polygon points="${tela.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ')}"
-                fill="${Croqui.COR_PLANTIO}" fill-opacity=".10" stroke="${Croqui.COR_PLANTIO}" stroke-width="2.5" stroke-dasharray="4 4"/>`;
-      if (Croqui.areasPlantio.length > 1) {
+                fill="${cor}" fill-opacity="${uso === 'lavoura' ? '.10' : '.18'}" stroke="${cor}" stroke-width="2.5" stroke-dasharray="4 4"/>`;
+      if (Croqui.areasPlantio.length > 1 || uso !== 'lavoura') {
         const cx = tela.reduce((s, p) => s + p[0], 0) / tela.length, cy = tela.reduce((s, p) => s + p[1], 0) / tela.length;
-        svg += `<text x="${cx.toFixed(1)}" y="${(cy - 14).toFixed(1)}" text-anchor="middle" class="croqui-rotulo" style="fill:#558b2f" opacity=".85">🌱 ${App.escapeHtml(a.nome)}</text>`;
+        svg += `<text x="${cx.toFixed(1)}" y="${(cy - 14).toFixed(1)}" text-anchor="middle" class="croqui-rotulo" style="fill:${uso === 'lavoura' ? '#558b2f' : cor}" opacity=".9">${Croqui.ICONE_USO[uso] || '🌱'} ${App.escapeHtml(a.nome)}${uso !== 'lavoura' ? ' (' + App.escapeHtml(a.cultura || Croqui.usosArea[uso]) + ')' : ''}</text>`;
       }
       plantiosDesenhados++;
+      usosDesenhados.add(uso);
     });
-    if (plantiosDesenhados) legenda.push(`<span><span class="croqui-cor" style="background:${Croqui.COR_PLANTIO}"></span>Área${plantiosDesenhados > 1 ? 's' : ''} de plantio</span>`);
+    usosDesenhados.forEach(uso => legenda.push(`<span><span class="croqui-cor" style="background:${Croqui.COR_USO[uso]}"></span>${uso === 'lavoura' ? 'Área' + (plantiosDesenhados > 1 ? 's' : '') + ' de plantio' : App.escapeHtml(Croqui.usosArea[uso])}</span>`));
     Croqui.talhoes.forEach((tal, i) => {
       const cor = Croqui.CORES[i % Croqui.CORES.length];
       const pontos = Number(tal.id) === Croqui.atualId ? Croqui.pontos : Croqui._contornoDe(tal.id);
@@ -3166,9 +3220,14 @@ const Croqui = {
     };
     const areaImovel = areaDe(0, Croqui.imovel && (Croqui.imovel.area_gps || Croqui.imovel.area_ha));
     // v44: área de plantio = soma das áreas desenhadas (a em edição entra pela medida da tela)
+    // v47: por USO (lavoura / perene / reflorestamento) — "cultivado" soma os três
     let areaPlantio = 0;
-    Croqui.areasPlantio.forEach(a => { areaPlantio += liquidaDe(Croqui._alvoPlantio(a.id), a.area_gps); });
-    if (Croqui.atualId === Croqui.PLANTIO_ID && Croqui.pontos.length >= 3) areaPlantio += Math.max(0, medida - desconto);
+    const porUso = { lavoura: 0, perene: 0, reflorestamento: 0 };
+    Croqui.areasPlantio.forEach(a => { const v = liquidaDe(Croqui._alvoPlantio(a.id), a.area_gps); areaPlantio += v; porUso[Croqui._usoDe(a)] += v; });
+    if (Croqui.atualId === Croqui.PLANTIO_ID && Croqui.pontos.length >= 3) {
+      const v = Math.max(0, medida - desconto), selUso = document.getElementById('croquiAreaUso');
+      areaPlantio += v; porUso[selUso && Croqui.usosArea[selUso.value] ? selUso.value : 'lavoura'] += v;
+    }
     if (areaPlantio <= 0) areaPlantio = Number(Croqui.imovel && (Croqui.imovel.area_plantio_gps || Croqui.imovel.area_plantio_ha) || 0); // legado
     // v46: total de não plantio (a em edição entra pela medida da tela)
     let naoPlantio = 0;
@@ -3187,7 +3246,11 @@ const Croqui = {
     });
     const partes = [];
     if (areaImovel > 0) partes.push(`Imóvel <strong>${fmt(areaImovel)} ha</strong>`);
-    if (areaPlantio > 0) partes.push(`Plantio <strong>${fmt(areaPlantio)} ha</strong>${plantioEhTotal ? ' <span class="text-muted">(= total)</span>' : ''}`);
+    if (areaPlantio > 0) {
+      const quebra = (porUso.perene > 0 || porUso.reflorestamento > 0)
+        ? ' <span class="text-muted">(' + ['lavoura', 'perene', 'reflorestamento'].filter(u => porUso[u] > 0).map(u => Croqui.ICONE_USO[u] + ' ' + fmt(porUso[u])).join(' · ') + ')</span>' : '';
+      partes.push(`Cultivado <strong>${fmt(areaPlantio)} ha</strong>${plantioEhTotal ? ' <span class="text-muted">(= total)</span>' : quebra}`);
+    }
     if (naoPlantio > 0) partes.push(`Não plantio <strong>${fmt(naoPlantio)} ha</strong>`);
     [...grupos.entries()].sort((a, b) => b[1] - a[1]).forEach(([k, v]) => {
       const pct = areaPlantio > 0 ? ` (${fmt(v / areaPlantio * 100, 0)}%)` : '';
@@ -3487,7 +3550,12 @@ const Croqui = {
     const fd = new FormData();
     fd.append('tipo', tipo);
     fd.append(tipo === 'talhao' ? 'talhao_id' : 'imovel_id', tipo === 'talhao' ? Croqui.atualId : Croqui.imovel.id);
-    if (ehPlantio) { fd.append('plantio_id', areaAtual ? areaAtual.id : 0); if (nomePlantio) fd.append('nome', nomePlantio); }
+    if (ehPlantio) {
+      fd.append('plantio_id', areaAtual ? areaAtual.id : 0); if (nomePlantio) fd.append('nome', nomePlantio);
+      // v47: uso + cultura da área (do seletor ao lado)
+      const selUso = document.getElementById('croquiAreaUso'), selCult = document.getElementById('croquiAreaCultura');
+      if (selUso && Croqui.usosArea[selUso.value]) { fd.append('uso', selUso.value); fd.append('cultura_id', selCult ? (selCult.value || 0) : 0); }
+    }
     if (ehExclusao) { fd.append('exclusao_id', exAtual ? exAtual.id : 0); fd.append('tipo_exclusao', tipoExclusao); if (nomePlantio) fd.append('nome', nomePlantio); }
     fd.append('contorno', JSON.stringify(Croqui.pontos.map(p => [Number(Number(p[0]).toFixed(7)), Number(Number(p[1]).toFixed(7))])));
     fd.append('usar_area', document.getElementById('croquiUsarArea').checked ? '1' : '0');

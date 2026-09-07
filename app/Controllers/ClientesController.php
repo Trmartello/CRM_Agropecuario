@@ -331,7 +331,11 @@ class ClientesController
             // v44: VÁRIAS áreas de plantio por imóvel (cada uma um polígono dentro da divisa)
             'areas_plantio' => array_map(fn ($a) => [
                 'id' => (int) $a['id'], 'nome' => $a['nome'], 'contorno' => $a['contorno'], 'area_gps' => (float) $a['area_gps'],
+                // v47: uso da área (lavoura/perene/reflorestamento) + cultura
+                'uso' => $a['uso'] ?? 'lavoura', 'cultura_id' => (int) ($a['cultura_id'] ?? 0) ?: null, 'cultura' => $a['cultura'] ?? null,
             ], \App\Services\AreaPlantioService::areasDoImovel($imovelId)),
+            'usos_area' => \App\Services\AreaPlantioService::USOS_AREA,
+            'culturas' => Database::todos('SELECT id, nome FROM culturas ORDER BY nome'),
             // v46: áreas de NÃO plantio (mata, açude...) — buracos descontados do plantio/talhões
             'areas_nao_plantio' => array_map(fn ($x) => [
                 'id' => (int) $x['id'], 'nome' => $x['nome'], 'tipo' => $x['tipo'], 'contorno' => $x['contorno'], 'area_gps' => (float) $x['area_gps'],
@@ -548,10 +552,12 @@ class ClientesController
         $plantioRow = null;
         if ($tipo === 'plantio') {
             $nome = mb_substr(trim($_POST['nome'] ?? ''), 0, 120);
+            // v47: uso (lavoura/perene/reflorestamento) + cultura da área
+            [$uso, $culturaId] = $this->usoECulturaDaArea($alvoId > 0);
             if ($alvoId > 0) {
                 Database::executar(
-                    'UPDATE areas_plantio SET contorno = ?, area_gps = ?' . ($nome !== '' ? ', nome = ?' : '') . ' WHERE id = ?',
-                    $nome !== '' ? [json_encode($pontos), $areaGps, $nome, $alvoId] : [json_encode($pontos), $areaGps, $alvoId]
+                    'UPDATE areas_plantio SET contorno = ?, area_gps = ?' . ($nome !== '' ? ', nome = ?' : '') . ($uso !== null ? ', uso = ?, cultura_id = ?' : '') . ' WHERE id = ?',
+                    array_merge([json_encode($pontos), $areaGps], $nome !== '' ? [$nome] : [], $uso !== null ? [$uso, $culturaId] : [], [$alvoId])
                 );
             } else {
                 $qtd = (int) Database::valor('SELECT COUNT(*) FROM areas_plantio WHERE imovel_id = ?', [$imovelId]);
@@ -559,12 +565,12 @@ class ClientesController
                     $nome = 'Área de plantio' . ($qtd > 0 ? ' ' . ($qtd + 1) : '');
                 }
                 Database::executar(
-                    'INSERT INTO areas_plantio (imovel_id, nome, contorno, area_gps, ordem) VALUES (?,?,?,?,?)',
-                    [$imovelId, $nome, json_encode($pontos), $areaGps, $qtd + 1]
+                    'INSERT INTO areas_plantio (imovel_id, nome, uso, cultura_id, contorno, area_gps, ordem) VALUES (?,?,?,?,?,?,?)',
+                    [$imovelId, $nome, $uso ?? 'lavoura', $culturaId, json_encode($pontos), $areaGps, $qtd + 1]
                 );
                 $alvoId = Database::ultimoId();
             }
-            $plantioRow = Database::um('SELECT id, nome, contorno, area_gps FROM areas_plantio WHERE id = ?', [$alvoId]);
+            $plantioRow = $this->areaPlantioRow($alvoId);
         } elseif ($tipo === 'exclusao') {
             // v46: área de não plantio — nome + tipo (mata, app, acude, sede, estrada, outro)
             $nome = mb_substr(trim($_POST['nome'] ?? ''), 0, 120);
@@ -619,9 +625,7 @@ class ClientesController
         }
         sync_confirmar($_POST['uuid_offline'] ?? null);
         auditar('salvar', 'croqui', $alvoId, $rotulo . ' · ' . count($pontos) . " pontos · {$areaGps} ha");
-        $resposta = ['area_gps' => $areaGps, 'talhoes_fora' => $avisos, 'plantio' => $plantioRow === null ? null : [
-            'id' => (int) $plantioRow['id'], 'nome' => $plantioRow['nome'], 'contorno' => $plantioRow['contorno'], 'area_gps' => (float) $plantioRow['area_gps'],
-        ]];
+        $resposta = ['area_gps' => $areaGps, 'talhoes_fora' => $avisos, 'plantio' => $plantioRow];
         if ($tipo === 'exclusao' && !empty($exclusaoRow)) {
             $resposta['exclusao'] = ['id' => (int) $exclusaoRow['id'], 'nome' => $exclusaoRow['nome'], 'tipo' => $exclusaoRow['tipo'],
                 'contorno' => $exclusaoRow['contorno'], 'area_gps' => (float) $exclusaoRow['area_gps']];
@@ -652,7 +656,36 @@ class ClientesController
         json_ok(['id' => $id, 'nome' => $nome, 'tipo' => $tipo]);
     }
 
-    /** v44: renomeia uma área de plantio (croqui → botão "Renomear"). */
+    /**
+     * v47: uso (lavoura/perene/reflorestamento) + cultura vindos do formulário do croqui.
+     * Devolve [uso|null, cultura_id|null]; uso null = não informado (mantém o gravado ao
+     * editar; 'lavoura' ao criar). Cultura só vale para perene/reflorestamento e precisa existir.
+     */
+    private function usoECulturaDaArea(bool $editando): array
+    {
+        $uso = (string) ($_POST['uso'] ?? '');
+        if (!isset(\App\Services\AreaPlantioService::USOS_AREA[$uso])) {
+            return [$editando ? null : 'lavoura', null];
+        }
+        $culturaId = (int) ($_POST['cultura_id'] ?? 0);
+        if ($uso === 'lavoura' || $culturaId <= 0 || !Database::valor('SELECT 1 FROM culturas WHERE id = ?', [$culturaId])) {
+            $culturaId = null;
+        }
+        return [$uso, $culturaId];
+    }
+
+    /** Linha de areas_plantio pronta para o croqui (com uso e cultura por nome). */
+    private function areaPlantioRow(int $id): ?array
+    {
+        $a = Database::um(
+            'SELECT a.id, a.nome, a.uso, a.cultura_id, cu.nome AS cultura, a.contorno, a.area_gps
+               FROM areas_plantio a LEFT JOIN culturas cu ON cu.id = a.cultura_id WHERE a.id = ?', [$id]
+        );
+        return $a ? ['id' => (int) $a['id'], 'nome' => $a['nome'], 'uso' => $a['uso'] ?: 'lavoura', 'cultura_id' => (int) ($a['cultura_id'] ?? 0) ?: null,
+            'cultura' => $a['cultura'], 'contorno' => $a['contorno'], 'area_gps' => (float) $a['area_gps']] : null;
+    }
+
+    /** v44: renomeia uma área de plantio (croqui → botão "Renomear"); v47: também troca uso/cultura. */
     public function renomearAreaPlantio(): void
     {
         Permissoes::exigirInterno();
@@ -662,13 +695,15 @@ class ClientesController
             json_erro('Área de plantio não encontrada.', 404);
         }
         $this->imovelDaCarteira((int) $area['imovel_id']);
-        $nome = mb_substr(trim($_POST['nome'] ?? ''), 0, 120);
-        if ($nome === '') {
-            json_erro('Informe o nome da área de plantio.');
+        $nome = mb_substr(trim($_POST['nome'] ?? ''), 0, 120) ?: (string) $area['nome'];
+        [$uso, $culturaId] = $this->usoECulturaDaArea(true);
+        if ($uso !== null) {
+            Database::executar('UPDATE areas_plantio SET nome = ?, uso = ?, cultura_id = ? WHERE id = ?', [$nome, $uso, $culturaId, $id]);
+        } else {
+            Database::executar('UPDATE areas_plantio SET nome = ? WHERE id = ?', [$nome, $id]);
         }
-        Database::executar('UPDATE areas_plantio SET nome = ? WHERE id = ?', [$nome, $id]);
-        auditar('salvar', 'croqui', $id, 'área de plantio renomeada: ' . $nome);
-        json_ok(['id' => $id, 'nome' => $nome]);
+        auditar('salvar', 'croqui', $id, 'área de plantio: ' . $nome . ($uso !== null ? " ({$uso})" : ''));
+        json_ok($this->areaPlantioRow($id));
     }
 
     /**

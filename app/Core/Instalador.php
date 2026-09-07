@@ -1150,6 +1150,28 @@ class Instalador
                  ON DUPLICATE KEY UPDATE valor = '46'"
             );
         }
+        if ($versao < 47) {
+            // USO da área (pedido do teste de campo: "essa área é reflorestamento; precisamos
+            // marcar reflorestamento e culturas perenes, nem sempre é área de plantio"):
+            // lavoura (anual, talhões por safra) | perene (maçã, uva, erva-mate) |
+            // reflorestamento (pinus, eucalipto), com a cultura na própria área.
+            if (!self::temColuna('areas_plantio', 'uso')) {
+                Database::executar("ALTER TABLE areas_plantio ADD COLUMN uso VARCHAR(20) NOT NULL DEFAULT 'lavoura' AFTER nome");
+            }
+            if (!self::temColuna('areas_plantio', 'cultura_id')) {
+                Database::executar('ALTER TABLE areas_plantio ADD COLUMN cultura_id INT NULL AFTER uso');
+                Database::executar('ALTER TABLE areas_plantio ADD CONSTRAINT fk_areas_plantio_cultura FOREIGN KEY (cultura_id) REFERENCES culturas(id) ON DELETE SET NULL');
+            }
+            foreach (['Maçã', 'Uva', 'Erva-mate', 'Pinus', 'Eucalipto'] as $cultura) {
+                if (!Database::valor('SELECT 1 FROM culturas WHERE nome = ?', [$cultura])) {
+                    Database::executar('INSERT INTO culturas (nome) VALUES (?)', [$cultura]);
+                }
+            }
+            Database::executar(
+                "INSERT INTO configuracoes (chave, valor) VALUES ('schema_versao', '47')
+                 ON DUPLICATE KEY UPDATE valor = '47'"
+            );
+        }
     }
 
     /** Apaga cópias idênticas de talhão (mantém a de menor id), poupando as que têm histórico. */

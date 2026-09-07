@@ -757,7 +757,8 @@ class CroquiService
             foreach ($propriedade['areas_plantio'] as $a) {
                 $d = json_decode((string) ($a['contorno'] ?? ''), true);
                 if (is_array($d) && count($d) >= 3) {
-                    $plantios[] = ['nome' => (string) ($a['nome'] ?? ''), 'pontos' => $d];
+                    $plantios[] = ['nome' => (string) ($a['nome'] ?? ''), 'pontos' => $d,
+                        'uso' => (string) ($a['uso'] ?? 'lavoura'), 'cultura' => (string) ($a['cultura'] ?? '')];
                 }
             }
         } elseif ($propriedade && !empty($propriedade['contorno_plantio'])) {
@@ -829,15 +830,20 @@ class CroquiService
                 . ' fill="#8d6e2f" fill-opacity=".07" stroke="#8d6e2f" stroke-width="2.5" stroke-dasharray="8 5"/>';
         }
         // Áreas de plantio (v44): o que dá para plantar dentro da divisa, com o nome
+        // v47: cor por USO (lavoura verde, perene âmbar, reflorestamento verde-escuro) + cultura no rótulo
+        $corUso = ['lavoura' => ['#7cb342', '#558b2f'], 'perene' => ['#f9a825', '#b26a00'], 'reflorestamento' => ['#1b5e20', '#1b5e20']];
         foreach ($plantios as $pl) {
+            $uso = $pl['uso'] ?? 'lavoura';
+            [$fill, $stroke] = $corUso[$uso] ?? $corUso['lavoura'];
             $telaPl = array_map($paraTela, $pl['pontos']);
             $svg .= '<polygon points="' . implode(' ', array_map(fn ($p) => $p[0] . ',' . $p[1], $telaPl)) . '"'
-                . ' fill="#7cb342" fill-opacity=".10" stroke="#558b2f" stroke-width="2" stroke-dasharray="4 4"/>';
-            if ($pl['nome'] !== '' && count($plantios) > 1) {
+                . ' fill="' . $fill . '" fill-opacity="' . ($uso === 'lavoura' ? '.10' : '.18') . '" stroke="' . $stroke . '" stroke-width="2" stroke-dasharray="4 4"/>';
+            if ($pl['nome'] !== '' && (count($plantios) > 1 || $uso !== 'lavoura')) {
                 $cx = round(array_sum(array_column($telaPl, 0)) / count($telaPl), 1);
                 $cy = round(array_sum(array_column($telaPl, 1)) / count($telaPl), 1);
-                $svg .= '<text x="' . $cx . '" y="' . ($cy - 12) . '" text-anchor="middle" font-size="8" fill="#558b2f">'
-                    . e($pl['nome']) . '</text>';
+                $rotulo = $pl['nome'] . ($uso !== 'lavoura' ? ' (' . (($pl['cultura'] ?? '') !== '' ? $pl['cultura'] : \App\Services\AreaPlantioService::rotuloUso($uso)) . ')' : '');
+                $svg .= '<text x="' . $cx . '" y="' . ($cy - 12) . '" text-anchor="middle" font-size="8" fill="' . $stroke . '">'
+                    . e($rotulo) . '</text>';
             }
         }
         foreach ($poligonos as $i => $pol) {

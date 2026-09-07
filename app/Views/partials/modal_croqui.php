@@ -53,6 +53,11 @@
             <?php /* Alvo = talhão: o desenho pode virar a ÁREA DE PLANTIO (cadastro errado). Alvo = área de plantio: copiar o desenho de um talhão. */ ?>
             <button type="button" class="btn btn-sm btn-outline-success d-none" id="croquiVirarPlantioBtn" onclick="Croqui.talhaoParaPlantio()"
                     title="Este desenho é a área de plantio do imóvel, não um talhão"><i class="bi bi-arrow-right-circle"></i> Virar área de plantio</button>
+            <?php /* v47: USO da área (lavoura anual / cultura perene / reflorestamento) + cultura — só com alvo de área */ ?>
+            <div class="d-none d-flex gap-1" id="croquiAreaUsoWrap" title="Uso desta área: lavoura anual (talhões por safra), cultura perene ou reflorestamento (a cultura fica na própria área)">
+              <select id="croquiAreaUso" class="form-select form-select-sm" style="max-width:190px" onchange="Croqui.usoAreaMudou()"></select>
+              <select id="croquiAreaCultura" class="form-select form-select-sm d-none" style="max-width:150px" onchange="Croqui.usoAreaMudou()"></select>
+            </div>
             <?php /* v46: tipo da ÁREA DE NÃO PLANTIO (mata, açude, sede...) — só com esse alvo selecionado */ ?>
             <div class="d-none" id="croquiExclusaoTipoWrap" title="Tipo da área de não plantio (descontada da área de plantio e dos talhões)">
               <select id="croquiExclusaoTipo" class="form-select form-select-sm" style="max-width:210px" onchange="Croqui.tipoExclusaoMudou()"></select>
